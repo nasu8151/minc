@@ -1,1 +1,9 @@
 /test.hex
+/target/
+*.o
+*.vcd
+*.exe
+*.log
+*.tmp
+*.bak
+*.out
