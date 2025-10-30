@@ -4,7 +4,7 @@ module minc_tb;
 
     reg CLK;
     reg nRESET;
-    wire [15:0] pc_out;
+    wire [7:0] pc_out;
     wire [7:0] acc_out;
     integer i;
 
@@ -24,6 +24,8 @@ module minc_tb;
 
     // Reset sequence
     initial begin
+        nRESET = 1;
+        #1;
         nRESET = 0;
         #20;
         nRESET = 1;
