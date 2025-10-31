@@ -41,9 +41,9 @@ int main(int argc, char *argv[]){
             }
 
             if (strcmp(instruction, "ld") == 0) {
-                fprintf(output, "%03x\n", 0x000 | opr & 0xFF);
+                fprintf(output, "%03x\n", 0x000 | (opr & 0xFF));
             } else if(strcmp(instruction, "add") == 0) {
-                fprintf(output, "%03x\n", 0x100 | opr & 0xFF);
+                fprintf(output, "%03x\n", 0x100 | (opr & 0xFF));
             } else {
                 fprintf(stderr, "Unsupported instruction: %s\n", instruction);
                 fclose(output);
