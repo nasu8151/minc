@@ -74,4 +74,13 @@ diff -u "$TESTDIR/exp6.hex" "$TESTDIR/out6.hex"
 
 echo "[ OK ] test 6 passed"
 
+# 7) mincc : tokenizer should handle spaces
+echo "[test 7] mincc tokenizer handles spaces (  1  +     2  -> ld 1 ; add 2)"
+"$MINCC" "  1   +    2  " > "$TESTDIR/in7.asm"
+"$MINCASM" "$TESTDIR/in7.asm" "$TESTDIR/out7.hex"
+echo -e "001\n102" > "$TESTDIR/exp7.hex"
+diff -u "$TESTDIR/exp7.hex" "$TESTDIR/out7.hex"
+
+echo "[ OK ] test 7 passed"
+
 echo "\nAll tests passed."
