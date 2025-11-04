@@ -16,7 +16,7 @@ BIN_MINCASM := $(BINDIR)/mincasm
 SRCS_MINCC := $(wildcard $(SRCDIR_MINCC)/*.c)
 SRCS_MINCASM := $(wildcard $(SRCDIR_MINCASM)/*.c)
 
-.PHONY: all clean
+.PHONY: all clean test
 
 all: $(BINDIR) $(BIN_MINCC) $(BIN_MINCASM)
 
@@ -31,4 +31,7 @@ $(BIN_MINCASM): $(SRCS_MINCASM) | $(BINDIR)
 
 clean:
 	rm -rf $(BINDIR)
+
+test: all
+	bash tests/run_tests.sh
 
