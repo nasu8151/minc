@@ -84,7 +84,7 @@ expect_fail "$MINCC"
 echo "[ OK ] test 7 passed"
 
 # 8) mincc : load immediate and add immediate integration
-echo "[test 8] mincc|mincasm integration (ld 0x10; add 0x20 -> 010, 120)"
+echo "[test 8] mincc|mincasm integration (0x10+0x20 -> ld 0x10; add 0x20 -> 010, 120)"
 "$MINCC" 0x10+0x20 > "$TESTDIR/in8.asm"
 "$MINCASM" "$TESTDIR/in8.asm" "$TESTDIR/out8.hex"
 echo -e "010\n120" > "$TESTDIR/exp8.hex"
@@ -100,5 +100,15 @@ echo -e "001\n102" > "$TESTDIR/exp9.hex"
 diff -u "$TESTDIR/exp9.hex" "$TESTDIR/out9.hex"
 
 echo "[ OK ] test 9 passed"
+
+# 10) load immediate and subtract immediate integration
+echo "[test 10] mincc|mincasm integration (0x10-0x20 -> ld 0x10; sub 0x20 -> 010, 220)"
+"$MINCC" 0x10-0x20 > "$TESTDIR/in10.asm"
+"$MINCASM" "$TESTDIR/in10.asm" "$TESTDIR/out10.hex"
+echo -e "010\n220" > "$TESTDIR/exp10.hex"
+diff -u "$TESTDIR/exp10.hex" "$TESTDIR/out10.hex"
+
+echo "[ OK ] test 10 passed"
+
 echo ""
 echo "All tests passed."

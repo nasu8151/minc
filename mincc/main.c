@@ -88,8 +88,8 @@ Token *tokenize(const char *p){
             continue;
         }
 
-        if (*p == '+' ) {
-            cur = new_token(TOKEN_RESERVED, cur, "+", 0);
+        if (*p == '+' || *p == '-') {
+            cur = new_token(TOKEN_RESERVED, cur, (char[]){*p, 0}, 0);
             p++;
             continue;
         }
@@ -125,9 +125,11 @@ int main(int argc, char *argv[]) {
     {
         if (consume("+")) {
             printf("add %ld\n", expect_number());
-        } else {
-            error("Invalid token");
+            continue;
         }
+
+        expect("-");
+        printf("sub %ld\n", expect_number());
     }
 
     return EXIT_SUCCESS;
