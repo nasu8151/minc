@@ -60,9 +60,56 @@ long expect_number() {
     return val;
 }
 
+Token *new_token(TokenType type, Token *current, const char *str, long val) {
+    Token *tok = calloc(1, sizeof(Token));
+    tok->type = type;
+    if (str) {
+        strncpy(tok->str, str, sizeof(tok->str) - 1);
+    }
+    tok->value = val;
+    current->next = tok;
+    return tok;
+}
+
 // Check if the current token is EOF
 bool at_eof() {
     return token->type == TOKEN_EOF;
+}
+
+Token *tokenize(const char *p){
+    Token head;
+    head.next = NULL;
+    Token *cur = &head;
+
+    while (*p) {
+        // Skip whitespace
+        if (isspace(*p)) {
+            p++;
+            continue;
+        }
+
+        if (*p == '+' ) {
+            cur = new_token(TOKEN_RESERVED, cur, "+", 0);
+            p++;
+            continue;
+        }
+
+        if (isdigit(*p)) {
+            char *q = (char *)p;
+            long val = strtol(p, &q, 0);
+            if (val < 0 || val > 0xFF) {
+                error("Number out of range: %s", p);
+            }
+            cur = new_token(TOKEN_NUMBER, cur, NULL, val);
+            p = q;
+            continue;
+        }
+
+        error("Invalid token: %s", p);
+    }
+
+    new_token(TOKEN_EOF, cur, NULL, 0);
+    return head.next;
 }
 
 int main(int argc, char *argv[]) {
@@ -71,26 +118,17 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
 
-    const char *code = argv[1];
-    long opr = strtol(code, &code, 0);
-    if (opr < 0 || opr > 0xFF) {
-        fprintf(stderr, "Operand out of range: %s\n", argv[1]);
-        return EXIT_FAILURE;
-    }
-    printf("ld %ld\n", opr);
-    while (*code) {
-        if (*code == '+') {
-            code++;
-            opr = strtol(code, &code, 0);
-            if (opr < 0 || opr > 0xFF) {
-                fprintf(stderr, "Operand out of range: %s\n", argv[1]);
-                return EXIT_FAILURE;
-            }
-            printf("add %ld\n", opr);
+    token = tokenize(argv[1]);
+    
+    printf("ld %ld\n", expect_number());
+    while (!at_eof())
+    {
+        if (consume("+")) {
+            printf("add %ld\n", expect_number());
         } else {
-            fprintf(stderr, "Invalid code format: %s\n", argv[1]);
-            return EXIT_FAILURE;
+            error("Invalid token");
         }
     }
+
     return EXIT_SUCCESS;
 }
