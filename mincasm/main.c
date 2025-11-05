@@ -41,9 +41,13 @@ int main(int argc, char *argv[]){
             }
 
             if (strcmp(instruction, "ld") == 0) {
-                fprintf(output, "%03x\n", 0x000 | (opr & 0xFF));
+                fprintf(output, "%03x\n", 0x000 | opr);
             } else if(strcmp(instruction, "add") == 0) {
-                fprintf(output, "%03x\n", 0x100 | (opr & 0xFF));
+                fprintf(output, "%03x\n", 0x100 | opr);
+            } else if(strcmp(instruction, "sub") == 0) {
+                fprintf(output, "%03x\n", 0x200 | opr);
+            } else if(strcmp(instruction, "mul") == 0) {
+                fprintf(output, "%03x\n", 0x300 | opr);
             } else {
                 fprintf(stderr, "Unsupported instruction: %s\n", instruction);
                 fclose(output);

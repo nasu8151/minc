@@ -45,42 +45,60 @@ echo "105" > "$TESTDIR/exp2.hex"
 diff -u "$TESTDIR/exp2.hex" "$TESTDIR/out2.hex"
 echo "[ OK ] test 2 passed"
 
-# 3) mincasm operand out of range (> 0xFF) should fail
-echo "[test 3] mincasm operand out of range (ld 0x1ff) expects failure"
-echo "ld 0x1ff" > "$TESTDIR/in3.asm"
-expect_fail "$MINCASM" "$TESTDIR/in3.asm" "$TESTDIR/out3.hex"
+# 3) mincasm sub immediate: sub 5 -> 205
+echo "[test 3] mincasm sub immediate (sub 5 -> 205)"
+echo "sub 5" > "$TESTDIR/in3.asm"
+"$MINCASM" "$TESTDIR/in3.asm" "$TESTDIR/out3.hex"
+echo "205" > "$TESTDIR/exp3.hex"
+diff -u "$TESTDIR/exp3.hex" "$TESTDIR/out3.hex"
 
 echo "[ OK ] test 3 passed"
 
-# 4) mincasm unsupported instruction should fail
-echo "[test 4] mincasm unsupported instruction (sub 1) expects failure"
-echo "sub 1" > "$TESTDIR/in4.asm"
-expect_fail "$MINCASM" "$TESTDIR/in4.asm" "$TESTDIR/out4.hex"
+# 4) mincasm mul immediate: mul 5 -> 305
+echo "[test 4] mincasm mul immediate (mul 5 -> 305)"
+echo "mul 5" > "$TESTDIR/in4.asm"
+"$MINCASM" "$TESTDIR/in4.asm" "$TESTDIR/out4.hex"
+echo "305" > "$TESTDIR/exp4.hex"
+diff -u "$TESTDIR/exp4.hex" "$TESTDIR/out4.hex"
 
 echo "[ OK ] test 4 passed"
 
-# 5) mincc wrong usage (no args) should fail
-echo "[test 5] mincc wrong usage (no args) expects failure"
-expect_fail "$MINCC"
+# 5) mincasm operand out of range (> 0xFF) should fail
+echo "[test 5] mincasm operand out of range (ld 0x1ff) expects failure"
+echo "ld 0x1ff" > "$TESTDIR/in5.asm"
+expect_fail "$MINCASM" "$TESTDIR/in5.asm" "$TESTDIR/out5.hex"
 
 echo "[ OK ] test 5 passed"
 
-# 6) mincc : load immediate and add immediate integration
-echo "[test 6] mincc|mincasm integration (ld 0x10; add 0x20 -> 010, 120)"
-"$MINCC" 0x10+0x20 > "$TESTDIR/in6.asm"
-"$MINCASM" "$TESTDIR/in6.asm" "$TESTDIR/out6.hex"
-echo -e "010\n120" > "$TESTDIR/exp6.hex"
-diff -u "$TESTDIR/exp6.hex" "$TESTDIR/out6.hex"
+# 6) mincasm unsupported instruction should fail
+echo "[test 6] mincasm unsupported instruction (aaa 1) expects failure"
+echo "aaa 1" > "$TESTDIR/in6.asm"
+expect_fail "$MINCASM" "$TESTDIR/in6.asm" "$TESTDIR/out6.hex"
 
 echo "[ OK ] test 6 passed"
 
-# 7) mincc : tokenizer should handle spaces
-echo "[test 7] mincc tokenizer handles spaces (  1  +     2  -> ld 1 ; add 2)"
-"$MINCC" "  1   +    2  " > "$TESTDIR/in7.asm"
-"$MINCASM" "$TESTDIR/in7.asm" "$TESTDIR/out7.hex"
-echo -e "001\n102" > "$TESTDIR/exp7.hex"
-diff -u "$TESTDIR/exp7.hex" "$TESTDIR/out7.hex"
+# 7) mincc wrong usage (no args) should fail
+echo "[test 7] mincc wrong usage (no args) expects failure"
+expect_fail "$MINCC"
 
 echo "[ OK ] test 7 passed"
 
-echo "\nAll tests passed."
+# 8) mincc : load immediate and add immediate integration
+echo "[test 8] mincc|mincasm integration (ld 0x10; add 0x20 -> 010, 120)"
+"$MINCC" 0x10+0x20 > "$TESTDIR/in8.asm"
+"$MINCASM" "$TESTDIR/in8.asm" "$TESTDIR/out8.hex"
+echo -e "010\n120" > "$TESTDIR/exp8.hex"
+diff -u "$TESTDIR/exp8.hex" "$TESTDIR/out8.hex"
+
+echo "[ OK ] test 8 passed"
+
+# 9) mincc : tokenizer should handle spaces
+echo "[test 9] mincc tokenizer handles spaces (  1  +     2  -> ld 1 ; add 2)"
+"$MINCC" "  1   +    2  " > "$TESTDIR/in9.asm"
+"$MINCASM" "$TESTDIR/in9.asm" "$TESTDIR/out9.hex"
+echo -e "001\n102" > "$TESTDIR/exp9.hex"
+diff -u "$TESTDIR/exp9.hex" "$TESTDIR/out9.hex"
+
+echo "[ OK ] test 9 passed"
+echo ""
+echo "All tests passed."
