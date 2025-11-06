@@ -32,8 +32,6 @@ module minc (
                 accumulator <= accumulator + rom[pc[7:0]][7:0];
             else if (instruction[9:8] == 2'b10) // if bits 9:8 are 10, it's a SUB instruction
                 accumulator <= accumulator - rom[pc[7:0]][7:0];
-            else if (instruction[9:8] == 2'b11) // if bits 9:8 are 11, it's a MUL instruction
-                accumulator <= accumulator * rom[pc[7:0]][7:0];
 
             // Increment PC only during normal operation (not during reset)
             pc <= pc + 1;

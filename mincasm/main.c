@@ -46,8 +46,6 @@ int main(int argc, char *argv[]){
                 fprintf(output, "%03x\n", 0x100 | opr);
             } else if(strcmp(instruction, "sub") == 0) {
                 fprintf(output, "%03x\n", 0x200 | opr);
-            } else if(strcmp(instruction, "mul") == 0) {
-                fprintf(output, "%03x\n", 0x300 | opr);
             } else {
                 fprintf(stderr, "Unsupported instruction: %s\n", instruction);
                 fclose(output);
