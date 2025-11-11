@@ -11,6 +11,37 @@ typedef enum {
     TOKEN_RESERVED,
 } TokenType;
 
+typedef enum {
+    ND_ADD,
+    ND_SUB,
+    ND_MUL,
+    ND_NUM,
+} NodeType;
+
+typedef struct Node {
+    NodeType type;     // Node type
+    struct Node *lhs;  // Left-hand side
+    struct Node *rhs;  // Right-hand side
+    long val;          // Value (only for ND_NUM)
+} Node;
+
+// Create new node (type != ND_NUM)
+Node *new_node(NodeType type, Node *lhs, Node *rhs){
+    Node *node = calloc(1, sizeof(Node));
+    node->type = type;
+    node->lhs = lhs;
+    node->rhs = rhs;
+    return node;
+}
+
+// Create new node (type == ND_NUM)
+Node *new_num_node(long val) {
+    Node *node = calloc(1, sizeof(Node));
+    node->type = ND_NUM;
+    node->val = val;
+    return node;
+}
+
 typedef struct Token {
     TokenType type;
     struct Token *next;
@@ -60,6 +91,72 @@ long expect_number() {
     return val;
 }
 
+Node *expr();
+Node *mul();
+Node *primary();
+
+Node *expr() {
+    Node *node = mul();
+    
+    while (true) {
+        if (consume("+")) {
+            node = new_node(ND_ADD, node, mul());
+        } else if (consume("-")) {
+            node = new_node(ND_SUB, node, mul());
+        } else {
+            return node;
+        }
+    }
+}
+
+Node *mul() {
+    Node *node = primary();
+
+    while (true) {
+        if (consume("*")) {
+            node = new_node(ND_MUL, node, primary());
+        } else {
+            return node;
+        }
+    }
+}
+
+Node *primary() {       // primary = num | ("(" expr ")")
+    if (consume("(")) { // かっこがあるなら、"(" expr ")"のはず
+        Node *node = expr();
+
+        expect(")"); // かっこは閉じられるはず...
+        return node;
+    } else {         // numの部分
+        return new_num_node(expect_number());
+    }
+}
+
+void generate(Node *node) {
+    if(node->type == ND_NUM) {
+        printf("ld %ld\n", node->val);
+        return;
+    }
+
+    generate(node->lhs);
+    generate(node->rhs);
+
+    switch (node->type) {
+    case ND_ADD:
+        printf("add\n");
+        break;
+    case ND_SUB:
+        printf("sub\n");
+        break;
+    case ND_MUL:
+        printf("mul\n");
+        break;
+    default:
+        fprintf(stderr, "Oh no, something went wrong\n");
+        break;
+    }
+}
+
 Token *new_token(TokenType type, Token *current, const char *str, long val) {
     Token *tok = calloc(1, sizeof(Token));
     tok->type = type;
@@ -88,7 +185,7 @@ Token *tokenize(const char *p){
             continue;
         }
 
-        if (*p == '+' || *p == '-') {
+        if (*p == '+' || *p == '-' || *p == '*' || *p == '(' || *p == ')') {
             cur = new_token(TOKEN_RESERVED, cur, (char[]){*p, 0}, 0);
             p++;
             continue;
@@ -119,18 +216,9 @@ int main(int argc, char *argv[]) {
     }
 
     token = tokenize(argv[1]);
-    
-    printf("ld %ld\n", expect_number());
-    while (!at_eof())
-    {
-        if (consume("+")) {
-            printf("add %ld\n", expect_number());
-            continue;
-        }
 
-        expect("-");
-        printf("sub %ld\n", expect_number());
-    }
+    Node *node = expr();
+    generate(node);
 
     return EXIT_SUCCESS;
 }

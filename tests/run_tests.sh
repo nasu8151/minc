@@ -84,31 +84,39 @@ expect_fail "$MINCC"
 echo "[ OK ] test 7 passed"
 
 # 8) mincc : load immediate and add immediate integration
-echo "[test 8] mincc|mincasm integration (0x10+0x20 -> ld 0x10; add 0x20 -> 010, 120)"
+echo "[test 8] mincc|mincasm integration (0x10+0x20 -> ld 0x10; ld 0x20; add -> 010, 020, 100)"
 "$MINCC" 0x10+0x20 > "$TESTDIR/in8.asm"
 "$MINCASM" "$TESTDIR/in8.asm" "$TESTDIR/out8.hex"
-echo -e "010\n120" > "$TESTDIR/exp8.hex"
+echo -e "010\n020\n100" > "$TESTDIR/exp8.hex"
 diff -u "$TESTDIR/exp8.hex" "$TESTDIR/out8.hex"
 
 echo "[ OK ] test 8 passed"
 
 # 9) mincc : tokenizer should handle spaces
-echo "[test 9] mincc tokenizer handles spaces (  1  +     2  -> ld 1 ; add 2)"
+echo "[test 9] mincc tokenizer handles spaces (  1  +     2  -> ld 1 ; ld 2; add 2)"
 "$MINCC" "  1   +    2  " > "$TESTDIR/in9.asm"
 "$MINCASM" "$TESTDIR/in9.asm" "$TESTDIR/out9.hex"
-echo -e "001\n102" > "$TESTDIR/exp9.hex"
+echo -e "001\n002\n100" > "$TESTDIR/exp9.hex"
 diff -u "$TESTDIR/exp9.hex" "$TESTDIR/out9.hex"
 
 echo "[ OK ] test 9 passed"
 
 # 10) load immediate and subtract immediate integration
-echo "[test 10] mincc|mincasm integration (0x10-0x20 -> ld 0x10; sub 0x20 -> 010, 220)"
+echo "[test 10] mincc|mincasm integration (0x10-0x20 -> ld 0x10; ld 0x20; sub -> 010, 020, 200)"
 "$MINCC" 0x10-0x20 > "$TESTDIR/in10.asm"
 "$MINCASM" "$TESTDIR/in10.asm" "$TESTDIR/out10.hex"
-echo -e "010\n220" > "$TESTDIR/exp10.hex"
+echo -e "010\n020\n200" > "$TESTDIR/exp10.hex"
 diff -u "$TESTDIR/exp10.hex" "$TESTDIR/out10.hex"
 
 echo "[ OK ] test 10 passed"
+
+# 11) add, sub and multiply integration
+echo "add, sub and multiply integration (2+3*5 -> ld 2; ld 3; ld 5; mul; add; -> 002, 003, 005, 300, 100)"
+"$MINCC" 2+3*5 > "$TESTDIR/in11.asm"
+"$MINCASM" "$TESTDIR/in11.asm" "$TESTDIR/out11.hex"
+echo -e "002\n003\n005\n300\n100" > "$TESTDIR/exp11.hex"
+diff -u "$TESTDIR/exp11.hex" "$TESTDIR/out11.hex"
+echo "[ OK ] test 11 passed"
 
 echo ""
 echo "All tests passed."
