@@ -22,34 +22,50 @@ int main(int argc, char *argv[]){
     char line_to_assemble[256];
 
     while (fgets(line_to_assemble, sizeof(line_to_assemble), input)) {
-        printf("Assembling: %s\n", line_to_assemble);
+        char *cr_lf = strpbrk(line_to_assemble, "\r\n"); //改行コードを排除
+        if (cr_lf) {
+            *cr_lf = '\0';
+        }
         char *first_space = strchr(line_to_assemble, ' ');
-        if (first_space) {
-            char instruction[32];
+        printf("Assembling: '%s'\n", line_to_assemble);
+
+        char instruction[32] = {'\0'};
+        if (first_space == NULL) {
+            strcpy(instruction, line_to_assemble);
+            instruction[31] = '\0';                              // Null-terminate the string
+        } else {
             strncpy(instruction, line_to_assemble, first_space - line_to_assemble);
             instruction[first_space - line_to_assemble] = '\0';  // Null-terminate the string
+        }
 
-            printf("Parsed instruction: %s\n", instruction);
+        printf("Parsed instruction: %s\n", instruction);
 
-            if (strcmp(instruction, "ld") == 0) {
-                const char *operand = first_space + 1;
-                int opr = strtol(operand, NULL, 0);
-                if (opr < 0 || opr > 0xFF) {
-                    fprintf(stderr, "Operand out of range: %s\n", operand);
-                    fclose(output);
-                    fclose(input);
-                    return EXIT_FAILURE;
-                }
-                printf("Parsed operand: %d\n", opr);
-                fprintf(output, "%03x\n", 0x000 | opr);
-            } else if(strcmp(instruction, "add") == 0) {
+        if (strcmp(instruction, "ld") == 0) {
+            if (first_space == NULL) {
+                fprintf(stderr, "Invalid assembly format\n");
+                fclose(output);
+                fclose(input);
+                return EXIT_FAILURE;
+            }
+            const char *operand = first_space + 1;
+            int opr = strtol(operand, NULL, 0);
+            if (opr < 0 || opr > 0xFF) {
+                fprintf(stderr, "Operand out of range: %s\n", operand);
+                fclose(output);
+                fclose(input);
+                return EXIT_FAILURE;
+            }
+            printf("Parsed operand: %d\n", opr);
+            fprintf(output, "%03x\n", 0x000 | opr);
+        } else if (first_space == NULL){      // Arithmetic instructions have no oprands.
+            if(strcmp(instruction, "add") == 0) {
                 fprintf(output, "%03x\n", 0x100);
             } else if(strcmp(instruction, "sub") == 0) {
                 fprintf(output, "%03x\n", 0x200);
             } else if(strcmp(instruction, "mul") == 0) {
                 fprintf(output, "%03x\n", 0x300);
             } else {
-                fprintf(stderr, "Unsupported instruction: %s\n", instruction);
+                fprintf(stderr, "Unsupported instruction: '%s'.\n", instruction);
                 fclose(output);
                 fclose(input);
                 return EXIT_FAILURE;
