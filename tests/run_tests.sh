@@ -37,29 +37,29 @@ echo "02a" > "$TESTDIR/exp1.hex"
 diff -u "$TESTDIR/exp1.hex" "$TESTDIR/out1.hex"
 echo "[ OK ] test 1 passed"
 
-# 2) mincasm add immediate: add 5 -> 105
-echo "[test 2] mincasm add immediate (add 5 -> 105)"
+# 2) mincasm add: add -> 100
+echo "[test 2] mincasm add (add -> 100)"
 echo "add 5" > "$TESTDIR/in2.asm"
 "$MINCASM" "$TESTDIR/in2.asm" "$TESTDIR/out2.hex"
-echo "105" > "$TESTDIR/exp2.hex"
+echo "100" > "$TESTDIR/exp2.hex"
 diff -u "$TESTDIR/exp2.hex" "$TESTDIR/out2.hex"
 echo "[ OK ] test 2 passed"
 
-# 3) mincasm sub immediate: sub 5 -> 205
-echo "[test 3] mincasm sub immediate (sub 5 -> 205)"
+# 3) mincasm sub : sub -> 200
+echo "[test 3] mincasm sub (sub -> 200)"
 echo "sub 5" > "$TESTDIR/in3.asm"
 "$MINCASM" "$TESTDIR/in3.asm" "$TESTDIR/out3.hex"
-echo "205" > "$TESTDIR/exp3.hex"
+echo "200" > "$TESTDIR/exp3.hex"
 diff -u "$TESTDIR/exp3.hex" "$TESTDIR/out3.hex"
 
 echo "[ OK ] test 3 passed"
 
-# 4) mincasm mul immediate: mul 5 -> 305
-#echo "[test 4] mincasm mul immediate (mul 5 -> 305)"
-#echo "mul 5" > "$TESTDIR/in4.asm"
-#"$MINCASM" "$TESTDIR/in4.asm" "$TESTDIR/out4.hex"
-#echo "305" > "$TESTDIR/exp4.hex"
-#diff -u "$TESTDIR/exp4.hex" "$TESTDIR/out4.hex"
+# 4) mincasm mul stack: mul -> 300
+echo "[test 4] mincasm mul immediate (mul 5 -> 305)"
+echo "mul" > "$TESTDIR/in4.asm"
+"$MINCASM" "$TESTDIR/in4.asm" "$TESTDIR/out4.hex"
+echo "300" > "$TESTDIR/exp4.hex"
+diff -u "$TESTDIR/exp4.hex" "$TESTDIR/out4.hex"
 
 echo "[ OK ] test 4 passed"
 

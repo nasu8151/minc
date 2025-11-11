@@ -29,23 +29,25 @@ int main(int argc, char *argv[]){
             strncpy(instruction, line_to_assemble, first_space - line_to_assemble);
             instruction[first_space - line_to_assemble] = '\0';  // Null-terminate the string
 
-            const char *operand = first_space + 1;
-            int opr = strtol(operand, NULL, 0);
-            printf("Parsed instruction: %s, operand: %d\n", instruction, opr);
-
-            if (opr < 0 || opr > 0xFF) {
-                fprintf(stderr, "Operand out of range: %s\n", operand);
-                fclose(output);
-                fclose(input);
-                return EXIT_FAILURE;
-            }
+            printf("Parsed instruction: %s\n", instruction);
 
             if (strcmp(instruction, "ld") == 0) {
+                const char *operand = first_space + 1;
+                int opr = strtol(operand, NULL, 0);
+                if (opr < 0 || opr > 0xFF) {
+                    fprintf(stderr, "Operand out of range: %s\n", operand);
+                    fclose(output);
+                    fclose(input);
+                    return EXIT_FAILURE;
+                }
+                printf("Parsed operand: %d\n", opr);
                 fprintf(output, "%03x\n", 0x000 | opr);
             } else if(strcmp(instruction, "add") == 0) {
-                fprintf(output, "%03x\n", 0x100 | opr);
+                fprintf(output, "%03x\n", 0x100);
             } else if(strcmp(instruction, "sub") == 0) {
-                fprintf(output, "%03x\n", 0x200 | opr);
+                fprintf(output, "%03x\n", 0x200);
+            } else if(strcmp(instruction, "mul") == 0) {
+                fprintf(output, "%03x\n", 0x300);
             } else {
                 fprintf(stderr, "Unsupported instruction: %s\n", instruction);
                 fclose(output);

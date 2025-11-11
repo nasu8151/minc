@@ -38,8 +38,9 @@ module minc (
             end else if (instruction[9:8] == 2'b10) begin // if bits 9:8 are 10, it's a SUB instruction
                 stack[sp-2] <= stack[sp-1] - stack[sp-2];
                 sp <= sp - 1;
-            end else if (instruction[9:8] == 2'b11) begin // if bits 9:8 are 11, it's a DUMP instruction
-                sp <= sp - 1;                
+            end else if (instruction[9:8] == 2'b11) begin // if bits 9:8 are 11, it's a MUL instruction
+                stack[sp-2] <= stack[sp-1] * stack[sp-2];
+                sp <= sp - 1;
             end
             // Increment PC only during normal operation (not during reset)
             pc <= pc + 1;
