@@ -118,5 +118,19 @@ echo -e "002\n003\n005\n300\n100" > "$TESTDIR/exp11.hex"
 diff -u "$TESTDIR/exp11.hex" "$TESTDIR/out11.hex"
 echo "[ OK ] test 11 passed"
 
+#12) unary plus and minus
+echo "[test 12] unary plus and minus ( -5 + +10 -> ld 0; ld 5; sub; ld 0; ld 10; add; add)"
+"$MINCC" "-5 + +10" > "$TESTDIR/in12.asm"
+echo -e "ld 0\nld 5\nsub\nld 0\nld 10\nadd\nadd" > "$TESTDIR/exp12.asm"
+diff -u "$TESTDIR/exp12.asm" "$TESTDIR/in12.asm"
+echo "[ OK ] test 12 passed"
+
+#13) bracketed expressions
+echo "[test 13] bracketed expressions ( (2 + 3) * 4  -> ld 2; ld 3; add; ld 4; mul)"
+"$MINCC" "(2 + 3) * 4" > "$TESTDIR/in13.asm"
+echo -e "ld 2\nld 3\nadd\nld 4\nmul" > "$TESTDIR/exp13.asm"
+diff -u "$TESTDIR/exp13.asm" "$TESTDIR/in13.asm"
+echo "[ OK ] test 13 passed"
+
 echo ""
 echo "All tests passed."

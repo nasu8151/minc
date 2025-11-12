@@ -94,6 +94,7 @@ long expect_number() {
 Node *expr();
 Node *mul();
 Node *primary();
+Node *unary();
 
 Node *expr() {
     Node *node = mul();
@@ -110,11 +111,11 @@ Node *expr() {
 }
 
 Node *mul() {
-    Node *node = primary();
+    Node *node = unary();
 
     while (true) {
         if (consume("*")) {
-            node = new_node(ND_MUL, node, primary());
+            node = new_node(ND_MUL, node, unary());
         } else {
             return node;
         }
@@ -129,6 +130,16 @@ Node *primary() {       // primary = num | ("(" expr ")")
         return node;
     } else {         // numの部分
         return new_num_node(expect_number());
+    }
+}
+
+Node *unary() {
+    if (consume("+")) {
+        return new_node(ND_ADD, new_num_node(0), unary());
+    } else if (consume("-")) {
+        return new_node(ND_SUB, new_num_node(0), unary());
+    } else {
+        return primary();
     }
 }
 
