@@ -18,12 +18,22 @@ typedef enum {
     ND_NUM,
 } NodeType;
 
+typedef struct Token {
+    TokenType type;
+    struct Token *next;
+    long value;
+    char str[32];
+} Token;
+
 typedef struct Node {
     NodeType type;     // Node type
     struct Node *lhs;  // Left-hand side
     struct Node *rhs;  // Right-hand side
     long val;          // Value (only for ND_NUM)
 } Node;
+
+Token *token;
+char *user_input;
 
 // Create new node (type != ND_NUM)
 Node *new_node(NodeType type, Node *lhs, Node *rhs){
@@ -42,19 +52,27 @@ Node *new_num_node(long val) {
     return node;
 }
 
-typedef struct Token {
-    TokenType type;
-    struct Token *next;
-    long value;
-    char str[32];
-} Token;
-
-Token *token;
-
 // Throw an error message and exit
 void error(const char *fmt, ...) {
     va_list ap;
     va_start(ap, fmt);
+    fprintf(stderr, "[Error]: ");
+    vfprintf(stderr, fmt, ap);
+    fprintf(stderr, "\n");
+    va_end(ap);
+    exit(EXIT_FAILURE);
+}
+
+void error_at(char *loc, const char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+
+    int pos = loc - user_input;
+    fprintf(stderr, "         ");
+    fprintf(stderr, "%s\n", user_input);
+    fprintf(stderr, "[Error]: ");
+    fprintf(stderr, "%*s", pos, ""); // pos個の空白を出力
+    fprintf(stderr, "^ ");
     vfprintf(stderr, fmt, ap);
     fprintf(stderr, "\n");
     va_end(ap);
@@ -75,7 +93,7 @@ bool consume(const char *op) {
 // Otherwise, throw an error
 void expect(const char *op) {
     if (token->type != TOKEN_RESERVED || strcmp(token->str, op) != 0) {
-        error("Expected '%s'", op);
+        error("Expected '%s', but got '%s'", op, token->str);
     }
     token = token->next;
 }
@@ -84,7 +102,7 @@ void expect(const char *op) {
 // Otherwise, throw an error
 long expect_number() {
     if (token->type != TOKEN_NUMBER) {
-        error("Expected a number");
+        error("Expected a number, but got '%s'", token->str);
     }
     long val = token->value;
     token = token->next;
@@ -163,7 +181,7 @@ void generate(Node *node) {
         printf("mul\n");
         break;
     default:
-        fprintf(stderr, "Oh no, something went wrong\n");
+        error("Unknown node type");
         break;
     }
 }
@@ -206,14 +224,14 @@ Token *tokenize(const char *p){
             char *q = (char *)p;
             long val = strtol(p, &q, 0);
             if (val < 0 || val > 0xFF) {
-                error("Number out of range: %s", p);
+                error_at((char *)p, "Number out of range");
             }
             cur = new_token(TOKEN_NUMBER, cur, NULL, val);
             p = q;
             continue;
         }
 
-        error("Invalid token: %s", p);
+        error_at((char *)p, "Invalid token");
     }
 
     new_token(TOKEN_EOF, cur, NULL, 0);
@@ -221,12 +239,13 @@ Token *tokenize(const char *p){
 }
 
 int main(int argc, char *argv[]) {
+    user_input = argv[1];
     if (argc != 2) {
         fprintf(stderr, "Usage : <code>\n");
         return EXIT_FAILURE;
     }
 
-    token = tokenize(argv[1]);
+    token = tokenize(user_input);
 
     Node *node = expr();
     generate(node);
