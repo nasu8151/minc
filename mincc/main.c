@@ -33,7 +33,7 @@ typedef struct Node {
 } Node;
 
 Token *token;
-char *user_input;
+char user_input[1024];
 
 // Create new node (type != ND_NUM)
 Node *new_node(NodeType type, Node *lhs, Node *rhs){
@@ -238,12 +238,12 @@ Token *tokenize(const char *p){
     return head.next;
 }
 
-int main(int argc, char *argv[]) {
-    user_input = argv[1];
-    if (argc != 2) {
-        fprintf(stderr, "Usage : <code>\n");
-        return EXIT_FAILURE;
-    }
+int main() {
+    // if (argc != 2) {
+    //     fprintf(stderr, "Usage : <code>\n");
+    //     return EXIT_FAILURE;
+    // }
+    fgets(user_input, sizeof(user_input), stdin);
 
     token = tokenize(user_input);
 
