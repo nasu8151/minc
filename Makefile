@@ -33,5 +33,5 @@ clean:
 	rm -rf $(BINDIR)
 
 test: all
-	bash tests/run_tests.sh
+	python3 tests/test.py
 
