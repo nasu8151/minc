@@ -23,6 +23,7 @@ typedef struct Token {
     struct Token *next;
     long value;
     char str[32];
+    char *loc;
 } Token;
 
 typedef struct Node {
@@ -68,8 +69,7 @@ void error_at(char *loc, const char *fmt, ...) {
     va_start(ap, fmt);
 
     int pos = loc - user_input;
-    fprintf(stderr, "         ");
-    fprintf(stderr, "%s\n", user_input);
+    fprintf(stderr, "         %s\n", user_input);
     fprintf(stderr, "[Error]: ");
     fprintf(stderr, "%*s", pos, ""); // pos個の空白を出力
     fprintf(stderr, "^ ");
@@ -93,7 +93,7 @@ bool consume(const char *op) {
 // Otherwise, throw an error
 void expect(const char *op) {
     if (token->type != TOKEN_RESERVED || strcmp(token->str, op) != 0) {
-        error("Expected '%s', but got '%s'", op, token->str);
+        error_at(token->loc, "Expected '%s', but got '%s'", op, token->str);
     }
     token = token->next;
 }
@@ -102,7 +102,7 @@ void expect(const char *op) {
 // Otherwise, throw an error
 long expect_number() {
     if (token->type != TOKEN_NUMBER) {
-        error("Expected a number, but got '%s'", token->str);
+        error_at(token->loc, "Expected a number, but got '%s'", token->str);
     }
     long val = token->value;
     token = token->next;
@@ -186,13 +186,14 @@ void generate(Node *node) {
     }
 }
 
-Token *new_token(TokenType type, Token *current, const char *str, long val) {
+Token *new_token(TokenType type, Token *current, const char *str, long val, char *loc) {
     Token *tok = calloc(1, sizeof(Token));
     tok->type = type;
     if (str) {
         strncpy(tok->str, str, sizeof(tok->str) - 1);
     }
     tok->value = val;
+    tok->loc = loc;
     current->next = tok;
     return tok;
 }
@@ -215,7 +216,7 @@ Token *tokenize(const char *p){
         }
 
         if (*p == '+' || *p == '-' || *p == '*' || *p == '(' || *p == ')') {
-            cur = new_token(TOKEN_RESERVED, cur, (char[]){*p, 0}, 0);
+            cur = new_token(TOKEN_RESERVED, cur, (char[]){*p, 0}, 0, (char *)p);
             p++;
             continue;
         }
@@ -226,7 +227,7 @@ Token *tokenize(const char *p){
             if (val < 0 || val > 0xFF) {
                 error_at((char *)p, "Number out of range");
             }
-            cur = new_token(TOKEN_NUMBER, cur, NULL, val);
+            cur = new_token(TOKEN_NUMBER, cur, NULL, val, (char *)p);
             p = q;
             continue;
         }
@@ -234,7 +235,7 @@ Token *tokenize(const char *p){
         error_at((char *)p, "Invalid token");
     }
 
-    new_token(TOKEN_EOF, cur, NULL, 0);
+    new_token(TOKEN_EOF, cur, NULL, 0, (char *)p);
     return head.next;
 }
 
@@ -244,6 +245,10 @@ int main() {
     //     return EXIT_FAILURE;
     // }
     fgets(user_input, sizeof(user_input), stdin);
+    char *cr_lf = strpbrk(user_input, "\r\n"); //改行コードを排除
+    if (cr_lf) {
+        *cr_lf = '\0';
+    }
 
     token = tokenize(user_input);
 
