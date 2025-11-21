@@ -20,5 +20,11 @@ if __name__ == "__main__":
     tf.expect_fail("""echo "1+" | ./target/mincc""") # Incomplete expression
     tf.expect("""echo "-5+(+3)" | ./target/mincc""",
                 "ld 0\nld 5\nsub\nld 0\nld 3\nadd\nadd") # Unary minus and plus
+    tf.test_e2e("1+2", 3)
+    tf.test_e2e("10-3", 7)
+    tf.test_e2e("2*3", 6)
+    tf.test_e2e("(1+2)*3", 9)
+    tf.test_e2e("-3+5", 2)
 
+    print()
     print("[OK] [ALL TESTS PASSED]")

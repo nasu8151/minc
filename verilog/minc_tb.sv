@@ -41,17 +41,25 @@ module minc_tb;
 
     // Simple monitor and stop after a number of cycles
     initial begin
-        $display("TIME\tPC\tACC\tSP");
         // wait for reset to deassert
         @(posedge nRESET);
         // wait a little after reset release
         #1;
-        for (i = 0; i < 64; i = i + 1) begin
+        for (i = 0; i < 256; i = i + 1) begin
             @(posedge CLK);
-            $display("%0t\t%0h\t%0h\t%0h", $time, pc_out, top_out, sp_out);
         end
         #10;
+        $display("Timeout reached, finishing simulation.");
         $finish;
+    end
+    `ifdef VERBOSE
+    // Verbose output on each clock cycle
+    initial $display("TIME\tPC\tTOP\tSP");
+    always @(posedge CLK) $display("%0t\t%0h\t%0h\t%0h", $time, pc_out, top_out, sp_out);
+    `endif
+
+    final begin
+        $display("PC: %0h, TOP: %0h, SP: %0h", pc_out, top_out, sp_out);
     end
 
 endmodule

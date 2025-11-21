@@ -8,10 +8,14 @@ module minc (
 
     wire [7:0] data;
     reg  [7:0] pc;
-    wire [9:0] instruction;
+    wire [10:0] instruction;
 
-    reg [9:0] rom [0:255];
+    reg [10:0] rom [0:255];
+    `ifdef TEST
+    initial $readmemh("test.hex", rom);
+    `else
     initial $readmemh("program.hex", rom);
+    `endif
 
     reg [7:0] stack [0:255];
     reg [7:0] sp;
@@ -29,18 +33,20 @@ module minc (
             sp <= 8'h0;
         end else begin
             // Normal operation: perform instruction (MSB=1 -> ADD, else LD)
-            if (instruction[9:8] == 2'b00) begin// if bits 9:8 are 00, it's an LD instruction
+            if (instruction[10:8] == 3'b000) begin// if bits 10:8 are 000, it's an LD instruction
                 stack[sp] <= rom[pc[7:0]][7:0];
                 sp <= sp + 1;
-            end else if (instruction[9:8] == 2'b01) begin // if bits 9:8 are 01, it's an ADD instruction
-                stack[sp-2] <= stack[sp-1] + stack[sp-2];
+            end else if (instruction[10:8] == 3'b001) begin // if bits 10:8 are 001, it's an ADD instruction
+                stack[sp-2] <= stack[sp-2] + stack[sp-1];
                 sp <= sp - 1;
-            end else if (instruction[9:8] == 2'b10) begin // if bits 9:8 are 10, it's a SUB instruction
-                stack[sp-2] <= stack[sp-1] - stack[sp-2];
+            end else if (instruction[10:8] == 3'b010) begin // if bits 10:8 are 010, it's a SUB instruction
+                stack[sp-2] <= stack[sp-2] - stack[sp-1];
                 sp <= sp - 1;
-            end else if (instruction[9:8] == 2'b11) begin // if bits 9:8 are 11, it's a MUL instruction
-                stack[sp-2] <= stack[sp-1] * stack[sp-2];
+            end else if (instruction[10:8] == 3'b011) begin // if bits 10:8 are 011, it's a MUL instruction
+                stack[sp-2] <= stack[sp-2] * stack[sp-1];
                 sp <= sp - 1;
+            end else if (instruction[10:8] == 3'b100) begin // if bits 10:8 are 100, it's a HALT instruction
+                $finish;
             end
             // Increment PC only during normal operation (not during reset)
             pc <= pc + 1;
