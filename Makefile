@@ -16,6 +16,10 @@ BIN_MINCASM := $(BINDIR)/mincasm
 SRCS_MINCC := $(wildcard $(SRCDIR_MINCC)/*.c)
 SRCS_MINCASM := $(wildcard $(SRCDIR_MINCASM)/*.c)
 
+# Objexct files
+OBJS_MINCC := $(SRCS_MINCC:.c=.o)
+OBJS_MINCASM := $(SRCS_MINCASM:.c=.o)
+
 .PHONY: all clean test
 
 all: $(BINDIR) $(BIN_MINCC) $(BIN_MINCASM)
@@ -23,14 +27,22 @@ all: $(BINDIR) $(BIN_MINCC) $(BIN_MINCASM)
 $(BINDIR):
 	mkdir -p $(BINDIR)
 
-$(BIN_MINCC): $(SRCS_MINCC) | $(BINDIR)
-	$(CC) $(CFLAGS) -o $@ $(SRCS_MINCC)
+$(OBJS_MINCC): %.o: %.c
+	$(CC) $(CFLAGS) -c $< -o $@
 
-$(BIN_MINCASM): $(SRCS_MINCASM) | $(BINDIR)
-	$(CC) $(CFLAGS) -o $@ $(SRCS_MINCASM)
+$(OBJS_MINCASM): %.o: %.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BIN_MINCC): $(OBJS_MINCC) | $(BINDIR)
+	$(CC) $(CFLAGS) -o $@ $(OBJS_MINCC)
+
+$(BIN_MINCASM): $(OBJS_MINCASM) | $(BINDIR)
+	$(CC) $(CFLAGS) -o $@ $(OBJS_MINCASM)
 
 clean:
 	rm -rf $(BINDIR)
+	rm -f $(SRCDIR_MINCC)/*.o
+	rm -f $(SRCDIR_MINCASM)/*.o
 
 test: all
 	python3 tests/test.py
