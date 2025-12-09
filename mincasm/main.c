@@ -25,7 +25,7 @@ int main(){
 
         // printf("Parsed instruction: %s\n", instruction);
 
-        if (strcmp(instruction, "ld") == 0) {
+        if (strcmp(instruction, "push") == 0) {
             if (first_space == NULL) {
                 fprintf(stderr, "Invalid assembly format\n");
                 return EXIT_FAILURE;
@@ -40,11 +40,11 @@ int main(){
             printf("%03x\n", 0x000 | opr);
         } else if (first_space == NULL){      // Arithmetic instructions have no oprands.
             if(strcmp(instruction, "add") == 0) {
-                printf("%03x\n", 0x100);
+                printf("%03x\n", 0x400);
             } else if(strcmp(instruction, "sub") == 0) {
-                printf("%03x\n", 0x200);
+                printf("%03x\n", 0x500);
             } else if(strcmp(instruction, "mul") == 0) {
-                printf("%03x\n", 0x300);
+                printf("%03x\n", 0x600);
             } else {
                 fprintf(stderr, "Unsupported instruction: '%s'.\n", instruction);
                 return EXIT_FAILURE;

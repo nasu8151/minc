@@ -33,11 +33,13 @@ module minc_tb;
         nRESET = 1;
     end
 
+    `ifndef TEST
     // Waveform dump for Icarus / GTKWave
     initial begin
         $dumpfile("minc_tb.vcd");
         $dumpvars(0, minc_tb);
     end
+    `endif
 
     // Simple monitor and stop after a number of cycles
     initial begin

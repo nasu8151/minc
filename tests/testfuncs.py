@@ -40,7 +40,7 @@ def test_e2e(code:str, expected_top:int, verbose:bool=False):
         raise Exception(f"mincasm failed with return code {inst.returncode}:\nStderr: {inst.stderr.strip()}")
     with open("verilog/test.hex", "w") as f:
         f.write(inst.stdout)
-        f.write("400\n")  # insert HALT instruction
+        f.write("800\n")  # insert HALT instruction
     verilog_sim = subprocess.run("cd ./verilog && iverilog -o __minc_test.out minc.sv minc_tb.sv -g2005-sv -DTEST -DVERBOSE && vvp __minc_test.out", shell=True, capture_output=True, text=True)
     if verilog_sim.returncode != 0:
         raise Exception(f"Verilog simulation failed with return code {verilog_sim.returncode}:\nStderr: {verilog_sim.stderr.strip()}")

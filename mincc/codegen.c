@@ -73,7 +73,7 @@ Node *unary() {
 
 void generate(Node *node) {
     if(node->type == ND_NUM) {
-        printf("ld %ld\n", node->val);
+        printf("push %ld\n", node->val);
         return;
     }
 
