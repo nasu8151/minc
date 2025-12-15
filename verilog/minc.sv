@@ -1,55 +1,162 @@
 module minc (
-    input wire CLK,
-    input wire nRESET,
-    output wire [7:0] pc_out,
-    output wire [7:0] top_out,
-    output wire [7:0] sp_out
+    input  logic        CLK,
+    input  logic        nRESET,
+    output logic [7:0]  pc_out,
+    output logic [7:0]  top_out,
+    output logic [7:0]  sp_out
 );
 
-    wire [7:0] data;
-    reg  [7:0] pc;
-    wire [11:0] instruction;
+    // PC, SP
+    logic  [7:0] pc;
+    logic  [7:0] sp;
 
-    reg [11:0] rom [0:255];
+    // General purpose registers r0..r15 (8-bit)
+    logic  [7:0] regs [0:15];
+
+    // Instruction ROM: 256 words x 15-bit (instruction is 15-bit)
+    logic  [14:0] rom  [0:255];
+    // Data RAM: 256 x 8-bit (stack and data unified)
+    logic  [7:0]  ram  [0:255];
+
+    // ROM load (one word per line, hex). TEST selects test.hex
     `ifdef TEST
     initial $readmemh("test.hex", rom);
     `else
     initial $readmemh("program.hex", rom);
     `endif
 
-    reg [7:0] ram [0:255];
-    reg [7:0] sp;
+    // Outputs
+    assign pc_out  = pc;
+    assign sp_out  = sp;
+    assign top_out = ram[sp]; // current stack top
 
-    assign pc_out = pc;
-    assign top_out = ram[sp];
-    assign sp_out = sp;
+    // Fetch current instruction (15-bit in [14:0])
+    wire [14:0] instr = rom[pc];
 
-    assign instruction = rom[pc];
+    // Decode fields
+    wire [2:0] op    = instr[14:12];
+    wire [3:0] subop = instr[11:8];
+    wire [3:0] rd    = op[0] == 1'b1 ? instr[3:0] : instr[7:4];
+    wire [3:0] rs    = instr[3:0];
+    wire [7:0] imm8  = instr[11:4];
+    integer i;
 
-    always @(posedge CLK or negedge nRESET) begin
-        if (nRESET == 0) begin
-            // active-low reset: force PC and stack pointer to 0
-            pc <= 8'h0;
-            sp <= 8'h0;
-        end else begin
-            // Normal operation: perform instruction (MSB=1 -> ADD, else LD)
-            if (instruction[11:8] == 4'b0000) begin// if bits 11:8 are 0000, it's a push instruction
-                ram[sp + 1] <= rom[pc[7:0]][7:0];
-                sp <= sp + 1;
-            end else if (instruction[11:8] == 4'b0100) begin // if bits 11:8 are 0100, it's an ADD instruction
-                ram[sp-1] <= ram[sp-1] + ram[sp];
-                sp <= sp - 1;
-            end else if (instruction[11:8] == 4'b0101) begin // if bits 11:8 are 0101, it's a SUB instruction
-                ram[sp-1] <= ram[sp-1] - ram[sp];
-                sp <= sp - 1;
-            end else if (instruction[11:8] == 4'b0110) begin // if bits 11:8 are 0110, it's a MUL instruction
-                ram[sp-1] <= ram[sp-1] * ram[sp];
-                sp <= sp - 1;
-            end else if (instruction[11:8] == 4'b1000) begin // if bits 11:8 are 1000, it's a HALT instruction
-                $finish;
+    // Next PC logic
+    logic [7:0] next_pc;
+    always_comb begin
+        if (op == 3'b000) begin
+            if (subop == 4'b0101 && rs == 4'b0010 && rd == 4'b0000) begin
+                // ret instruction special case: next_pc from stack
+                next_pc = ram[sp];
+            end else begin
+                next_pc = pc + 8'd1;
             end
-            // Increment PC only during normal operation (not during reset)
-            pc <= pc + 1;
+        end else if (op == 3'b100 && regs[rs] == 8'h00) begin
+            // jz taken
+            next_pc = imm8;
+        end else if (op == 3'b101) begin
+            // call
+            next_pc = imm8;
+        end else begin
+            next_pc = pc + 8'd1;
+        end
+    end
+
+    always_ff @(posedge CLK or negedge nRESET) begin
+        if (!nRESET) begin
+            pc <= 8'h00;
+            sp <= 8'h00;
+            // Clear registers for deterministic startup
+            for (i = 0; i < 16; i = i + 1) begin
+                regs[i] <= 8'h00;
+            end
+        end else begin
+            // Default next PC is sequential (one word per instruction)
+
+            // Execute
+            unique case (op)
+                3'b000: begin
+                    // subop-based operations
+                    unique case (subop)
+                        4'b0000: begin
+                            // mov rd,rs : rd = rs
+                            regs[rd] <= regs[rs];
+                        end
+                        4'b0001: begin
+                            // add rd,rs : rd = rd + rs
+                            regs[rd] <= regs[rd] + regs[rs];
+                            $display("add r%0d, r%0d", rd, rs);
+                        end
+                        4'b0010: begin
+                            // sub rd,rs : rd = rd - rs
+                            regs[rd] <= regs[rd] - regs[rs];
+                        end
+                        4'b0011: begin
+                            // mul rd,rs : rd = rd * rs
+                            regs[rd] <= regs[rd] * regs[rs];
+                        end
+                        4'b0100: begin
+                            // push/lds group: check bit1 of low nibble pattern
+                            // push rs : (--sp) = rs  (pattern 000 0100 0000 ssss)
+                            if (instr[7:0] == {4'b0000, rs}) begin
+                                ram[sp - 8'd1] <= regs[rs];
+                                sp <= sp - 8'd1; // wrap naturally (8-bit)
+                                $display("push r%0d", rs);
+                            end else begin
+                                // lds rs : SP = rs (pattern 000 0100 0001 ssss)
+                                sp <= regs[rs];
+                            end
+                        end
+                        4'b0101: begin
+                            // pop/sts/ret group
+                            // pop rd : rd = (SP++) (pattern 000 0101 dddd 0000)
+                            if (rs == 4'b0000 && rd != 4'b0000) begin
+                                regs[rd] <= ram[sp];
+                                sp <= sp + 8'd1;
+                            end
+                            // sts rd : rd = SP (pattern 000 0101 dddd 0001)
+                            else if (rs == 4'b0001 && rd != 4'b0000) begin
+                                regs[rd] <= sp;
+                            end
+                            // ret : PC = (SP++) + 1 (pattern 000 0101 0000 0010)
+                            else if (rd == 4'b0000 && rs == 4'b0010) begin
+                                next_pc = ram[sp] + 8'd1;
+                                sp <= sp + 8'd1;
+                            end
+                        end
+                        default: begin
+                            // no-op for undefined subops in this group
+                        end
+                    endcase
+                end
+                3'b001: begin
+                    // mvi rd, n : rd = n
+                    regs[rd] <= imm8;
+                    $display("mvi r%0d, 0x%0h", rd, imm8);
+                end
+                3'b010: begin
+                    // stm n, rs : [r15 + n] = rs
+                    ram[regs[15] + imm8] <= regs[rs];
+                end
+                3'b011: begin
+                    // ldm n, rd : rd = [r15 + n]
+                    regs[rd] <= ram[regs[15] + imm8];
+                end
+                3'b100: begin
+                    // jz n, rs : PC = n if rs == 0
+                end
+                3'b101: begin
+                    // call n : (--sp) = PC; PC = n  (low nibble must be 0000)
+                    ram[sp - 8'd1] <= pc;
+                    sp <= sp - 8'd1;
+                end
+                default: begin
+                    // 110,111: unused -> HALT
+                end
+            endcase
+
+            // Commit next PC
+            pc <= next_pc;
         end
     end
 
