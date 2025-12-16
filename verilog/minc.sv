@@ -110,16 +110,17 @@ module minc (
                         4'b0101: begin
                             // pop/sts/ret group
                             // pop rd : rd = (SP++) (pattern 000 0101 dddd 0000)
-                            if (rs == 4'b0000 && rd != 4'b0000) begin
+                            if (rs == 4'b0000) begin
+                                $display("pop r%0d", rd);
                                 regs[rd] <= ram[sp];
                                 sp <= sp + 8'd1;
                             end
                             // sts rd : rd = SP (pattern 000 0101 dddd 0001)
-                            else if (rs == 4'b0001 && rd != 4'b0000) begin
+                            else if (rs == 4'b0001) begin
                                 regs[rd] <= sp;
                             end
                             // ret : PC = (SP++) + 1 (pattern 000 0101 0000 0010)
-                            else if (rd == 4'b0000 && rs == 4'b0010) begin
+                            else if (rs == 4'b0010) begin
                                 next_pc = ram[sp] + 8'd1;
                                 sp <= sp + 8'd1;
                             end

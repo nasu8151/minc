@@ -24,6 +24,18 @@ Node *new_num_node(long val) {
     return node;
 }
 
+/***************************************************************
+program    = stmt*
+stmt       = expr ";"
+expr       = assign
+assign     = equality ("=" assign)?
+equality   = add
+add        = mul ("+" mul | "-" mul)*
+mul        = unary ("*" unary | "/" unary)*
+unary      = ("+" | "-")? primary
+primary    = num | ident | "(" expr ")"
+****************************************************************/
+
 Node *expr() {
     Node *node = mul();
     
@@ -50,7 +62,7 @@ Node *mul() {
     }
 }
 
-Node *primary() {       // primary = num | ("(" expr ")")
+Node *primary() {       // primary = num | "(" expr ")"
     if (consume("(")) { // かっこがあるなら、"(" expr ")"のはず
         Node *node = expr();
 
@@ -73,7 +85,7 @@ Node *unary() {
 
 void generate(Node *node) {
     if(node->type == ND_NUM) {
-        printf("push %ld\n", node->val);
+        printf("mvi r0,%ld\npush r0\n", node->val);
         return;
     }
 
@@ -82,13 +94,13 @@ void generate(Node *node) {
 
     switch (node->type) {
     case ND_ADD:
-        printf("add\n");
+        printf("pop r1\npop r0\nadd r0,r1\npush r0\n");
         break;
     case ND_SUB:
-        printf("sub\n");
+        printf("pop r1\npop r0\nsub r0,r1\npush r0\n");
         break;
     case ND_MUL:
-        printf("mul\n");
+        printf("pop r1\npop r0\nmul r0,r1\npush r0\n");
         break;
     default:
         error("Unknown node type");

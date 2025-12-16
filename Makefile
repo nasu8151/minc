@@ -44,6 +44,6 @@ clean:
 	rm -f $(SRCDIR_MINCC)/*.o
 	rm -f $(SRCDIR_MINCASM)/*.o
 
-test: all
+test: clean all
 	python3 tests/test.py
 
