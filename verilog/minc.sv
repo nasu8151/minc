@@ -11,7 +11,11 @@ module minc (
     logic  [7:0] sp;
 
     // General purpose registers r0..r15 (8-bit)
-    logic  [7:0] regs [0:15];
+    logic  [7:0]  regs [0:15];
+
+    //flags
+    logic zero_flag;
+    logic carry_flag;
 
     // Instruction ROM: 256 words x 15-bit (instruction is 15-bit)
     logic  [14:0] rom  [0:255];
@@ -45,15 +49,35 @@ module minc (
     logic [7:0] next_pc;
     always_comb begin
         if (op == 3'b000) begin
-            if (subop == 4'b0101 && rs == 4'b0010 && rd == 4'b0000) begin
+            if (subop == 4'b1100) begin
                 // ret instruction special case: next_pc from stack
-                next_pc = ram[sp];
+                next_pc = ram[sp] + 8'd1;
             end else begin
                 next_pc = pc + 8'd1;
             end
-        end else if (op == 3'b100 && regs[rs] == 8'h00) begin
-            // jz taken
-            next_pc = imm8;
+        end else if (op == 3'b100) begin
+            // conditional jump taken
+            case (rs[1:0])
+                2'b00: begin
+                    // jz
+                    if (zero_flag) begin
+                        next_pc = imm8;
+                    end else begin
+                        next_pc = pc + 8'd1;
+                    end
+                end
+                2'b01: begin
+                    // jc
+                    if (carry_flag) begin
+                        next_pc = imm8;
+                    end else begin
+                        next_pc = pc + 8'd1;
+                    end
+                end
+                default: begin
+                    next_pc = pc + 8'd1; // other conditions not implemented
+                end
+            endcase
         end else if (op == 3'b101) begin
             // call
             next_pc = imm8;
@@ -66,6 +90,8 @@ module minc (
         if (!nRESET) begin
             pc <= 8'h00;
             sp <= 8'h00;
+            carry_flag <= 1'b0;
+            zero_flag <= 1'b0;
             // Clear registers for deterministic startup
             for (i = 0; i < 16; i = i + 1) begin
                 regs[i] <= 8'h00;
@@ -74,56 +100,58 @@ module minc (
             // Default next PC is sequential (one word per instruction)
 
             // Execute
-            unique case (op)
+            case (op)
                 3'b000: begin
                     // subop-based operations
-                    unique case (subop)
+                    case (subop)
                         4'b0000: begin
                             // mov rd,rs : rd = rs
                             regs[rd] <= regs[rs];
+                            zero_flag <= (regs[rs] == 8'd0) ? 1'b1 : 1'b0;
+                            $display("mov r%0d, r%0d", rd, rs);
                         end
                         4'b0001: begin
                             // add rd,rs : rd = rd + rs
-                            regs[rd] <= regs[rd] + regs[rs];
+                            {carry_flag, regs[rd]} <= regs[rd] + regs[rs];
+                            zero_flag <= (regs[rd] + regs[rs] == 8'd0) ? 1'b1 : 1'b0;
                             $display("add r%0d, r%0d", rd, rs);
                         end
                         4'b0010: begin
                             // sub rd,rs : rd = rd - rs
-                            regs[rd] <= regs[rd] - regs[rs];
+                            {carry_flag, regs[rd]} <= regs[rd] - regs[rs];
+                            zero_flag <= (regs[rd] - regs[rs] == 8'd0) ? 1'b1 : 1'b0;
+                            $display("sub r%0d, r%0d", rd, rs);
                         end
                         4'b0011: begin
                             // mul rd,rs : rd = rd * rs
                             regs[rd] <= regs[rd] * regs[rs];
+                            zero_flag <= (regs[rd] * regs[rs] == 8'd0) ? 1'b1 : 1'b0;
+                            $display("mul r%0d, r%0d", rd, rs);
                         end
-                        4'b0100: begin
-                            // push/lds group: check bit1 of low nibble pattern
-                            // push rs : (--sp) = rs  (pattern 000 0100 0000 ssss)
-                            if (instr[7:0] == {4'b0000, rs}) begin
-                                ram[sp - 8'd1] <= regs[rs];
-                                sp <= sp - 8'd1; // wrap naturally (8-bit)
-                                $display("push r%0d", rs);
-                            end else begin
-                                // lds rs : SP = rs (pattern 000 0100 0001 ssss)
-                                sp <= regs[rs];
-                            end
+                        4'b1000: begin
+                            // push rs : (--sp) = rs  (pattern 000 1000 0000 ssss)
+                            ram[sp - 8'd1] <= regs[rs];
+                            sp <= sp - 8'd1; // wrap naturally (8-bit)
+                            $display("push r%0d", rs);
                         end
-                        4'b0101: begin
-                            // pop/sts/ret group
+                        4'b1001: begin
+                            // lds rs : SP = rs (pattern 000 0100 0001 ssss)
+                            sp <= regs[rs];
+                        end
+                        4'b1010: begin
                             // pop rd : rd = (SP++) (pattern 000 0101 dddd 0000)
-                            if (rs == 4'b0000) begin
-                                $display("pop r%0d", rd);
-                                regs[rd] <= ram[sp];
-                                sp <= sp + 8'd1;
-                            end
+                            $display("pop r%0d", rd);
+                            regs[rd] <= ram[sp];
+                            sp <= sp + 8'd1;
+                        end
+                        4'b1011: begin
                             // sts rd : rd = SP (pattern 000 0101 dddd 0001)
-                            else if (rs == 4'b0001) begin
-                                regs[rd] <= sp;
-                            end
+                            regs[rd] <= sp;
+                        end
+                        4'b1100: begin
                             // ret : PC = (SP++) + 1 (pattern 000 0101 0000 0010)
-                            else if (rs == 4'b0010) begin
-                                next_pc = ram[sp] + 8'd1;
-                                sp <= sp + 8'd1;
-                            end
+                            next_pc = ram[sp] + 8'd1;
+                            sp <= sp + 8'd1;
                         end
                         default: begin
                             // no-op for undefined subops in this group

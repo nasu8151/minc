@@ -5,9 +5,9 @@ if __name__ == "__main__":
     tf.expect("""echo "mov r0,r1\nadd r2,r3\nsub r4,r5\nmul r6,r7" | ./target/mincasm""", 
                 "0001\n0123\n0245\n0367") # Arithmetic instructions
     tf.expect("""echo "push r0\nlds r1\npop r2\nsts r3" | ./target/mincasm""",
-                "0400\n0411\n0520\n0531") # Stack and load/store instructions
-    tf.expect("""echo "jz 10,r0\ncall 20\nret" | ./target/mincasm""",
-                "40A0\n5140\n0502") # Jump and call instructions
+                "0800\n0901\n0A20\n0B30") # Stack and load/store instructions
+    tf.expect("""echo "jz 10\njc 15\ncall 20\nret" | ./target/mincasm""",
+                "40A0\n40F1\n5140\n0C00") # Jump and call instructions
     tf.expect_fail("""echo foo | ./target/mincasm""") # Invalid instruction
     tf.expect_fail("""echo "mvi r0,256" | ./target/mincasm""") # Out of range immediate
     # MINCC tests

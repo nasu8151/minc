@@ -55,14 +55,15 @@ int main(){
     const char *insts_1op_rs[]  = { "push", "lds" };
     const char *insts_1op_rd[]  = { "pop", "sts" };
     const char *insts_op_imm[] = { "mvi",  "ldm" };
-    const char *insts_imm_op[] = { "stm", "jz" };
-    const char *insts_op_addr[] = { "call" };
+    const char *insts_imm_op[] = { "stm", };
+    const char *insts_op_addr[] = { "call", "jz", "jc" };
     const char *insts_noopr[] = { "ret" };
     const InstType inst_dict[] = {
-        {"mov",  0x0000},                  {"add", 0x0100},                                   {"sub", 0x0200}, {"mul", 0x0300},
-        {"push", 0x0400}, {"lds", 0x0410}, {"pop", 0x0500}, {"sts", 0x0501}, {"ret", 0x0502}, 
+        {"mov",  0x0000}, {"add", 0x0100}, {"sub", 0x0200}, {"mul", 0x0300},
+        {"push", 0x0800}, {"lds", 0x0900}, {"pop", 0x0A00}, {"sts", 0x0B00}, 
+        {"ret",  0x0C00}, 
 
-        {"mvi",  0x1000}, {"stm", 0x2000}, {"ldm", 0x3000}, {"jz", 0x4000}, {"call", 0x5000},
+        {"mvi",  0x1000}, {"stm", 0x2000}, {"ldm", 0x3000}, {"jz", 0x4000}, {"jc", 0x4001}, {"call", 0x5000},
     };
     char line_to_assemble[256];
 
