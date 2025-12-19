@@ -13,10 +13,6 @@ module minc (
     // General purpose registers r0..r15 (8-bit)
     logic  [7:0]  regs [0:15];
 
-    //flags
-    logic zero_flag;
-    logic carry_flag;
-
     // Instruction ROM: 256 words x 15-bit (instruction is 15-bit)
     logic  [14:0] rom  [0:255];
     // Data RAM: 256 x 8-bit (stack and data unified)
@@ -56,31 +52,22 @@ module minc (
                 next_pc = pc + 8'd1;
             end
         end else if (op == 3'b100) begin
-            // conditional jump taken
-            case (rs[1:0])
-                2'b00: begin
-                    // jz
-                    if (zero_flag) begin
-                        next_pc = imm8;
-                    end else begin
-                        next_pc = pc + 8'd1;
-                    end
-                end
-                2'b01: begin
-                    // jc
-                    if (carry_flag) begin
-                        next_pc = imm8;
-                    end else begin
-                        next_pc = pc + 8'd1;
-                    end
-                end
-                default: begin
-                    next_pc = pc + 8'd1; // other conditions not implemented
-                end
-            endcase
+            // jz
+            if (regs[rs] == 8'd0) begin
+                next_pc = imm8;
+            end else begin
+                next_pc = pc + 8'd1;
+            end
         end else if (op == 3'b101) begin
             // call
             next_pc = imm8;
+        end else if (op == 3'b110) begin
+            // jnz
+            if (regs[rs] != 8'd0) begin
+                next_pc = imm8;
+            end else begin
+                next_pc = pc + 8'd1;
+            end
         end else begin
             next_pc = pc + 8'd1;
         end
@@ -90,8 +77,6 @@ module minc (
         if (!nRESET) begin
             pc <= 8'h00;
             sp <= 8'h00;
-            carry_flag <= 1'b0;
-            zero_flag <= 1'b0;
             // Clear registers for deterministic startup
             for (i = 0; i < 16; i = i + 1) begin
                 regs[i] <= 8'h00;
@@ -107,25 +92,26 @@ module minc (
                         4'b0000: begin
                             // mov rd,rs : rd = rs
                             regs[rd] <= regs[rs];
-                            zero_flag <= (regs[rs] == 8'd0) ? 1'b1 : 1'b0;
                             $display("mov r%0d, r%0d", rd, rs);
                         end
                         4'b0001: begin
                             // add rd,rs : rd = rd + rs
-                            {carry_flag, regs[rd]} <= regs[rd] + regs[rs];
-                            zero_flag <= (regs[rd] + regs[rs] == 8'd0) ? 1'b1 : 1'b0;
+                            regs[rd] <= regs[rd] + regs[rs];
                             $display("add r%0d, r%0d", rd, rs);
                         end
                         4'b0010: begin
                             // sub rd,rs : rd = rd - rs
-                            {carry_flag, regs[rd]} <= regs[rd] - regs[rs];
-                            zero_flag <= (regs[rd] - regs[rs] == 8'd0) ? 1'b1 : 1'b0;
+                            regs[rd] <= regs[rd] - regs[rs];
                             $display("sub r%0d, r%0d", rd, rs);
                         end
                         4'b0011: begin
+                            // cmp rd,rs : set registers for comparison (rd - rs)
+                            regs[rd] <= {7'b0, (regs[rd] - regs[rs]) >> 8}; // store carry/borrow in rd
+                            $display("cmp r%0d, r%0d", rd, rs);
+                        end
+                        4'b0100: begin
                             // mul rd,rs : rd = rd * rs
                             regs[rd] <= regs[rd] * regs[rs];
-                            zero_flag <= (regs[rd] * regs[rs] == 8'd0) ? 1'b1 : 1'b0;
                             $display("mul r%0d, r%0d", rd, rs);
                         end
                         4'b1000: begin
