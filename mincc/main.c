@@ -37,6 +37,32 @@ void error_at(char *loc, const char *fmt, ...) {
     exit(EXIT_FAILURE);
 }
 
+void warn(const char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    fprintf(stderr, "[Warning]: ");
+    vfprintf(stderr, fmt, ap);
+    fprintf(stderr, "\n");
+    va_end(ap);
+    exit(EXIT_FAILURE);
+}
+
+void warn_at(char *loc, const char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+
+    int pos = loc - user_input;
+    fprintf(stderr, "         %s\n", user_input);
+    fprintf(stderr, "[Warning]: ");
+    fprintf(stderr, "%*s", pos, ""); // pos個の空白を出力
+    fprintf(stderr, "^ ");
+    vfprintf(stderr, fmt, ap);
+    fprintf(stderr, "\n");
+    va_end(ap);
+    exit(EXIT_FAILURE);
+}
+
+
 
 int main() {
     // if (argc != 2) {

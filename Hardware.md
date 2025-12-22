@@ -7,7 +7,7 @@
 | mov rd,rs | 000 0000 dddd ssss | rd = rs                                 |
 | add rd,rs | 000 0001 dddd ssss | rd = rd + rs                            |
 | sub rd,rs | 000 0010 dddd ssss | rd = rd - rs                            |
-| cmp rd,rs | 000 0011 dddd ssss | rd = 1 if rd - rs < 0, otherwise rd = 1 |
+| lt rd,rs  | 000 0011 dddd ssss | rd = 1 if rd - rs < 0, otherwise rd = 0 |
 | mul rd,rs | 000 0100 dddd ssss | rd = rd * rs                            |
 | push rs   | 000 1000 0000 ssss | (--sp) = rs                             |
 | lds rs    | 000 1001 0000 ssss | SP = rs                                 |

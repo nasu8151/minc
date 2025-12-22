@@ -39,6 +39,9 @@ module minc (
     wire [3:0] rd    = op[0] == 1'b1 ? instr[3:0] : instr[7:4];
     wire [3:0] rs    = instr[3:0];
     wire [7:0] imm8  = instr[11:4];
+
+    wire [7:0] rd_val = regs[rd];
+    wire [7:0] rs_val = regs[rs];
     integer i;
 
     // Next PC logic
@@ -105,9 +108,9 @@ module minc (
                             $display("sub r%0d, r%0d", rd, rs);
                         end
                         4'b0011: begin
-                            // cmp rd,rs : set registers for comparison (rd - rs)
-                            regs[rd] <= {7'b0, (regs[rd] - regs[rs]) >> 8}; // store carry/borrow in rd
-                            $display("cmp r%0d, r%0d", rd, rs);
+                            // lt rd,rs : set registers for comparison (rd - rs)
+                            regs[rd] <= regs[rd] - regs[rs] > 9'b1_0000_0000 ? 8'b1 : 8'b0;
+                            $display("lt r%0d, r%0d", rd, rs);
                         end
                         4'b0100: begin
                             // mul rd,rs : rd = rd * rs
@@ -167,6 +170,7 @@ module minc (
                 end
                 default: begin
                     // 110,111: unused -> HALT
+                    $finish;
                 end
             endcase
 

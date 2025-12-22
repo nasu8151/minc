@@ -200,7 +200,7 @@ static int process_label(char **pp, LinkState *ls, int instr_index) {
 }
 
 int main(){
-    const char *insts_2ops[] = { "mov", "add", "sub", "cmp", "mul" };
+    const char *insts_2ops[] = { "mov", "add", "sub", "lt", "mul" };
     const char *insts_1op_rs[]  = { "push", "lds" };
     const char *insts_1op_rd[]  = { "pop", "sts" };
     const char *insts_op_imm[] = { "mvi",  "ldm" };
@@ -209,7 +209,7 @@ int main(){
     const char *insts_op_addr[] = { "jz", "jnz" };
     const char *insts_noopr[] = { "ret" };
     const InstType inst_dict[] = {
-        {"mov",  0x0000}, {"add", 0x0100}, {"sub", 0x0200}, {"cmp", 0x0300}, {"mul", 0x0400},
+        {"mov",  0x0000}, {"add", 0x0100}, {"sub", 0x0200}, {"lt", 0x0300}, {"mul", 0x0400},
         {"push", 0x0800}, {"lds", 0x0900}, {"pop", 0x0A00}, {"sts", 0x0B00}, 
         {"ret",  0x0C00}, 
 

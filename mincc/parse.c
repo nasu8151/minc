@@ -42,11 +42,16 @@ bool at_eof() {
     return token->type == TOKEN_EOF;
 }
 
-Token *new_token(TokenType type, Token *current, const char *str, long val, char *loc) {
+Token *new_token(TokenType type, Token *current, const char *str, unsigned long size, long val, char *loc) {
     Token *tok = calloc(1, sizeof(Token));
+    if (size > sizeof(tok->str)) {
+        size = sizeof(tok->str) - 1;
+        warn_at(loc, "Token string is too long, truncated to %ld characters", size);
+    }
     tok->type = type;
     if (str) {
-        strncpy(tok->str, str, sizeof(tok->str) - 1);
+        strncpy(tok->str, str, size);
+        tok->str[size] = '\0';
     }
     tok->value = val;
     tok->loc = loc;
@@ -67,8 +72,14 @@ Token *tokenize(const char *p){
             continue;
         }
 
-        if (*p == '+' || *p == '-' || *p == '*' || *p == '(' || *p == ')') {
-            cur = new_token(TOKEN_RESERVED, cur, (char[]){*p, 0}, 0, (char *)p);
+        if (strncmp(p, "==", 2) == 0 || strncmp(p, "!=", 2) == 0 || strncmp(p, "<=", 2) == 0 || strncmp(p, ">=", 2) == 0) {
+            cur = new_token(TOKEN_RESERVED, cur, (char[]){*p, *(p+1), 0}, 2, 0, (char *)p);
+            p += 2;
+            continue;
+        }
+
+        if (*p == '+' || *p == '-' || *p == '*' || *p == '(' || *p == ')' || *p == '<' || *p == '>' ) {
+            cur = new_token(TOKEN_RESERVED, cur, (char[]){*p, 0}, 1, 0, (char *)p);
             p++;
             continue;
         }
@@ -79,7 +90,7 @@ Token *tokenize(const char *p){
             if (val < 0 || val > 0xFF) {
                 error_at((char *)p, "Number out of range");
             }
-            cur = new_token(TOKEN_NUMBER, cur, NULL, val, (char *)p);
+            cur = new_token(TOKEN_NUMBER, cur, NULL, 0, val, (char *)p);
             p = q;
             continue;
         }
@@ -87,6 +98,6 @@ Token *tokenize(const char *p){
         error_at((char *)p, "Invalid token");
     }
 
-    new_token(TOKEN_EOF, cur, NULL, 0, (char *)p);
+    new_token(TOKEN_EOF, cur, NULL, 0, 0, (char *)p);
     return head.next;
 }

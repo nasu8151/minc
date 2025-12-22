@@ -25,18 +25,53 @@ Node *new_num_node(long val) {
 }
 
 /***************************************************************
-program    = stmt*
-stmt       = expr ";"
-expr       = assign
-assign     = equality ("=" assign)?
-equality   = add
+expr       = equality
+equality   = relational ("==" relational | "!=" relational)*
+relational = add ("<" add | "<=" add | ">" add | ">=" add)*
 add        = mul ("+" mul | "-" mul)*
 mul        = unary ("*" unary | "/" unary)*
 unary      = ("+" | "-")? primary
-primary    = num | ident | "(" expr ")"
+primary    = num | "(" expr ")"
 ****************************************************************/
 
 Node *expr() {
+    Node *node = equality();
+    return node;
+}
+
+Node *equality() {
+    Node *node = relational();
+
+    while (true) {
+        if (consume("==")) {
+            node = new_node(ND_EQ, node, relational());
+        } else if (consume("!=")) {
+            node = new_node(ND_NEQ, node, relational());
+        } else {
+            return node;
+        }
+    }
+}
+
+Node *relational() {
+    Node *node = add();
+
+    while (true) {
+        if (consume("<=")) {
+            node = new_node(ND_GE, node, add());
+        } else if(consume(">=")) {
+            node = new_node(ND_LE, node, add());
+        } else if (consume(">")) {
+            node = new_node(ND_GT, node, add());
+        } else if (consume("<")) {
+            node = new_node(ND_LT, node, add());
+        } else {
+            return node;
+        }
+    }
+}
+
+Node *add() {
     Node *node = mul();
     
     while (true) {
@@ -101,6 +136,24 @@ void generate(Node *node) {
         break;
     case ND_MUL:
         printf("pop r1\npop r0\nmul r0,r1\npush r0\n");
+        break;
+    case ND_EQ:
+        printf("pop r1\npop r0\nsub r0,r1\nmvi r2,1\nlt r0,r2\npush r0\n");
+        break;
+    case ND_NEQ:
+        printf("pop r1\npop r0\nsub r0,r1\nmvi r2,0\nlt r2,r0\npush r2\n");
+        break;
+    case ND_LT:
+        printf("pop r1\npop r0\nlt r0,r1\npush r0\n");
+        break;
+    case ND_LE:
+        printf("pop r1\npop r0\nlt r1,r0\nmvi r2,1\nlt r1,r2\npush r1\n");
+        break;
+    case ND_GT:
+        printf("pop r1\npop r0\nlt r1,r0\npush r1\n");
+        break;
+    case ND_GE:
+        printf("pop r1\npop r0\nlt r0,r1\nmvi r2,1\nlt r0,r2\npush r0\n");
         break;
     default:
         error("Unknown node type");
