@@ -40,7 +40,6 @@ def test_e2e(code:str, expected_top:int, verbose:bool=False):
         raise Exception(f"mincasm failed with return code {inst.returncode}:\nStderr:\n{inst.stderr}")
     with open("verilog/test.hex", "w") as f:
         f.write(inst.stdout)
-        f.write("7FF\n")  # insert HALT instruction
     synsesis = subprocess.run(["iverilog", "-o", "__minc_test.out", "minc.sv", "minc_tb.sv", "-g2005-sv", "-DTEST", "-DVERBOSE"], cwd="./verilog", capture_output=True, text=True)
     if synsesis.returncode != 0:
         raise Exception(f"Verilog synthesis failed with return code {synsesis.returncode}:\nStderr: {synsesis.stderr.strip()}")

@@ -207,13 +207,13 @@ int main(){
     const char *insts_imm_op[] = { "stm" };
     const char *insts_addr[] = { "call" };
     const char *insts_op_addr[] = { "jz", "jnz" };
-    const char *insts_noopr[] = { "ret" };
+    const char *insts_noopr[] = { "ret", "halt" };
     const InstType inst_dict[] = {
         {"mov",  0x0000}, {"add", 0x0100}, {"sub", 0x0200}, {"lt", 0x0300}, {"mul", 0x0400},
         {"push", 0x0800}, {"sts", 0x0900}, {"pop", 0x0A00}, {"lds", 0x0B00}, 
         {"ret",  0x0C00}, 
 
-        {"mvi",  0x1000}, {"stm", 0x2000}, {"ldm", 0x3000}, {"jz", 0x4000}, {"call", 0x5000}, {"jnz", 0x6000},
+        {"mvi",  0x1000}, {"stm", 0x2000}, {"ldm", 0x3000}, {"jz", 0x4000}, {"call", 0x5000}, {"jnz", 0x6000}, {"halt", 0x7FFF}
     };
     char line_to_assemble[256];
 

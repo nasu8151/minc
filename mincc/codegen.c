@@ -57,7 +57,7 @@ void print_node(Node *node) {
 
 /***************************************************************
 program    = stmt*
-stmt       = expr ";"
+stmt       = expr ";" | "return" expr ";"
 expr       = assign
 assign     = equality ("=" assign)?
 equality   = relational ("==" relational | "!=" relational)*
@@ -82,8 +82,14 @@ void program() {
 }
 
 Node *stmt() {
-    Node *node = expr();
-    expect(";");
+    Node *node;
+    if (consume("return")) {
+        node = new_node(ND_RETURN, expr(), NULL);
+        expect(";");
+    } else {
+        node = expr();
+        expect(";");
+    }
     return node;
 }
 
@@ -174,10 +180,10 @@ Node *primary() {       // primary = num | ident | "(" expr ")"
         long offset;
         if (var) {
             offset = var->offset;
-            fprintf(stderr, "Found local variable: %s at offset %ld\n", name, offset);
+            // fprintf(stderr, "Found local variable: %s at offset %ld\n", name, offset);
         } else {
             add_local_var(tok);
-            fprintf(stderr, "Added local variable: %s at offset %ld\n", name, local_vars->offset);
+            // fprintf(stderr, "Added local variable: %s at offset %ld\n", name, local_vars->offset);
             offset = local_vars->offset;
         }
         return new_ident_node(name, offset);
@@ -197,7 +203,7 @@ Node *unary() {
 LocalVar *find_local_var(Token *tok) {
     LocalVar *var = local_vars;
     while (var) {
-        fprintf(stderr, "Comparing %s with %s\n", var->name, tok->str);
+        // fprintf(stderr, "Comparing %s with %s\n", var->name, tok->str);
         if (strcmp(var->name, tok->str) == 0) {
             return var;
         }
@@ -233,6 +239,13 @@ void generate_prologue(long local_var_count) {
     printf("sts r0\n");
 }
 
+void generate_epilogue() {
+    printf("pop r0\n");
+    printf("sts r15\n");
+    printf("pop r15\n");
+    printf("ret\n");
+}
+
 void generate(Node *node) {
     if(node->type == ND_NUM) {
         printf("mvi r0,%ld\npush r0\n", node->val);
@@ -246,6 +259,10 @@ void generate(Node *node) {
             error("Left-hand side of assignment must be a variable");
         }
         printf("pop r0\nstm %ld,r0\n", node->lhs->offset);
+        return;
+    } else if (node->type == ND_RETURN) {
+        generate(node->lhs);
+        generate_epilogue();
         return;
     }
     

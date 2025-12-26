@@ -20,6 +20,7 @@ typedef enum {
     ND_NUM,
     ND_LOC_VAR,
     ND_ASSIGN,
+    ND_RETURN,
 
     ND_EOF
 } NodeType;

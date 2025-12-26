@@ -7,6 +7,8 @@
 
 #include "mincc.h"
 
+// なかったから是非もないよネ！
+// strndup, but raise error() on failure
 char *mystrndup(const char *s, size_t n) {
     char* new = malloc(n+1);
     if (new) {
@@ -48,6 +50,8 @@ long expect_number() {
     return val;
 }
 
+// Expect an identifier token and return its string
+// Otherwise, throw an error
 char *expect_ident() {
     if (token->type != TOKEN_IDENT) {
         error_at(token->loc, "Expected an identifier, but got '%s'", token->str);
@@ -103,14 +107,14 @@ void print_token_list(Token *head) {
     }
 }
 
-int isalphanumub(char c) {
+bool isalphanumub(char c) {
     return  ('a' <= c && c <= 'z') ||
             ('A' <= c && c <= 'Z') ||
             ('0' <= c && c <= '9') ||
             (c == '_');
 }
 
-int isalphaub(char c) {
+bool isalphaub(char c) {
     return  ('a' <= c && c <= 'z') ||
             ('A' <= c && c <= 'Z') ||
             (c == '_');
@@ -140,6 +144,12 @@ Token *tokenize(const char *p){
         // Skip whitespace
         if (isspace(*p)) {
             p++;
+            continue;
+        }
+
+        if (strncmp(p, "return", 6) == 0 && !isalphanumub(p[6])) {
+            cur = new_token(TOKEN_RESERVED, cur, p, 6, 0, (char *)p);
+            p += 6;
             continue;
         }
 

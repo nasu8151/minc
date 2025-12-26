@@ -126,6 +126,7 @@ module minc (
                         4'b1001: begin
                             // lds rs : SP = rs (pattern 000 0100 0001 ssss)
                             sp <= regs[rs];
+                            $display("lds r%0d", rs);
                         end
                         4'b1010: begin
                             // pop rd : rd = (SP++) (pattern 000 0101 dddd 0000)
@@ -136,11 +137,13 @@ module minc (
                         4'b1011: begin
                             // sts rd : rd = SP (pattern 000 0101 dddd 0001)
                             regs[rd] <= sp;
+                            $display("sts r%0d", rd);
                         end
                         4'b1100: begin
                             // ret : PC = (SP++) + 1 (pattern 000 0101 0000 0010)
                             next_pc = ram[sp] + 8'd1;
                             sp <= sp + 8'd1;
+                            $display("ret");
                         end
                         default: begin
                             // no-op for undefined subops in this group
@@ -155,21 +158,26 @@ module minc (
                 3'b010: begin
                     // stm n, rs : [r15 + n] = rs
                     ram[regs[15] + imm8] <= regs[rs];
+                    $display("stm 0x%0h, r%0d", imm8, rs);
                 end
                 3'b011: begin
                     // ldm n, rd : rd = [r15 + n]
                     regs[rd] <= ram[regs[15] + imm8];
+                    $display("ldm 0x%0h, r%0d", imm8, rd);
                 end
                 3'b100: begin
                     // jz n, rs : PC = n if rs == 0
+                    $display("jz 0x%0h, r%0d", imm8, rs);
                 end
                 3'b101: begin
                     // call n : (--sp) = PC; PC = n  (low nibble must be 0000)
                     ram[sp - 8'd1] <= pc;
                     sp <= sp - 8'd1;
+                    $display("call 0x%0h", imm8);
                 end
                 default: begin
                     // 110,111: unused -> HALT
+                    $display("halt");
                     $finish;
                 end
             endcase
