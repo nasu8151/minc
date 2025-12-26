@@ -7,6 +7,17 @@
 
 #include "mincc.h"
 
+char *mystrndup(const char *s, size_t n) {
+    char* new = malloc(n+1);
+    if (new) {
+        strncpy(new, s, n);
+        new[n] = '\0';
+    } else {
+        error("Memory allocation failed");
+    }
+    return new;
+}
+
 // Consume a token if it matches the expected string
 // Return true if matched, false otherwise
 bool consume(const char *op) {
@@ -57,15 +68,11 @@ bool at_eof() {
 
 Token *new_token(TokenType type, Token *current, const char *str, unsigned long size, long val, char *loc) {
     Token *tok = calloc(1, sizeof(Token));
-    if (size > sizeof(tok->str)) {
-        size = sizeof(tok->str) - 1;
-        warn_at(loc, "Token string is too long, truncated to %ld characters", size);
-    }
     tok->type = type;
     if (str) {
-        strncpy(tok->str, str, size);
-        tok->str[size] = '\0';
+        tok->str = mystrndup(str, size);
     }
+    tok->size = size;
     tok->value = val;
     tok->loc = loc;
     current->next = tok;
@@ -96,6 +103,34 @@ void print_token_list(Token *head) {
     }
 }
 
+int isalphanumub(char c) {
+    return  ('a' <= c && c <= 'z') ||
+            ('A' <= c && c <= 'Z') ||
+            ('0' <= c && c <= '9') ||
+            (c == '_');
+}
+
+int isalphaub(char c) {
+    return  ('a' <= c && c <= 'z') ||
+            ('A' <= c && c <= 'Z') ||
+            (c == '_');
+}
+
+/*****************************************************************
+ident_name = [a-zA-Z_][a-zA-Z0-9_]*
+******************************************************************/
+unsigned long read_ident_size(const char *p) {
+    const char *start = p;
+    if (!isalphaub(*p)) {
+        return 0;
+    }
+    p++;
+    while (isalphanumub(*p)) {
+        p++;
+    }
+    return p - start;
+}
+
 Token *tokenize(const char *p){
     Token head;
     head.next = NULL;
@@ -120,9 +155,10 @@ Token *tokenize(const char *p){
             continue;
         }
 
-        if ('a' <= *p && *p <= 'z' ) {
-            cur = new_token(TOKEN_IDENT, cur, p, 1, 0, (char *)p);
-            p++;
+        unsigned long ident_size = read_ident_size(p);
+        if (ident_size > 0) {
+            cur = new_token(TOKEN_IDENT, cur, p, ident_size, 0, (char *)p);
+            p += ident_size;
             continue;
         }
 

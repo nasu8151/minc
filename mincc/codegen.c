@@ -31,9 +31,9 @@ Node *new_num_node(long val) {
 Node *new_ident_node(char *name, long offset) {
     Node *node = calloc(1, sizeof(Node));
     node->type = ND_LOC_VAR;
-    strncpy(node->name, name, sizeof(node->name) - 1);
-    node->name[sizeof(node->name) - 1] = '\0';
     node->offset = offset;
+    node->name = mystrndup(name, strlen(name));
+    node->name_len = strlen(name);
     return node;
 }
 
@@ -208,8 +208,8 @@ LocalVar *find_local_var(Token *tok) {
 
 void add_local_var(Token *tok) {
     LocalVar *var = calloc(1, sizeof(LocalVar));
-    strncpy(var->name, tok->str, sizeof(var->name) - 1);
-    var->name[sizeof(var->name) - 1] = '\0';
+    var->name_len = tok->size;
+    var->name = mystrndup(tok->str, tok->size);
     var->offset = (local_vars ? local_vars->offset - 1 : -1);
     var->next = local_vars;
     local_vars = var;

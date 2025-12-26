@@ -47,6 +47,7 @@ if __name__ == "__main__":
     tf.test_e2e("2+2>=4;", 1)
     tf.test_e2e("a=3;a+2;", 5)
     tf.test_e2e("a=2;b=3;a*b;", 6)
+    tf.test_e2e("hoge=4;fuga=5;hoge+fuga;", 9)
 
 
     print()

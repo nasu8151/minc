@@ -1,3 +1,5 @@
+char *mystrndup(const char *s, size_t n);
+
 typedef enum {
     TOKEN_EOF,
     TOKEN_NUMBER,
@@ -26,7 +28,8 @@ typedef struct Token {
     TokenType type;
     struct Token *next;
     long value;
-    char str[32];       // Token string (must be null-terminated)
+    unsigned long size; // Token size
+    char *str;       // Token string (must be null-terminated)
     char *loc;
 } Token;
 
@@ -36,12 +39,14 @@ typedef struct Node {
     struct Node *rhs;  // Right-hand side
     long val;          // Value (only for ND_NUM)
     long offset;       // Offset from BP (only for ND_LOC_VAR)
-    char name[32];    // Identifier name (only for ND_LOC_VAR)
+    unsigned long name_len; // Length of identifier name
+    char *name;    // Identifier name (only for ND_LOC_VAR)
 } Node;
 
 typedef struct LocalVar {
     struct LocalVar *next;
-    char name[32];    // Variable name (null-terminated)
+    unsigned long name_len; // Length of variable name
+    char *name;       // Variable name (null-terminated)
     long offset;      // Offset from BP
 } LocalVar;
 
