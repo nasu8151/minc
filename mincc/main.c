@@ -9,7 +9,7 @@
 
 Token *token;
 
-static char user_input[1024];
+static char *user_input;
 
 // Throw an error message and exit
 void error(const char *fmt, ...) {
@@ -67,11 +67,25 @@ int main() {
     //     fprintf(stderr, "Usage : <code>\n");
     //     return EXIT_FAILURE;
     // }
-    fgets(user_input, sizeof(user_input), stdin);
-    char *cr_lf = strpbrk(user_input, "\r\n"); //改行コードを排除
-    if (cr_lf) {
-        *cr_lf = '\0';
+    char line[256];
+    char *code = calloc(1, 1);
+    if (!code) {
+        error("out of memory");
     }
+    while (fgets(line, sizeof(line), stdin)) {
+        char *cr_lf = strpbrk(line, "\r\n"); //改行コードを排除
+        if (cr_lf) {
+            *cr_lf = '\0';
+        }
+        char *new_code = (char *)realloc(code, strlen(code) + strlen(line) + 1);
+        if (!new_code) {
+            error("out of memory");
+        }
+        code = new_code;
+        strcat(code, line);
+    }
+    fprintf(stderr, "Input code: %s\n", code);
+    user_input = code;
 
     token = tokenize(user_input);
 

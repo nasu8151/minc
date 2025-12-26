@@ -12,28 +12,31 @@ Node code[256];
 LocalVar *local_vars = NULL;
 
 // Create new node (type != ND_NUM)
-Node *new_node(NodeType type, Node *lhs, Node *rhs){
+Node *new_node(NodeType type, Node *lhs, Node *rhs, char *loc) {
     Node *node = calloc(1, sizeof(Node));
     node->type = type;
     node->lhs = lhs;
     node->rhs = rhs;
+    node->loc = loc;
     return node;
 }
 
 // Create new node (type == ND_NUM)
-Node *new_num_node(long val) {
+Node *new_num_node(long val, char *loc) {
     Node *node = calloc(1, sizeof(Node));
     node->type = ND_NUM;
     node->val = val;
+    node->loc = loc;
     return node;
 }
 
-Node *new_ident_node(char *name, long offset) {
+Node *new_ident_node(char *name, long offset, char *loc) {
     Node *node = calloc(1, sizeof(Node));
     node->type = ND_LOC_VAR;
     node->offset = offset;
     node->name = mystrndup(name, strlen(name));
     node->name_len = strlen(name);
+    node->loc = loc;
     return node;
 }
 
@@ -71,9 +74,9 @@ primary    = num | ident | "(" expr ")"
 void program() {
     long i = 0;
     while (!at_eof()) {
-        code[i++] = *stmt();
+        code[i++] = *stmt(token->loc);
     }
-    code[i] = *new_node(ND_EOF, NULL, NULL);
+    code[i] = *new_node(ND_EOF, NULL, NULL, token->loc);
 
     generate_prologue(count_local_vars());
     for (long j = 0; j < i; j++) {
@@ -81,102 +84,110 @@ void program() {
     }
 }
 
-Node *stmt() {
+Node *stmt(char *l) {
     Node *node;
-    if (consume("return")) {
-        node = new_node(ND_RETURN, expr(), NULL);
-        expect(";");
+    char *loc = l;
+    if (consume("return", loc)) {
+        node = new_node(ND_RETURN, expr(loc), NULL, loc);
+        expect(";", loc);
     } else {
-        node = expr();
-        expect(";");
+        node = expr(loc);
+        expect(";", loc);
     }
     return node;
 }
 
-Node *expr() {
-    Node *node = assign();
+Node *expr(char *l) {
+    char *loc = l;
+    Node *node = assign(loc);
     return node;
 }
 
-Node *assign() {
-    Node *node = equality();
+Node *assign(char *l) {
+    char *loc = l;
+    Node *node = equality(loc);
 
-    if (consume("=")) {
-        node = new_node(ND_ASSIGN, node, assign());
+    if (consume("=", loc)) {
+        node = new_node(ND_ASSIGN, node, assign(loc), loc);
     }
     return node;
 }
 
-Node *equality() {
-    Node *node = relational();
+Node *equality(char *l) {
+    char *loc = l;
+    Node *node = relational(loc);
 
     while (true) {
-        if (consume("==")) {
-            node = new_node(ND_EQ, node, relational());
-        } else if (consume("!=")) {
-            node = new_node(ND_NEQ, node, relational());
+        if (consume("==", loc)) {
+            node = new_node(ND_EQ, node, relational(loc), loc);
+        } else if (consume("!=", loc)) {
+            node = new_node(ND_NEQ, node, relational(loc), loc);
         } else {
             return node;
         }
     }
 }
 
-Node *relational() {
-    Node *node = add();
+Node *relational(char *l) {
+    char *loc = l;
+    Node *node = add(loc);
 
     while (true) {
-        if (consume("<=")) {
-            node = new_node(ND_GE, node, add());
-        } else if(consume(">=")) {
-            node = new_node(ND_LE, node, add());
-        } else if (consume(">")) {
-            node = new_node(ND_GT, node, add());
-        } else if (consume("<")) {
-            node = new_node(ND_LT, node, add());
+        if (consume("<=", loc)) {
+            node = new_node(ND_GE, node, add(loc), loc);
+        } else if(consume(">=", loc)) {
+            node = new_node(ND_LE, node, add(loc), loc);
+        } else if (consume(">", loc)) {
+            node = new_node(ND_GT, node, add(loc), loc);
+        } else if (consume("<", loc)) {
+            node = new_node(ND_LT, node, add(loc), loc);
         } else {
             return node;
         }
     }
 }
 
-Node *add() {
-    Node *node = mul();
+Node *add(char *l) {
+    char *loc = l;
+    Node *node = mul(loc);
     
     while (true) {
-        if (consume("+")) {
-            node = new_node(ND_ADD, node, mul());
-        } else if (consume("-")) {
-            node = new_node(ND_SUB, node, mul());
+        if (consume("+", loc)) {
+            node = new_node(ND_ADD, node, mul(loc), loc);
+        } else if (consume("-", loc)) {
+            node = new_node(ND_SUB, node, mul(loc), loc);
         } else {
             return node;
         }
     }
 }
 
-Node *mul() {
-    Node *node = unary();
+Node *mul(char *l) {
+    char *loc = l;
+    Node *node = unary(loc);
 
     while (true) {
-        if (consume("*")) {
-            node = new_node(ND_MUL, node, unary());
+        if (consume("*", loc)) {
+            node = new_node(ND_MUL, node, unary(loc), loc);
         } else {
             return node;
         }
     }
 }
 
-Node *primary() {       // primary = num | ident | "(" expr ")"
-    if (consume("(")) { // かっこがあるなら、"(" expr ")"のはず
-        Node *node = expr();
+Node *primary(char *l) {       // primary = num | ident | "(" expr ")"
+    char *loc = l;
+    if (consume("(", loc)) { // かっこがあるなら、"(" expr ")"のはず
+        Node *node = expr(loc);
 
-        expect(")"); // かっこは閉じられるはず...
+        expect(")", loc); // かっこは閉じられるはず...
         return node;
     } else if (is_number_node()) {         // numの部分
-        return new_num_node(expect_number());
+        return new_num_node(expect_number(loc), loc);
     } else {                               // identの部分
         LocalVar *var = find_local_var(token);
         Token *tok = token;
-        char *name = expect_ident();
+        char *name = expect_ident(loc);
         long offset;
         if (var) {
             offset = var->offset;
@@ -186,17 +197,18 @@ Node *primary() {       // primary = num | ident | "(" expr ")"
             // fprintf(stderr, "Added local variable: %s at offset %ld\n", name, local_vars->offset);
             offset = local_vars->offset;
         }
-        return new_ident_node(name, offset);
+        return new_ident_node(name, offset, loc);
     }
 }
 
-Node *unary() {
-    if (consume("+")) {
-        return new_node(ND_ADD, new_num_node(0), unary());
-    } else if (consume("-")) {
-        return new_node(ND_SUB, new_num_node(0), unary());
+Node *unary(char *l) {
+    char *loc = l;
+    if (consume("+", loc)) {
+        return new_node(ND_ADD, new_num_node(0, loc), unary(loc), loc);
+    } else if (consume("-", loc)) {
+        return new_node(ND_SUB, new_num_node(0, loc), unary(loc), loc);
     } else {
-        return primary();
+        return primary(loc);
     }
 }
 
@@ -256,7 +268,7 @@ void generate(Node *node) {
     } else if (node->type == ND_ASSIGN) {
         generate(node->rhs);
         if (node->lhs->type != ND_LOC_VAR) {
-            error("Left-hand side of assignment must be a variable");
+            error_at(node->lhs->loc, "Left-hand side of assignment must be a variable");
         }
         printf("pop r0\nstm %ld,r0\n", node->lhs->offset);
         return;
@@ -299,7 +311,7 @@ void generate(Node *node) {
         printf("pop r1\npop r0\nlt r0,r1\nmvi r2,1\nlt r0,r2\npush r0\n");
         break;
     default:
-        error("Unknown node type");
+        error_at(node->loc, "Unknown node type");
         break;
     }
 }

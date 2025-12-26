@@ -42,6 +42,7 @@ typedef struct Node {
     long offset;       // Offset from BP (only for ND_LOC_VAR)
     unsigned long name_len; // Length of identifier name
     char *name;    // Identifier name (only for ND_LOC_VAR)
+    char *loc;
 } Node;
 
 typedef struct LocalVar {
@@ -61,29 +62,29 @@ Token *new_token(TokenType type, Token *current, const char *str, unsigned long 
 Token *tokenize(const char *p);
 
 // Token consumption functions
-bool consume(const char *op);
-void expect(const char *op);
-long expect_number();
-char *expect_ident();
+bool consume(const char *op, char *loc);
+void expect(const char *op, char *loc);
+long expect_number(char *loc);
+char *expect_ident(char *loc);
 bool is_number_node();
 bool at_eof();
 
 // Genelate node
-Node *new_node(NodeType type, Node *lhs, Node *rhs);
-Node *new_num_node(long val);
-Node *new_ident_node(char *name, long offset);
+Node *new_node(NodeType type, Node *lhs, Node *rhs, char *loc);
+Node *new_num_node(long val, char *loc);
+Node *new_ident_node(char *name, long offset, char *loc);
 
 // Syntax tree parsing functions
 void program();
-Node *stmt();
-Node *assign();
-Node *equality();
-Node *relational();
-Node *expr();
-Node *add();
-Node *mul();
-Node *primary();
-Node *unary();
+Node *stmt(char *l);
+Node *assign(char *l);
+Node *equality(char *l);
+Node *relational(char *l);
+Node *expr(char *l);
+Node *add(char *l);
+Node *mul(char *l);
+Node *primary(char *l);
+Node *unary(char *l);
 
 // Local variable functions
 LocalVar *find_local_var(Token *tok);

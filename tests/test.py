@@ -48,6 +48,7 @@ if __name__ == "__main__":
     tf.test_e2e("a=3;return a+2;", 5)
     tf.test_e2e("a=2;b=3;return a*b;", 6)
     tf.test_e2e("hoge=4;fuga=5;return hoge+fuga;", 9)
+    tf.test_e2e("a=1;\nb=2;\nc=3;\nreturn a+b*c;", 7)
 
 
     print()
