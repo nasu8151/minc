@@ -51,7 +51,7 @@ void warn_at(char *loc, const char *fmt, ...) {
     va_start(ap, fmt);
 
     int pos = loc - user_input;
-    fprintf(stderr, "         %s\n", user_input);
+    fprintf(stderr, "           %s\n", user_input);
     fprintf(stderr, "[Warning]: ");
     fprintf(stderr, "%*s", pos, ""); // pos個の空白を出力
     fprintf(stderr, "^ ");

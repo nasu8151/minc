@@ -26,33 +26,27 @@ if __name__ == "__main__":
     # Undefined label should fail
     tf.expect_fail("""echo "jz NO_SUCH_LABEL,r0" | ./target/mincasm""")
     # MINCC tests
-    tf.expect("""echo 1+2 | ./target/mincc""",
-                "mvi r0,1\npush r0\nmvi r0,2\npush r0\npop r1\npop r0\nadd r0,r1\npush r0") # Simple addition
-    tf.expect("""echo "1  + 2" | ./target/mincc""",
-                "mvi r0,1\npush r0\nmvi r0,2\npush r0\npop r1\npop r0\nadd r0,r1\npush r0") # Addition with spaces
-    tf.expect("""echo "1+2*3" | ./target/mincc""",
-                "mvi r0,1\npush r0\nmvi r0,2\npush r0\nmvi r0,3\npush r0\npop r1\npop r0\nmul r0,r1\npush r0\npop r1\npop r0\nadd r0,r1\npush r0") # Addition and multiplication
-    tf.expect("""echo "(1+2)*3" | ./target/mincc""",
-                "mvi r0,1\npush r0\nmvi r0,2\npush r0\npop r1\npop r0\nadd r0,r1\npush r0\nmvi r0,3\npush r0\npop r1\npop r0\nmul r0,r1\npush r0") # Parentheses
-    tf.expect("""echo "(10-3)*(10+3)" | ./target/mincc""",
-                "mvi r0,10\npush r0\nmvi r0,3\npush r0\npop r1\npop r0\nsub r0,r1\npush r0\nmvi r0,10\npush r0\nmvi r0,3\npush r0\npop r1\npop r0\nadd r0,r1\npush r0\npop r1\npop r0\nmul r0,r1\npush r0") # Complex expression
     tf.expect_fail("""echo "1+" | ./target/mincc""") # Incomplete expression
-    tf.expect("""echo "-5+(+3)" | ./target/mincc""",
-                "mvi r0,0\npush r0\nmvi r0,5\npush r0\npop r1\npop r0\nsub r0,r1\npush r0\nmvi r0,0\npush r0\nmvi r0,3\npush r0\npop r1\npop r0\nadd r0,r1\npush r0\npop r1\npop r0\nadd r0,r1\npush r0") # Unary minus and plus
-    tf.test_e2e("1+2", 3)
-    tf.test_e2e("10-3", 7)
-    tf.test_e2e("2*3", 6)
-    tf.test_e2e("(1+2)*3", 9)
-    tf.test_e2e("-3+5", 2)
-    tf.test_e2e("1+1==2", 1)
-    tf.test_e2e("1+1==3", 0)
-    tf.test_e2e("2*2!=5", 1)
-    tf.test_e2e("2*2!=4", 0)
-    tf.test_e2e("3+2<6", 1)
-    tf.test_e2e("3+3<=6", 1)
-    tf.test_e2e("5>2+2", 1)
-    tf.test_e2e("2+2>=4", 1)
-    tf.test_e2e(" a=3;a+2", 5)
+    tf.expect_fail("""echo "a+1=5;" | ./target/mincc""") # Invalid assignment
+
+    # E2E tests
+    tf.test_e2e("1+2;", 3)
+    tf.test_e2e("10-3;", 7)
+    tf.test_e2e("2*3;", 6)
+    tf.test_e2e("(1+2)*3;", 9)
+    tf.test_e2e("-3+5;", 2)
+    tf.test_e2e("-(2+3)*4;", -20)
+    tf.test_e2e("+5+(+3);", 8)
+    tf.test_e2e("1+1==2;", 1)
+    tf.test_e2e("1+1==3;", 0)
+    tf.test_e2e("2*2!=5;", 1)
+    tf.test_e2e("2*2!=4;", 0)
+    tf.test_e2e("3+2<6;", 1)
+    tf.test_e2e("3+3<=6;", 1)
+    tf.test_e2e("5>2+2;", 1)
+    tf.test_e2e("2+2>=4;", 1)
+    tf.test_e2e("a=3;a+2;", 5)
+    tf.test_e2e("a=2;b=3;a*b;", 6)
 
 
     print()

@@ -41,15 +41,18 @@ def test_e2e(code:str, expected_top:int, verbose:bool=False):
     with open("verilog/test.hex", "w") as f:
         f.write(inst.stdout)
         f.write("7FF\n")  # insert HALT instruction
-    verilog_sim = subprocess.run("cd ./verilog && iverilog -o __minc_test.out minc.sv minc_tb.sv -g2005-sv -DTEST -DVERBOSE && vvp __minc_test.out", shell=True, capture_output=True, text=True)
+    synsesis = subprocess.run(["iverilog", "-o", "__minc_test.out", "minc.sv", "minc_tb.sv", "-g2005-sv", "-DTEST", "-DVERBOSE"], cwd="./verilog", capture_output=True, text=True)
+    if synsesis.returncode != 0:
+        raise Exception(f"Verilog synthesis failed with return code {synsesis.returncode}:\nStderr: {synsesis.stderr.strip()}")
+    verilog_sim = subprocess.run(["vvp", "./__minc_test.out"], cwd="./verilog", capture_output=True, text=True)
     if verilog_sim.returncode != 0:
         raise Exception(f"Verilog simulation failed with return code {verilog_sim.returncode}:\nStderr: {verilog_sim.stderr.strip()}")
     if verbose:
         print(verilog_sim.stdout)
     output = verilog_sim.stdout.strip().splitlines()[-1]  # Get the last line of output
     pc_str, top_str, sp_str = output.split(", ")
-    top_value = int(top_str.split(": ")[1], 0)
-    assert top_value == expected_top, f"""[FAIL] Expected TOP: {expected_top}, but got: {top_value} """
+    top_value = int(top_str.split(": ")[1], 16)
+    assert top_value == (expected_top & 0xff), f"""[FAIL] Expected TOP: {expected_top}, but got: {top_value} """
     print(f"""[OK] E2E test for code "{code}" => TOP: {top_value} """)
 
 if __name__ == "__main__":

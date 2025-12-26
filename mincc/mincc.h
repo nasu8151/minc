@@ -35,8 +35,15 @@ typedef struct Node {
     struct Node *lhs;  // Left-hand side
     struct Node *rhs;  // Right-hand side
     long val;          // Value (only for ND_NUM)
+    long offset;       // Offset from BP (only for ND_LOC_VAR)
     char name[32];    // Identifier name (only for ND_LOC_VAR)
 } Node;
+
+typedef struct LocalVar {
+    struct LocalVar *next;
+    char name[32];    // Variable name (null-terminated)
+    long offset;      // Offset from BP
+} LocalVar;
 
 extern Token *token;
 
@@ -58,7 +65,7 @@ bool at_eof();
 // Genelate node
 Node *new_node(NodeType type, Node *lhs, Node *rhs);
 Node *new_num_node(long val);
-Node *new_ident_node(char *name);
+Node *new_ident_node(char *name, long offset);
 
 // Syntax tree parsing functions
 void program();
@@ -72,8 +79,14 @@ Node *mul();
 Node *primary();
 Node *unary();
 
+// Local variable functions
+LocalVar *find_local_var(Token *tok);
+void add_local_var(Token *tok);
+long count_local_vars();
+
 // node genelator function
 void generate(Node *node);
+void generate_prologue(long local_var_count);
 
 // Error handling functions
 void error(const char *fmt, ...);

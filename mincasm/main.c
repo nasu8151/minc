@@ -36,7 +36,7 @@ int check_register_range(int reg) {
 }
 
 int check_immediate_range(int imm) {
-    if (imm < 0 || imm > 255) {
+    if (imm < -128 || imm > 255) {
         fprintf(stderr, "Error: Immediate value out of range: %d\n", imm);
         return 0; // Out of range
     }
@@ -289,7 +289,7 @@ int main(){
             int reg = strtol(operand + 1, NULL, 10);
             int imm = strtol(immediate, NULL, 0);
             if (!check_immediate_range(imm) || !check_register_range(reg)) return EXIT_FAILURE;
-            opcode = opcode | (imm << 4) | reg;
+            opcode = opcode | ((imm & 0xff) << 4) | reg;
         } else if (is_in_array(instruction, insts_imm_op, sizeof(insts_imm_op)/sizeof(insts_imm_op[0]))){
             // Handle imm-op instructions
             char *comma = find_comma(first_space + 1, instruction);
@@ -299,7 +299,7 @@ int main(){
             int imm = strtol(immediate, NULL, 0);
             int reg = strtol(operand + 1, NULL, 10);
             if (!check_immediate_range(imm) || !check_register_range(reg)) return EXIT_FAILURE;
-            opcode = opcode | (imm << 4) | reg;
+            opcode = opcode | ((imm & 0xff) << 4) | reg;
         } else if (is_in_array(instruction, insts_noopr, sizeof(insts_noopr)/sizeof(insts_noopr[0]))){
             // nothing
         } else if (is_in_array(instruction, insts_addr, sizeof(insts_addr)/sizeof(insts_addr[0]))){
