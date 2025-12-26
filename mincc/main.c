@@ -44,7 +44,6 @@ void warn(const char *fmt, ...) {
     vfprintf(stderr, fmt, ap);
     fprintf(stderr, "\n");
     va_end(ap);
-    exit(EXIT_FAILURE);
 }
 
 void warn_at(char *loc, const char *fmt, ...) {
@@ -59,7 +58,6 @@ void warn_at(char *loc, const char *fmt, ...) {
     vfprintf(stderr, fmt, ap);
     fprintf(stderr, "\n");
     va_end(ap);
-    exit(EXIT_FAILURE);
 }
 
 
@@ -77,8 +75,7 @@ int main() {
 
     token = tokenize(user_input);
 
-    Node *node = expr();
-    generate(node);
+    program();
 
     return EXIT_SUCCESS;
 }

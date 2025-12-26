@@ -10,9 +10,9 @@
 | lt rd,rs  | 000 0011 dddd ssss | rd = 1 if rd - rs < 0, otherwise rd = 0 |
 | mul rd,rs | 000 0100 dddd ssss | rd = rd * rs                            |
 | push rs   | 000 1000 0000 ssss | (--sp) = rs                             |
-| lds rs    | 000 1001 0000 ssss | SP = rs                                 |
+| sts rs    | 000 1001 0000 ssss | SP = rs                                 |
 | pop rd    | 000 1010 dddd 0000 | rd = (SP++)                             |
-| sts rd    | 000 1011 dddd 0000 | rd = SP                                 |
+| lds rd    | 000 1011 dddd 0000 | rd = SP                                 |
 | ret       | 000 1100 0000 0000 | PC = (SP++) + 1                         |
 | mvi rd,n  | 001 nnnn nnnn dddd | rd = n                                  |
 | stm n,rs  | 010 nnnn nnnn ssss | [r15+n] = rs                            |

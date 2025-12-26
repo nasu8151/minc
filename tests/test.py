@@ -4,7 +4,7 @@ if __name__ == "__main__":
     # MINCASM tests
     tf.expect("""echo "mov r0,r1\nadd r2,r3\nsub r4,r5\nlt r6,r7\nmul r7,r8" | ./target/mincasm""", 
                 "0001\n0123\n0245\n0367\n0478") # Arithmetic instructions
-    tf.expect("""echo "push r0\nlds r1\npop r2\nsts r3" | ./target/mincasm""",
+    tf.expect("""echo "push r0\nsts r1\npop r2\nlds r3" | ./target/mincasm""",
                 "0800\n0901\n0A20\n0B30") # Stack and load/store instructions
     tf.expect("""echo "jz 10,r0\njnz 15,r1\ncall 20\nret" | ./target/mincasm""",
                 "40A0\n60F1\n5140\n0C00") # Jump and call instructions
@@ -52,6 +52,7 @@ if __name__ == "__main__":
     tf.test_e2e("3+3<=6", 1)
     tf.test_e2e("5>2+2", 1)
     tf.test_e2e("2+2>=4", 1)
+    tf.test_e2e(" a=3;a+2", 5)
 
 
     print()

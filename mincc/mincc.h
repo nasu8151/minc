@@ -2,6 +2,7 @@ typedef enum {
     TOKEN_EOF,
     TOKEN_NUMBER,
     TOKEN_RESERVED,
+    TOKEN_IDENT,
 } TokenType;
 
 typedef enum {
@@ -15,6 +16,10 @@ typedef enum {
     ND_GT,
     ND_GE,
     ND_NUM,
+    ND_LOC_VAR,
+    ND_ASSIGN,
+
+    ND_EOF
 } NodeType;
 
 typedef struct Token {
@@ -30,6 +35,7 @@ typedef struct Node {
     struct Node *lhs;  // Left-hand side
     struct Node *rhs;  // Right-hand side
     long val;          // Value (only for ND_NUM)
+    char name[32];    // Identifier name (only for ND_LOC_VAR)
 } Node;
 
 extern Token *token;
@@ -45,13 +51,19 @@ Token *tokenize(const char *p);
 bool consume(const char *op);
 void expect(const char *op);
 long expect_number();
+char *expect_ident();
+bool is_number_node();
 bool at_eof();
 
 // Genelate node
 Node *new_node(NodeType type, Node *lhs, Node *rhs);
 Node *new_num_node(long val);
+Node *new_ident_node(char *name);
 
 // Syntax tree parsing functions
+void program();
+Node *stmt();
+Node *assign();
 Node *equality();
 Node *relational();
 Node *expr();

@@ -37,6 +37,19 @@ long expect_number() {
     return val;
 }
 
+char *expect_ident() {
+    if (token->type != TOKEN_IDENT) {
+        error_at(token->loc, "Expected an identifier, but got '%s'", token->str);
+    }
+    char *name = token->str;
+    token = token->next;
+    return name;
+}
+
+bool is_number_node() {
+    return token->type == TOKEN_NUMBER;
+}
+
 // Check if the current token is EOF
 bool at_eof() {
     return token->type == TOKEN_EOF;
@@ -59,6 +72,29 @@ Token *new_token(TokenType type, Token *current, const char *str, unsigned long 
     return tok;
 }
 
+void print_token_list(Token *head) {
+    Token *cur = head;
+    while (cur) {
+        switch (cur->type) {
+            case TOKEN_EOF:
+                fprintf(stderr, "TOKEN_EOF\n");
+                break;
+            case TOKEN_NUMBER:
+                fprintf(stderr, "TOKEN_NUMBER: %ld\n", cur->value);
+                break;
+            case TOKEN_RESERVED:
+                fprintf(stderr, "TOKEN_RESERVED: %s\n", cur->str);
+                break;
+            case TOKEN_IDENT:
+                fprintf(stderr, "TOKEN_IDENT: %s\n", cur->str);
+                break;
+            default:
+                fprintf(stderr, "Unknown token type\n");
+                break;
+        }
+        cur = cur->next;
+    }
+}
 
 Token *tokenize(const char *p){
     Token head;
@@ -73,13 +109,19 @@ Token *tokenize(const char *p){
         }
 
         if (strncmp(p, "==", 2) == 0 || strncmp(p, "!=", 2) == 0 || strncmp(p, "<=", 2) == 0 || strncmp(p, ">=", 2) == 0) {
-            cur = new_token(TOKEN_RESERVED, cur, (char[]){*p, *(p+1), 0}, 2, 0, (char *)p);
+            cur = new_token(TOKEN_RESERVED, cur, p, 2, 0, (char *)p);
             p += 2;
             continue;
         }
 
-        if (*p == '+' || *p == '-' || *p == '*' || *p == '(' || *p == ')' || *p == '<' || *p == '>' ) {
-            cur = new_token(TOKEN_RESERVED, cur, (char[]){*p, 0}, 1, 0, (char *)p);
+        if (*p == '+' || *p == '-' || *p == '*' || *p == '(' || *p == ')' || *p == '<' || *p == '>' || *p == '=' || *p == ';') {
+            cur = new_token(TOKEN_RESERVED, cur, p, 1, 0, (char *)p);
+            p++;
+            continue;
+        }
+
+        if ('a' <= *p && *p <= 'z' ) {
+            cur = new_token(TOKEN_IDENT, cur, p, 1, 0, (char *)p);
             p++;
             continue;
         }
@@ -99,5 +141,6 @@ Token *tokenize(const char *p){
     }
 
     new_token(TOKEN_EOF, cur, NULL, 0, 0, (char *)p);
+    print_token_list(head.next);
     return head.next;
 }
