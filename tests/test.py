@@ -40,7 +40,7 @@ if __name__ == "__main__":
     tf.test_e2e("return 1+1==2;", 1)
     tf.test_e2e("return 1+1==3;", 0)
     tf.test_e2e("return 2*2!=5;", 1)
-    tf.test_e2e("return 2*2!=4;", 0)
+    tf.test_e2e("return (-2)*(-2)!=4;", 0)
     tf.test_e2e("return 3+2<6;", 1)
     tf.test_e2e("return 3+3<=6;", 1)
     tf.test_e2e("return 5>2+2;", 1)
@@ -48,7 +48,11 @@ if __name__ == "__main__":
     tf.test_e2e("a=3;return a+2;", 5)
     tf.test_e2e("a=2;b=3;return a*b;", 6)
     tf.test_e2e("hoge=4;fuga=5;return hoge+fuga;", 9)
-    tf.test_e2e("a=1;\nb=2;\nc=3;\nreturn a+b*c;", 7)
+    tf.test_e2e("a =1;\nb = 2;\nc  = 3;\nreturn a + b* c;", 7)
+    tf.test_e2e("hoge =3;\nfuga= hoge +2;\nif (fuga==5) return 42;\nreturn 0;", 42)
+    tf.test_e2e("hoge=2; fuga = 3;\nif (hoge != 0) if (hoge+fuga > 3) return 2;\nelse return 0;", 2)
+    tf.test_e2e("sum=0;\nfor(i=1;i<=5;i=i+1) sum=sum+i;\nreturn sum;", 15)
+    tf.test_e2e("i=0;\nwhile(i<3) i=i+1;\nreturn i;", 3)
 
 
     print()

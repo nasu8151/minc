@@ -157,6 +157,32 @@ Token *tokenize(const char *p){
             continue;
         }
 
+        if (strncmp(p, "if", 2) == 0 && !isalphanumub(p[2])) {
+            cur = new_token(TOKEN_RESERVED, cur, p, 2, 0, (char *)p);
+            p += 2;
+            continue;
+        }
+
+        if (strncmp(p, "else", 4) == 0 && !isalphanumub(p[4])) {
+            cur = new_token(TOKEN_RESERVED, cur, p, 4, 0, (char *)p);
+            p += 4;
+            continue;
+        }
+
+
+        if (strncmp(p, "for", 3) == 0 && !isalphanumub(p[3])) {
+            cur = new_token(TOKEN_RESERVED, cur, p, 3, 0, (char *) p);
+            p += 3;
+            continue;
+        }
+
+        if (strncmp(p, "while", 5) == 0 && !isalphanumub(p[5])) {
+            cur = new_token(TOKEN_RESERVED, cur, p, 5, 0, (char *) p);
+            p += 3;
+            continue;
+        }
+
+
         if (strncmp(p, "==", 2) == 0 || strncmp(p, "!=", 2) == 0 || strncmp(p, "<=", 2) == 0 || strncmp(p, ">=", 2) == 0) {
             cur = new_token(TOKEN_RESERVED, cur, p, 2, 0, (char *)p);
             p += 2;
@@ -180,9 +206,9 @@ Token *tokenize(const char *p){
             char *q = (char *)p;
             long val = strtol(p, &q, 0);
             if (val < 0 || val > 0xFF) {
-                error_at((char *)p, "Number out of range");
+                warn_at((char *)p, "Number out of range");
             }
-            cur = new_token(TOKEN_NUMBER, cur, NULL, 0, val, (char *)p);
+            cur = new_token(TOKEN_NUMBER, cur, NULL, 0, val & 0xff, (char *)p);
             p = q;
             continue;
         }

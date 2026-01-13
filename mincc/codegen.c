@@ -59,14 +59,18 @@ void print_node(Node *node) {
 }
 
 /***************************************************************
-program    = stmt*
-stmt       = expr ";" | "return" expr ";"
+program     = stmt*
+stmt        = expr ";"
+            | "return" expr ";"
+            | "if" "(" expr ")" stmt ("else" stmt)?
+            | "for" "(" expr? ";" expr? ";" expr? ")" stmt
+            | "while" "(" expr ")" stmt
 expr       = assign
 assign     = equality ("=" assign)?
 equality   = relational ("==" relational | "!=" relational)*
 relational = add ("<" add | "<=" add | ">" add | ">=" add)*
 add        = mul ("+" mul | "-" mul)*
-mul        = unary ("*" unary | "/" unary)*
+mul        = unary ("*" unary)*
 unary      = ("+" | "-")? primary
 primary    = num | ident | "(" expr ")"
 ****************************************************************/
@@ -90,6 +94,21 @@ Node *stmt(char *l) {
     if (consume("return", loc)) {
         node = new_node(ND_RETURN, expr(loc), NULL, loc);
         expect(";", loc);
+    } else if (consume("if", loc)) {
+        expect("(", loc);
+        Node *cond = expr(loc);
+        expect(")", loc);
+        Node *then = stmt(loc);
+        Node *els = NULL;
+        if (consume("else", loc)) {
+            els = stmt(loc);
+        }
+        Node *if_node = new_node(ND_IF, cond, then, loc);
+        if (els) {
+            return new_node(ND_ELSE, if_node, els, loc);
+        } else {
+            return if_node;
+        }
     } else {
         node = expr(loc);
         expect(";", loc);
@@ -243,6 +262,13 @@ long count_local_vars() {
     return count;
 }
 
+char *get_unique_label() {
+    static long label_id = 0;
+    char *label = calloc(20, sizeof(char));
+    sprintf(label, "__L%d", label_id++);
+    return label;
+}
+
 void generate_prologue(long local_var_count) {
     printf("push r15\n");
     printf("lds r15\n");
@@ -275,6 +301,24 @@ void generate(Node *node) {
     } else if (node->type == ND_RETURN) {
         generate(node->lhs);
         generate_epilogue();
+        return;
+    } else if (node->type == ND_IF) {
+        generate(node->lhs); // 条件式
+        char *end_label = get_unique_label();
+        printf("pop r0\nmvi r1,0\nsub r0,r1\njz %s,r0\n", end_label);
+        generate(node->rhs); // then節
+        printf("%s:\n", end_label);
+        return;
+    } else if (node->type == ND_ELSE) {
+        generate(node->lhs->lhs); // 条件式
+        char *else_label = get_unique_label();
+        char *end_label = get_unique_label();
+        printf("pop r0\nmvi r1,0\nsub r0,r1\njz %s,r0\n", else_label);
+        generate(node->lhs->rhs); // then節
+        printf("mvi r0,0\njz %s,r0\n", end_label);
+        printf("%s:\n", else_label);
+        generate(node->rhs); // else節
+        printf("%s:\n", end_label);
         return;
     }
     

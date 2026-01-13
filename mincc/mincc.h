@@ -21,6 +21,10 @@ typedef enum {
     ND_LOC_VAR,
     ND_ASSIGN,
     ND_RETURN,
+    ND_IF,
+    ND_ELSE,
+    ND_FOR,
+    ND_WHILE,
 
     ND_EOF
 } NodeType;
@@ -62,9 +66,18 @@ Token *new_token(TokenType type, Token *current, const char *str, unsigned long 
 Token *tokenize(const char *p);
 
 // Token consumption functions
+
+// Consume a token if it matches the expected string
+// Return true if matched, false otherwise
 bool consume(const char *op, char *loc);
+// Consume a token if it matches the expected string
+// Otherwise, throw an error
 void expect(const char *op, char *loc);
+// Expect a number token and return its value
+// Otherwise, throw an error
 long expect_number(char *loc);
+// Expect an identifier token and return its string
+// Otherwise, throw an error
 char *expect_ident(char *loc);
 bool is_number_node();
 bool at_eof();
@@ -90,6 +103,9 @@ Node *unary(char *l);
 LocalVar *find_local_var(Token *tok);
 void add_local_var(Token *tok);
 long count_local_vars();
+
+// Label generation function
+char *get_unique_label();
 
 // node genelator function
 void generate(Node *node);
