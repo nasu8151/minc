@@ -52,7 +52,8 @@ if __name__ == "__main__":
     tf.test_e2e("hoge =3;\nfuga= hoge +2;\nif (fuga==5) return 42;\nreturn 0;", 42)
     tf.test_e2e("hoge=2; fuga = 3;\nif (hoge != 0) if (hoge+fuga > 3) return 2;\nelse return 0;", 2)
     tf.test_e2e("sum=0;\nfor(i=1;i<5;i=i+1) sum=sum+i;\nreturn sum;", 10)
-    tf.test_e2e("i=0;\nwhile(i<3) i=i+1;\nreturn i;", 3, verbose=True)
+    tf.test_e2e("i=0;\nwhile(i<3) i=i+1;\nreturn i;", 3)
+    tf.test_e2e("i=0;\nwhile(i<10) {\n i=i+1;\n if (i==5) {\nreturn 20*i;\n}\n}\nreturn 0;", 100)
 
 
     print()

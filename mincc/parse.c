@@ -112,16 +112,23 @@ void print_token_list(Token *head) {
 }
 
 bool isalphanumub(char c) {
-    return  ('a' <= c && c <= 'z') ||
-            ('A' <= c && c <= 'Z') ||
-            ('0' <= c && c <= '9') ||
+    return  isalnum(c) ||
             (c == '_');
 }
 
 bool isalphaub(char c) {
-    return  ('a' <= c && c <= 'z') ||
-            ('A' <= c && c <= 'Z') ||
+    return  isalpha(c) ||
             (c == '_');
+}
+
+Token *cur;
+
+size_t tokenize_reserved(const char *p, const char *keyword, size_t kw_len) {
+    if (strncmp(p, keyword, kw_len) == 0 && !isalphanumub(p[kw_len])) {
+        cur = new_token(TOKEN_RESERVED, cur, p, kw_len, 0, (char *)p);
+        return kw_len;
+    }
+    return 0;
 }
 
 /*****************************************************************
@@ -142,7 +149,7 @@ unsigned long read_ident_size(const char *p) {
 Token *tokenize(const char *p){
     Token head;
     head.next = NULL;
-    Token *cur = &head;
+    cur = &head;
 
     while (*p) {
         // Skip whitespace
@@ -150,35 +157,33 @@ Token *tokenize(const char *p){
             p++;
             continue;
         }
-
-        if (strncmp(p, "return", 6) == 0 && !isalphanumub(p[6])) {
-            cur = new_token(TOKEN_RESERVED, cur, p, 6, 0, (char *)p);
-            p += 6;
+        size_t len;
+        len = tokenize_reserved(p, "return", 6);
+        if (len) {
+            p += len;
+            continue;
+        }
+        len = tokenize_reserved(p, "if", 2);
+        if (len) {
+            p += len;
             continue;
         }
 
-        if (strncmp(p, "if", 2) == 0 && !isalphanumub(p[2])) {
-            cur = new_token(TOKEN_RESERVED, cur, p, 2, 0, (char *)p);
-            p += 2;
+        len = tokenize_reserved(p, "else", 4);
+        if (len) {
+            p += len;
             continue;
         }
 
-        if (strncmp(p, "else", 4) == 0 && !isalphanumub(p[4])) {
-            cur = new_token(TOKEN_RESERVED, cur, p, 4, 0, (char *)p);
-            p += 4;
+        len = tokenize_reserved(p, "for", 3);
+        if (len) {
+            p += len;
             continue;
         }
 
-
-        if (strncmp(p, "for", 3) == 0 && !isalphanumub(p[3])) {
-            cur = new_token(TOKEN_RESERVED, cur, p, 3, 0, (char *) p);
-            p += 3;
-            continue;
-        }
-
-        if (strncmp(p, "while", 5) == 0 && !isalphanumub(p[5])) {
-            cur = new_token(TOKEN_RESERVED, cur, p, 5, 0, (char *) p);
-            p += 3;
+        len = tokenize_reserved(p, "while", 5);
+        if (len) {
+            p += len;
             continue;
         }
 
@@ -189,7 +194,7 @@ Token *tokenize(const char *p){
             continue;
         }
 
-        if (*p == '+' || *p == '-' || *p == '*' || *p == '(' || *p == ')' || *p == '<' || *p == '>' || *p == '=' || *p == ';') {
+        if (*p == '+' || *p == '-' || *p == '*' || *p == '(' || *p == ')' || *p == '<' || *p == '>' || *p == '=' || *p == ';' || *p == '{' || *p == '}') {
             cur = new_token(TOKEN_RESERVED, cur, p, 1, 0, (char *)p);
             p++;
             continue;

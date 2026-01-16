@@ -23,6 +23,7 @@ typedef enum {
     ND_IF_ELSE,
     ND_FOR,
     ND_WHILE,
+    ND_BLOCK,
 
     ND_EOF
 } NodeType;
@@ -36,6 +37,8 @@ typedef struct Token {
     char *loc;
 } Token;
 
+struct NodeVec_Member;
+
 typedef struct Node {
     NodeType type;      // Node type
     struct Node *lhs;   // Left-hand side  ('then' in IF, IF_ELSE, 'body' in FOR, WHILE)
@@ -44,12 +47,18 @@ typedef struct Node {
     struct Node *cond;  // Condition (for IF, WHILE, FOR statements)
     struct Node *inc;   // Increment (for FOR statement)
     struct Node *init;  // Initialization (for FOR statement)
+    struct NodeVec_Member *body; // Block body (for BLOCK statements)
     long val;           // Value (only for ND_NUM)
     long offset;        // Offset from BP (only for ND_LOC_VAR)
     unsigned long name_len; // Length of identifier name
     char *name;    // Identifier name (only for ND_LOC_VAR)
     char *loc;
 } Node;
+
+typedef struct NodeVec_Member {
+    struct NodeVec_Member *next;
+    Node *node;
+} NodeVec_Member;
 
 typedef struct LocalVar {
     struct LocalVar *next;
