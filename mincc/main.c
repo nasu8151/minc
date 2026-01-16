@@ -92,7 +92,7 @@ int main() {
     printf("call main\n");
     printf("push r0\n");
     printf("halt\n");
-    printf("main: ");
+    printf("main:\n");
     program();
 
     return EXIT_SUCCESS;

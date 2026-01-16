@@ -21,6 +21,36 @@ Node *new_node(NodeType type, Node *lhs, Node *rhs, char *loc) {
     return node;
 }
 
+Node *new_if_else_node(NodeType type, Node *cond, Node *then, Node *else_, char *loc) {
+    Node *node = calloc(1, sizeof(Node));
+    node->type = type;
+    node->cond = cond;
+    node->lhs = then;
+    node->else_ = else_;
+    node->loc = loc;
+    return node;
+}
+
+Node *new_for_node(Node *cond, Node *inc, Node *init, Node *body, char *loc) {
+    Node *node = calloc(1, sizeof(Node));
+    node->type = ND_FOR;
+    node->cond = cond;
+    node->inc = inc;
+    node->init = init;
+    node->lhs = body;
+    node->loc = loc;
+    return node;
+}
+
+Node *new_while_node(Node *cond, Node *body, char *loc) {
+    Node *node = calloc(1, sizeof(Node));
+    node->type = ND_WHILE;
+    node->cond = cond;
+    node->lhs = body;
+    node->loc = loc;
+    return node;
+}
+
 // Create new node (type == ND_NUM)
 Node *new_num_node(long val, char *loc) {
     Node *node = calloc(1, sizeof(Node));
@@ -103,12 +133,30 @@ Node *stmt(char *l) {
         if (consume("else", loc)) {
             els = stmt(loc);
         }
-        Node *if_node = new_node(ND_IF, cond, then, loc);
         if (els) {
-            return new_node(ND_ELSE, if_node, els, loc);
+            return new_if_else_node(ND_IF_ELSE, cond, then, els, loc);
         } else {
-            return if_node;
+            return new_if_else_node(ND_IF, cond, then, NULL, loc);
         }
+    } else if (consume("for", loc)) {
+        expect("(", loc);
+        Node *init = NULL;
+        if (!consume(";", loc)) {
+            init = expr(loc);
+            expect(";", loc);
+        }
+        Node *cond = NULL;
+        if (!consume(";", loc)) {
+            cond = expr(loc);
+            expect(";", loc);
+        }
+        Node *inc = NULL;
+        if (!consume(")", loc)) {
+            inc = expr(loc);
+            expect(")", loc);
+        }
+        Node *body = stmt(loc);
+        node = new_for_node(cond, inc, init, body, loc);
     } else {
         node = expr(loc);
         expect(";", loc);
@@ -152,12 +200,12 @@ Node *relational(char *l) {
     Node *node = add(loc);
 
     while (true) {
-        if (consume("<=", loc)) {
-            node = new_node(ND_GE, node, add(loc), loc);
+        if       (consume("<=", loc)) {
+            node = new_node(ND_GE, add(loc), node, loc);
         } else if(consume(">=", loc)) {
-            node = new_node(ND_LE, node, add(loc), loc);
+            node = new_node(ND_GE, node, add(loc), loc);
         } else if (consume(">", loc)) {
-            node = new_node(ND_GT, node, add(loc), loc);
+            node = new_node(ND_LT, add(loc), node, loc);
         } else if (consume("<", loc)) {
             node = new_node(ND_LT, node, add(loc), loc);
         } else {
@@ -303,21 +351,41 @@ void generate(Node *node) {
         generate_epilogue();
         return;
     } else if (node->type == ND_IF) {
-        generate(node->lhs); // 条件式
+        generate(node->cond); // 条件式
         char *end_label = get_unique_label();
         printf("pop r0\nmvi r1,0\nsub r0,r1\njz %s,r0\n", end_label);
-        generate(node->rhs); // then節
+        generate(node->lhs); // then節
         printf("%s:\n", end_label);
         return;
-    } else if (node->type == ND_ELSE) {
-        generate(node->lhs->lhs); // 条件式
+    } else if (node->type == ND_IF_ELSE) {
+        generate(node->cond); // 条件式
         char *else_label = get_unique_label();
         char *end_label = get_unique_label();
         printf("pop r0\nmvi r1,0\nsub r0,r1\njz %s,r0\n", else_label);
-        generate(node->lhs->rhs); // then節
+        generate(node->lhs); // then節
         printf("mvi r0,0\njz %s,r0\n", end_label);
         printf("%s:\n", else_label);
-        generate(node->rhs); // else節
+        generate(node->else_); // else節
+        printf("%s:\n", end_label);
+        return;
+    } else if (node->type == ND_FOR) {
+        if (node->init) {
+            generate(node->init);
+        }
+        char *begin_label = get_unique_label();
+        char *end_label = get_unique_label();
+        if (node->cond) {
+            printf("%s:\n", begin_label);
+            generate(node->cond);
+            printf("pop r0\nmvi r1,0\nsub r0,r1\njz %s,r0\n", end_label);
+        } else {
+            printf("%s:\n", begin_label);
+        }
+        generate(node->lhs); // body
+        if (node->inc) {
+            generate(node->inc);
+        }
+        printf("mvi r0,0\njz %s,r0\n", begin_label);
         printf("%s:\n", end_label);
         return;
     }
@@ -344,12 +412,6 @@ void generate(Node *node) {
         break;
     case ND_LT:
         printf("pop r1\npop r0\nlt r0,r1\npush r0\n");
-        break;
-    case ND_LE:
-        printf("pop r1\npop r0\nlt r1,r0\nmvi r2,1\nlt r1,r2\npush r1\n");
-        break;
-    case ND_GT:
-        printf("pop r1\npop r0\nlt r1,r0\npush r1\n");
         break;
     case ND_GE:
         printf("pop r1\npop r0\nlt r0,r1\nmvi r2,1\nlt r0,r2\npush r0\n");

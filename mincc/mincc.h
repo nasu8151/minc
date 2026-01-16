@@ -14,15 +14,13 @@ typedef enum {
     ND_EQ,
     ND_NEQ,
     ND_LT,
-    ND_LE,
-    ND_GT,
     ND_GE,
     ND_NUM,
     ND_LOC_VAR,
     ND_ASSIGN,
     ND_RETURN,
     ND_IF,
-    ND_ELSE,
+    ND_IF_ELSE,
     ND_FOR,
     ND_WHILE,
 
@@ -39,11 +37,15 @@ typedef struct Token {
 } Token;
 
 typedef struct Node {
-    NodeType type;     // Node type
-    struct Node *lhs;  // Left-hand side
-    struct Node *rhs;  // Right-hand side
-    long val;          // Value (only for ND_NUM)
-    long offset;       // Offset from BP (only for ND_LOC_VAR)
+    NodeType type;      // Node type
+    struct Node *lhs;   // Left-hand side  ('then' in IF, IF_ELSE, 'body' in FOR, WHILE)
+    struct Node *rhs;   // Right-hand side
+    struct Node *else_; // Else branch (for IF_ELSE statements)
+    struct Node *cond;  // Condition (for IF, WHILE, FOR statements)
+    struct Node *inc;   // Increment (for FOR statement)
+    struct Node *init;  // Initialization (for FOR statement)
+    long val;           // Value (only for ND_NUM)
+    long offset;        // Offset from BP (only for ND_LOC_VAR)
     unsigned long name_len; // Length of identifier name
     char *name;    // Identifier name (only for ND_LOC_VAR)
     char *loc;
@@ -86,6 +88,9 @@ bool at_eof();
 Node *new_node(NodeType type, Node *lhs, Node *rhs, char *loc);
 Node *new_num_node(long val, char *loc);
 Node *new_ident_node(char *name, long offset, char *loc);
+Node *new_if_else_node(NodeType type, Node *cond, Node *then, Node *else_, char *loc);
+Node *new_for_node(Node *cond, Node *inc, Node *init, Node *body, char *loc);
+Node *new_while_node(Node *cond, Node *body, char *loc);
 
 // Syntax tree parsing functions
 void program();
