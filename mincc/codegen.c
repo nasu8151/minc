@@ -14,6 +14,9 @@ LocalVar *local_vars = NULL;
 // Create new node (type != ND_NUM)
 Node *new_node(NodeType type, Node *lhs, Node *rhs, char *loc) {
     Node *node = calloc(1, sizeof(Node));
+    if (!node) {
+        error("Memory allocation failed");
+    }
     node->type = type;
     node->lhs = lhs;
     node->rhs = rhs;
@@ -23,6 +26,9 @@ Node *new_node(NodeType type, Node *lhs, Node *rhs, char *loc) {
 
 Node *new_if_else_node(NodeType type, Node *cond, Node *then, Node *else_, char *loc) {
     Node *node = calloc(1, sizeof(Node));
+    if (!node) {
+        error("Memory allocation failed");
+    }
     node->type = type;
     node->cond = cond;
     node->lhs = then;
@@ -33,6 +39,9 @@ Node *new_if_else_node(NodeType type, Node *cond, Node *then, Node *else_, char 
 
 Node *new_for_node(Node *cond, Node *inc, Node *init, Node *body, char *loc) {
     Node *node = calloc(1, sizeof(Node));
+    if (!node) {
+        error("Memory allocation failed");
+    }
     node->type = ND_FOR;
     node->cond = cond;
     node->inc = inc;
@@ -44,6 +53,9 @@ Node *new_for_node(Node *cond, Node *inc, Node *init, Node *body, char *loc) {
 
 Node *new_while_node(Node *cond, Node *body, char *loc) {
     Node *node = calloc(1, sizeof(Node));
+    if (!node) {
+        error("Memory allocation failed");
+    }
     node->type = ND_WHILE;
     node->cond = cond;
     node->lhs = body;
@@ -54,6 +66,9 @@ Node *new_while_node(Node *cond, Node *body, char *loc) {
 // Create new node (type == ND_NUM)
 Node *new_num_node(long val, char *loc) {
     Node *node = calloc(1, sizeof(Node));
+    if (!node) {
+        error("Memory allocation failed");
+    }
     node->type = ND_NUM;
     node->val = val;
     node->loc = loc;
@@ -62,6 +77,9 @@ Node *new_num_node(long val, char *loc) {
 
 Node *new_ident_node(char *name, long offset, char *loc) {
     Node *node = calloc(1, sizeof(Node));
+    if (!node) {
+        error("Memory allocation failed");
+    }
     node->type = ND_LOC_VAR;
     node->offset = offset;
     node->name = mystrndup(name, strlen(name));
@@ -72,6 +90,9 @@ Node *new_ident_node(char *name, long offset, char *loc) {
 
 Node *new_node_vec() {
     Node *node = calloc(1, sizeof(Node));
+    if (!node) {
+        error("Memory allocation failed");
+    }
     node->type = ND_BLOCK;
     node->body = NULL;
     return node;
@@ -79,6 +100,9 @@ Node *new_node_vec() {
 
 NodeVec_Member *add_node_vec_member(Node *node) {
     NodeVec_Member *member = calloc(1, sizeof(NodeVec_Member));
+    if (!member) {
+        error("Memory allocation failed");
+    }
     member->node = node;
     member->next = NULL;
     return member;
@@ -136,16 +160,16 @@ void program() {
 Node *stmt(char *l) {
     Node *node;
     char *loc = l;
-    if (consume("return", loc)) {
+    if (consume_la("return", loc)) {
         node = new_node(ND_RETURN, expr(loc), NULL, loc);
         expect(";", loc);
-    } else if (consume("if", loc)) {
+    } else if (consume_la("if", loc)) {
         expect("(", loc);
         Node *cond = expr(loc);
         expect(")", loc);
         Node *then = stmt(loc);
         Node *els = NULL;
-        if (consume("else", loc)) {
+        if (consume_la("else", loc)) {
             els = stmt(loc);
         }
         if (els) {
@@ -153,34 +177,37 @@ Node *stmt(char *l) {
         } else {
             node = new_if_else_node(ND_IF, cond, then, NULL, loc);
         }
-    } else if (consume("for", loc)) {
+    } else if (consume_la("for", loc)) {
         expect("(", loc);
         Node *init = NULL;
-        if (!consume(";", loc)) {
+        if (!consume_la(";", loc)) {
             init = expr(loc);
             expect(";", loc);
         }
         Node *cond = NULL;
-        if (!consume(";", loc)) {
+        if (!consume_la(";", loc)) {
             cond = expr(loc);
             expect(";", loc);
         }
         Node *inc = NULL;
-        if (!consume(")", loc)) {
+        if (!consume_la(")", loc)) {
             inc = expr(loc);
             expect(")", loc);
         }
         Node *body = stmt(loc);
         node = new_for_node(cond, inc, init, body, loc);
-    } else if (consume("while", loc)) {
+    } else if (consume_la("while", loc)) {
         expect("(", loc);
         Node *cond = expr(loc);
         expect(")", loc);
         Node *body = stmt(loc);
         node = new_while_node(cond, body, loc);
-    } else if (consume("{", loc)) {
+    } else if (consume_la("{", loc)) {
         node = new_node_vec();
         NodeVec_Member *head = calloc(1, sizeof(NodeVec_Member));
+        if (!head) {
+            error("Memory allocation failed");
+        }
         NodeVec_Member *cur = head;
         while (!consume("}", loc)) {
             cur->next = add_node_vec_member(stmt(loc));
@@ -204,7 +231,7 @@ Node *assign(char *l) {
     char *loc = l;
     Node *node = equality(loc);
 
-    if (consume("=", loc)) {
+    if (consume_la("=", loc)) {
         node = new_node(ND_ASSIGN, node, assign(loc), loc);
     }
     return node;
@@ -215,9 +242,9 @@ Node *equality(char *l) {
     Node *node = relational(loc);
 
     while (true) {
-        if (consume("==", loc)) {
+        if (consume_la("==", loc)) {
             node = new_node(ND_EQ, node, relational(loc), loc);
-        } else if (consume("!=", loc)) {
+        } else if (consume_la("!=", loc)) {
             node = new_node(ND_NEQ, node, relational(loc), loc);
         } else {
             return node;
@@ -230,13 +257,13 @@ Node *relational(char *l) {
     Node *node = add(loc);
 
     while (true) {
-        if       (consume("<=", loc)) {
+        if       (consume_la("<=", loc)) {
             node = new_node(ND_GE, add(loc), node, loc);
-        } else if(consume(">=", loc)) {
+        } else if(consume_la(">=", loc)) {
             node = new_node(ND_GE, node, add(loc), loc);
-        } else if (consume(">", loc)) {
+        } else if (consume_la(">", loc)) {
             node = new_node(ND_LT, add(loc), node, loc);
-        } else if (consume("<", loc)) {
+        } else if (consume_la("<", loc)) {
             node = new_node(ND_LT, node, add(loc), loc);
         } else {
             return node;
@@ -249,9 +276,9 @@ Node *add(char *l) {
     Node *node = mul(loc);
     
     while (true) {
-        if (consume("+", loc)) {
+        if (consume_la("+", loc)) {
             node = new_node(ND_ADD, node, mul(loc), loc);
-        } else if (consume("-", loc)) {
+        } else if (consume_la("-", loc)) {
             node = new_node(ND_SUB, node, mul(loc), loc);
         } else {
             return node;
@@ -264,7 +291,7 @@ Node *mul(char *l) {
     Node *node = unary(loc);
 
     while (true) {
-        if (consume("*", loc)) {
+        if (consume_la("*", loc)) {
             node = new_node(ND_MUL, node, unary(loc), loc);
         } else {
             return node;
@@ -274,7 +301,7 @@ Node *mul(char *l) {
 
 Node *primary(char *l) {       // primary = num | ident | "(" expr ")"
     char *loc = l;
-    if (consume("(", loc)) { // かっこがあるなら、"(" expr ")"のはず
+    if (consume_la("(", loc)) { // かっこがあるなら、"(" expr ")"のはず
         Node *node = expr(loc);
 
         expect(")", loc); // かっこは閉じられるはず...
@@ -300,9 +327,9 @@ Node *primary(char *l) {       // primary = num | ident | "(" expr ")"
 
 Node *unary(char *l) {
     char *loc = l;
-    if (consume("+", loc)) {
+    if (consume_la("+", loc)) {
         return new_node(ND_ADD, new_num_node(0, loc), unary(loc), loc);
-    } else if (consume("-", loc)) {
+    } else if (consume_la("-", loc)) {
         return new_node(ND_SUB, new_num_node(0, loc), unary(loc), loc);
     } else {
         return primary(loc);

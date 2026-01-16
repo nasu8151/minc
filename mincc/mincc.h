@@ -80,6 +80,11 @@ Token *tokenize(const char *p);
 
 // Consume a token if it matches the expected string
 // Return true if matched, false otherwise
+// If reached EOF, return false
+bool consume_la(const char *op, char *loc);
+// Consume a token if it matches the expected string
+// Return true if matched, false otherwise
+// If reached EOF, throw an error
 bool consume(const char *op, char *loc);
 // Consume a token if it matches the expected string
 // Otherwise, throw an error

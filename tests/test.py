@@ -28,6 +28,7 @@ if __name__ == "__main__":
     # MINCC tests
     tf.expect_fail("""echo "1+" | ./target/mincc""") # Incomplete expression
     tf.expect_fail("""echo "a+1=5;" | ./target/mincc""") # Invalid assignment
+    tf.expect_fail("""echo "i=0;\nwhile(i<10) {\n i=i+1;\n if (i==5) {\nreturn 20*i;\n}\n\nreturn 0;" | target/mincc """) # Missing closing brace
 
     # E2E tests
     tf.test_e2e("return 1+2;", 3)

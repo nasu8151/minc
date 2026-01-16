@@ -7,13 +7,9 @@ def expect(command:str, expected_output:str):
     output = result.stdout.strip()
     error  = result.stderr.strip()
 
-    escaped_command = command.replace("\n", "\\n").replace("\r", "\\r")
-    escaped_output = output.replace("\n", "\\n").replace("\r", "\\r")
-    escaped_error = error.replace("\n", "\\n").replace("\r", "\\r")
-
-    assert result.returncode == 0, f"""[FAIL] Command failed with return code {result.returncode}: "{escaped_command}" \nStderr: "{escaped_error}" """
-    assert output == expected_output, f"""[FAIL] Expected: "{escaped_expected_output}", but got: "{escaped_output}" """
-    print(f"""[OK] "{escaped_command}" => "{escaped_output}" """)
+    assert result.returncode == 0, f"""[FAIL] Command failed with return code {result.returncode}: "{command}" \nStderr: "{error}" """
+    assert output == expected_output, f"""[FAIL] Expected: "{expected_output}", but got: "{output}" """
+    print(f"""[OK] "{command}" => "{output}" """)
 
 def expect_fail(command:str):
 
@@ -21,12 +17,8 @@ def expect_fail(command:str):
     output = result.stdout.strip()
     error  = result.stderr.strip()
 
-    escaped_command = command.replace("\n", "\\n").replace("\r", "\\r")
-    escaped_output = output.replace("\n", "\\n").replace("\r", "\\r")
-    escaped_error = error.replace("\n", "\\n").replace("\r", "\\r")
-
     assert result.returncode != 0, f"""[FAIL] Expected failure but command succeeded: "{command}" """
-    print(f"""[OK] "{escaped_command}" failed as expected with output: "{escaped_output}"\nand stderr: "{escaped_error}" """)
+    print(f"""[OK] "{command}" failed as expected with output: "{output}"\nand stderr: "{error}" """)
 
 def test_e2e(code:str, expected_top:int, verbose:bool=False):
     output = ""
