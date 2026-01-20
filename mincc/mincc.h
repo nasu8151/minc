@@ -16,7 +16,8 @@ typedef enum {
     ND_LT,
     ND_GE,
     ND_NUM,
-    ND_LOC_VAR,
+    ND_LOCAL_VAR,
+    ND_GLOBAL_VAR,
     ND_ASSIGN,
     ND_RETURN,
     ND_IF,
@@ -24,6 +25,8 @@ typedef enum {
     ND_FOR,
     ND_WHILE,
     ND_BLOCK,
+    ND_FUNC_DEF,
+    ND_FUNC_CALL,
 
     ND_EOF
 } NodeType;
@@ -49,9 +52,9 @@ typedef struct Node {
     struct Node *init;  // Initialization (for FOR statement)
     struct NodeVec_Member *body; // Block body (for BLOCK statements)
     long val;           // Value (only for ND_NUM)
-    long offset;        // Offset from BP (only for ND_LOC_VAR)
+    long offset;        // Offset from BP (only for ND_LOCAL_VAR)
     unsigned long name_len; // Length of identifier name
-    char *name;    // Identifier name (only for ND_LOC_VAR)
+    char *name;    // Identifier name (only for ND_LOCAL_VAR)
     char *loc;
 } Node;
 
@@ -60,12 +63,13 @@ typedef struct NodeVec_Member {
     Node *node;
 } NodeVec_Member;
 
-typedef struct LocalVar {
-    struct LocalVar *next;
+typedef struct Ident_Name {
+    struct Ident_Name *next;
     unsigned long name_len; // Length of variable name
     char *name;       // Variable name (null-terminated)
-    long offset;      // Offset from BP
-} LocalVar;
+    long address;     // Address for global variables
+    long offset;      // Offset from BP or base address
+} Ident_Name;
 
 extern Token *token;
 
@@ -93,7 +97,8 @@ void expect(const char *op, char *loc);
 // Otherwise, throw an error
 long expect_number(char *loc);
 // Expect an identifier token and return its string
-// Otherwise, throw an error
+// If reached EOF, throw an error
+// Otherwise, throw NULL
 char *expect_ident(char *loc);
 bool is_number_node();
 bool at_eof();
@@ -119,7 +124,7 @@ Node *primary(char *l);
 Node *unary(char *l);
 
 // Local variable functions
-LocalVar *find_local_var(Token *tok);
+Ident_Name *find_local_var(Token *tok);
 void add_local_var(Token *tok);
 long count_local_vars();
 

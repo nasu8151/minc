@@ -9,7 +9,9 @@
 
 Node code[256];
 
-LocalVar *local_vars = NULL;
+Ident_Name *global_vars = NULL;
+
+Ident_Name *local_vars = NULL;
 
 // Create new node (type != ND_NUM)
 Node *new_node(NodeType type, Node *lhs, Node *rhs, char *loc) {
@@ -80,10 +82,23 @@ Node *new_ident_node(char *name, long offset, char *loc) {
     if (!node) {
         error("Memory allocation failed");
     }
-    node->type = ND_LOC_VAR;
+    node->type = ND_LOCAL_VAR;
     node->offset = offset;
     node->name = mystrndup(name, strlen(name));
     node->name_len = strlen(name);
+    node->loc = loc;
+    return node;
+}
+
+Node *new_func_node(char *name, Node *body, char *loc) {
+    Node *node = calloc(1, sizeof(Node));
+    if (!node) {
+        error("Memory allocation failed");
+    }
+    node->type = ND_FUNC_DEF;
+    node->name = mystrndup(name, strlen(name));
+    node->name_len = strlen(name);
+    node->lhs = body;
     node->loc = loc;
     return node;
 }
@@ -111,23 +126,26 @@ NodeVec_Member *add_node_vec_member(Node *node) {
 void print_node(Node *node) {
     if (node->type == ND_NUM) {
         printf("ND_NUM: %ld\n", node->val);
-    } else if (node->type == ND_LOC_VAR) {
-        printf("ND_LOC_VAR: %s\n", node->name);
+    } else if (node->type == ND_LOCAL_VAR) {
+        printf("ND_LOCAL_VAR: %s\n", node->name);
     } else {
         printf("Node type: %d\n", node->type);
         if (node->lhs) {
-            printf("LHS:\n");
+            printf("(LHS:\n");
             print_node(node->lhs);
+            printf(")\n");
         }
         if (node->rhs) {
-            printf("RHS:\n");
+            printf("(RHS:\n");
             print_node(node->rhs);
+            printf(")\n");
         }
     }
 }
 
 /***************************************************************
-program     = stmt*
+program     = toplevel*
+toplevel    = ident "=" assign ";" | ident "(" ")" stmt  <-- must be a block
 stmt        = expr ";"
             | "{" stmt* "}"
             | "return" expr ";"
@@ -141,19 +159,34 @@ relational = add ("<" add | "<=" add | ">" add | ">=" add)*
 add        = mul ("+" mul | "-" mul)*
 mul        = unary ("*" unary)*
 unary      = ("+" | "-")? primary
-primary    = num | ident | "(" expr ")"
+primary    = num | ident | ident "(" ")" | "(" expr ")"
 ****************************************************************/
 
 void program() {
     long i = 0;
     while (!at_eof()) {
-        code[i++] = *stmt(token->loc);
+        code[i++] = *expr(token->loc);
     }
     code[i] = *new_node(ND_EOF, NULL, NULL, token->loc);
 
     generate_prologue(count_local_vars());
     for (long j = 0; j < i; j++) {
         generate(&code[j]);
+    }
+}
+
+Node *toplevel(char *loc) {
+    char *l = loc;
+    char *name = expect_ident(l);
+    if (consume_la("(", l)) {
+        expect(")", l);
+        return new_func_node(name, stmt(l), l);
+    } else {
+        expect("=", l);
+        Node *rhs = assign(l);
+        expect(";", l);
+        Node *node = new_node(ND_ASSIGN, new_ident_node(name, 0, l), rhs, l);
+        return node;
     }
 }
 
@@ -309,7 +342,7 @@ Node *primary(char *l) {       // primary = num | ident | "(" expr ")"
     } else if (is_number_node()) {         // numの部分
         return new_num_node(expect_number(loc), loc);
     } else {                               // identの部分
-        LocalVar *var = find_local_var(token);
+        Ident_Name *var = find_local_var(token);
         Token *tok = token;
         char *name = expect_ident(loc);
         long offset;
@@ -336,8 +369,8 @@ Node *unary(char *l) {
     }
 }
 
-LocalVar *find_local_var(Token *tok) {
-    LocalVar *var = local_vars;
+Ident_Name *find_local_var(Token *tok) {
+    Ident_Name *var = local_vars;
     while (var) {
         // fprintf(stderr, "Comparing %s with %s\n", var->name, tok->str);
         if (strcmp(var->name, tok->str) == 0) {
@@ -349,17 +382,28 @@ LocalVar *find_local_var(Token *tok) {
 }
 
 void add_local_var(Token *tok) {
-    LocalVar *var = calloc(1, sizeof(LocalVar));
+    Ident_Name *var = calloc(1, sizeof(Ident_Name));
     var->name_len = tok->size;
     var->name = mystrndup(tok->str, tok->size);
     var->offset = (local_vars ? local_vars->offset - 1 : -1);
+    var->address = 0; // ローカル変数のアドレスは0に設定
     var->next = local_vars;
     local_vars = var;
 }
 
+void add_global_var(Token *tok) {
+    Ident_Name *var = calloc(1, sizeof(Ident_Name));
+    var->name_len = tok->size;
+    var->name = mystrndup(tok->str, tok->size);
+    var->offset = 0; // グローバル変数のオフセットは0に設定
+    var->address = global_vars ? global_vars->address + 1 : 0;
+    var->next = global_vars;
+    global_vars = var;
+}
+
 long count_local_vars() {
     long count = 0;
-    LocalVar *var = local_vars;
+    Ident_Name *var = local_vars;
     while (var) {
         count++;
         var = var->next;
@@ -394,12 +438,12 @@ void generate(Node *node) {
     case ND_NUM: {
         printf("mvi r0,%ld\npush r0\n", node->val);
         return;
-    } case ND_LOC_VAR: {
+    } case ND_LOCAL_VAR: {
         printf("ldm r0,%ld\npush r0\n", node->offset);
         return;
     } case ND_ASSIGN: {
         generate(node->rhs);
-        if (node->lhs->type != ND_LOC_VAR) {
+        if (node->lhs->type != ND_LOCAL_VAR) {
             error_at(node->lhs->loc, "Left-hand side of assignment must be a variable");
         }
         printf("pop r0\nstm %ld,r0\n", node->lhs->offset);
@@ -411,7 +455,7 @@ void generate(Node *node) {
     } case ND_IF: {
         generate(node->cond); // 条件式
         char *end_label = get_unique_label();
-        printf("pop r0\nmvi r1,0\nsub r0,r1\njz %s,r0\n", end_label);
+        printf("pop r0\njz %s,r0\n", end_label);
         generate(node->lhs); // then節
         printf("%s:\n", end_label);
         return;
@@ -419,7 +463,7 @@ void generate(Node *node) {
         generate(node->cond); // 条件式
         char *else_label = get_unique_label();
         char *end_label = get_unique_label();
-        printf("pop r0\nmvi r1,0\nsub r0,r1\njz %s,r0\n", else_label);
+        printf("pop r0\njz %s,r0\n", else_label);
         generate(node->lhs); // then節
         printf("mvi r0,0\njz %s,r0\n", end_label);
         printf("%s:\n", else_label);
@@ -435,7 +479,7 @@ void generate(Node *node) {
         if (node->cond) {
             printf("%s:\n", begin_label);
             generate(node->cond);
-            printf("pop r0\nmvi r1,0\nsub r0,r1\njz %s,r0\n", end_label);
+            printf("pop r0\njz %s,r0\n", end_label);
         } else {
             printf("%s:\n", begin_label);
         }
@@ -451,7 +495,7 @@ void generate(Node *node) {
         char *end_label = get_unique_label();
         printf("%s:\n", begin_label);
         generate(node->cond);
-        printf("pop r0\nmvi r1,0\nsub r0,r1\njz %s,r0\n", end_label);
+        printf("pop r0\njz %s,r0\n", end_label);
         generate(node->lhs); // body
         printf("mvi r0,0\njz %s,r0\n", begin_label);
         printf("%s:\n", end_label);

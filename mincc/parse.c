@@ -79,7 +79,7 @@ long expect_number(char *loc) {
 }
 
 // Expect an identifier token and return its string
-// Otherwise, throw an error
+// Otherwise, throw NULL
 char *expect_ident(char *loc) {
     if (token->type == TOKEN_EOF) {
         error_at(token->loc, "Expected an identifier, but got EOF");

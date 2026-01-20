@@ -25,9 +25,24 @@ void error(const char *fmt, ...) {
 void error_at(char *loc, const char *fmt, ...) {
     va_list ap;
     va_start(ap, fmt);
-
-    int pos = loc - user_input;
-    fprintf(stderr, "         %s\n", user_input);
+    char *line_start = loc;
+    while (user_input < line_start && *(line_start - 1) != '\n') {
+        line_start--;
+    }
+    char *line_end = loc;
+    while (*line_end != '\n' && *line_end != '\0') {
+        line_end++;
+    }
+    unsigned long line_num = 1;
+    for (char *p = user_input; p < line_start; p++) {
+        if (*p == '\n') {
+            line_num++;
+        }
+    }
+    char *line_buf = mystrndup(line_start, line_end - line_start);
+    int pos = loc - line_start;
+    fprintf(stderr, "At line %lu:\n", line_num);
+    fprintf(stderr, "         %s\n", line_buf);
     fprintf(stderr, "[Error]: ");
     fprintf(stderr, "%*s", pos, ""); // pos個の空白を出力
     fprintf(stderr, "^ ");
@@ -49,15 +64,31 @@ void warn(const char *fmt, ...) {
 void warn_at(char *loc, const char *fmt, ...) {
     va_list ap;
     va_start(ap, fmt);
-
-    int pos = loc - user_input;
-    fprintf(stderr, "           %s\n", user_input);
+    char *line_start = loc;
+    while (user_input < line_start && *(line_start - 1) != '\n') {
+        line_start--;
+    }
+    char *line_end = loc;
+    while (*line_end != '\n' && *line_end != '\0') {
+        line_end++;
+    }
+    unsigned long line_num = 1;
+    for (char *p = user_input; p < line_start; p++) {
+        if (*p == '\n') {
+            line_num++;
+        }
+    }
+    char *line_buf = mystrndup(line_start, line_end - line_start);
+    int pos = loc - line_start;
+    fprintf(stderr, "At line %lu:\n", line_num);
+    fprintf(stderr, "          %s\n", line_buf);
     fprintf(stderr, "[Warning]: ");
     fprintf(stderr, "%*s", pos, ""); // pos個の空白を出力
     fprintf(stderr, "^ ");
     vfprintf(stderr, fmt, ap);
     fprintf(stderr, "\n");
     va_end(ap);
+    free(line_buf);
 }
 
 
@@ -72,11 +103,8 @@ int main() {
     if (!code) {
         error("out of memory");
     }
-    while (fgets(line, sizeof(line), stdin)) {
-        char *cr_lf = strpbrk(line, "\r\n"); //改行コードを排除
-        if (cr_lf) {
-            *cr_lf = '\0';
-        }
+    while (fgets(line, sizeof(line) - 1, stdin)) {
+        line[sizeof(line) - 1] = '\0'; // null terminate
         char *new_code = (char *)realloc(code, strlen(code) + strlen(line) + 1);
         if (!new_code) {
             error("out of memory");
