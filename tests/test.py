@@ -26,35 +26,35 @@ if __name__ == "__main__":
     # Undefined label should fail
     tf.expect_fail("""echo "jz NO_SUCH_LABEL,r0" | ./target/mincasm""")
     # MINCC tests
-    tf.expect_fail("""echo "1+" | ./target/mincc""") # Incomplete expression
-    tf.expect_fail("""echo "a+1=5;" | ./target/mincc""") # Invalid assignment
-    tf.expect_fail("""echo "i=0;\nwhile(i<10) {\n i=i+1;\n if (i==5) {\nreturn 20*i;\n}\n\nreturn 0;" | target/mincc """) # Missing closing brace
+    tf.expect_fail("""echo "main(){1+}" | ./target/mincc""") # Incomplete expression
+    tf.expect_fail("""echo "main(){a+1=5;}" | ./target/mincc""") # Invalid assignment
+    tf.expect_fail("""echo "main(){i>=0;\nwhile(i<10) {\n i=i+1;\n if (i==5) {\nreturn 20*i;\n}\n\nreturn 0;}" | target/mincc """) # Missing closing brace
 
     # E2E tests
-    tf.test_e2e("return 1+2;", 3)
-    tf.test_e2e("return 10-3;", 7)
-    tf.test_e2e("return 2*3;", 6)
-    tf.test_e2e("return (1+2)*3;", 9)
-    tf.test_e2e("return -3+5;", 2)
-    tf.test_e2e("return -(2+3)*4;", -20)
-    tf.test_e2e("return +5+(+3);", 8)
-    tf.test_e2e("return 1+1==2;", 1)
-    tf.test_e2e("return 1+1==3;", 0)
-    tf.test_e2e("return 2*2!=5;", 1)
-    tf.test_e2e("return (-2)*(-2)!=4;", 0)
-    tf.test_e2e("return (3+2<6)+(3+2<5);", 1)
-    tf.test_e2e("return (3+3<=6)+(3+3<=5);", 1)
-    tf.test_e2e("return (5>2+2)+(4>2+2);", 1)
-    tf.test_e2e("return (2+2>=4)+(2+2>=5);", 1)
-    tf.test_e2e("a=3;return a+2;", 5)
-    tf.test_e2e("a=2;b=3;return a*b;", 6)
-    tf.test_e2e("hoge=4;fuga=5;return hoge+fuga;", 9)
-    tf.test_e2e("a =1;\nb = 2;\nc  = 3;\nreturn a + b* c;", 7)
-    tf.test_e2e("hoge =3;\nfuga= hoge +2;\nif (fuga==5) return 42;\nreturn 0;", 42)
-    tf.test_e2e("hoge=2; fuga = 3;\nif (hoge != 0) if (hoge+fuga > 3) return 2;\nelse return 0;", 2)
-    tf.test_e2e("sum=0;\nfor(i=1;i<5;i=i+1) sum=sum+i;\nreturn sum;", 10)
-    tf.test_e2e("i=0;\nwhile(i<3) i=i+1;\nreturn i;", 3)
-    tf.test_e2e("i=0;\nwhile(i<10) {\n i=i+1;\n if (i==5) {\nreturn 20*i;\n}\n}\nreturn 0;", 100)
+    tf.test_e2e("main(){return 1+2;}", 3)
+    tf.test_e2e("main(){return 10-3;}", 7)
+    tf.test_e2e("main(){return 2*3;}", 6)
+    tf.test_e2e("main(){return (1+2)*3;}", 9)
+    tf.test_e2e("main(){return -3+5;}", 2)
+    tf.test_e2e("main(){return -(2+3)*4;}", -20)
+    tf.test_e2e("main(){return +5+(+3);}", 8)
+    tf.test_e2e("main(){return 1+1==2;}", 1)
+    tf.test_e2e("main(){return 1+1==3;}", 0)
+    tf.test_e2e("main(){return 2*2!=5;}", 1)
+    tf.test_e2e("main(){return (-2)*(-2)!=4;}", 0)
+    tf.test_e2e("main(){return (3+2<6)+(3+2<5);}", 1)
+    tf.test_e2e("main(){return (3+3<=6)+(3+3<=5);}", 1)
+    tf.test_e2e("main(){return (5>2+2)+(4>2+2);}", 1)
+    tf.test_e2e("main(){return (2+2>=4)+(2+2>=5);}", 1)
+    tf.test_e2e("main(){a=3;return a+2;}", 5)
+    tf.test_e2e("main(){a=2;b=3;return a*b;}", 6)
+    tf.test_e2e("main(){hoge=4;fuga=5;return hoge+fuga;}", 9)
+    tf.test_e2e("main(){a =1;\nb = 2;\nc  = 3;\nreturn a + b* c;}", 7)
+    tf.test_e2e("main(){hoge =3;\nfuga= hoge +2;\nif (fuga==5) return 42;\nreturn 0;}", 42)
+    tf.test_e2e("main(){hoge=2; fuga = 3;\nif (hoge != 0) if (hoge+fuga > 3) return 2;\nelse return 0;}", 2)
+    tf.test_e2e("main(){sum=0;\nfor(i=1;i<5;i=i+1) sum=sum+i;\nreturn sum;}", 10)
+    tf.test_e2e("main(){i=0;\nwhile(i<3) i=i+1;\nreturn i;}", 3)
+    tf.test_e2e("main(){i=0;\nwhile(i<10) {\n i=i+1;\n if (i==5) {\nreturn 20*i;\n}\n}\nreturn 0;}", 100)
 
 
     print()

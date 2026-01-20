@@ -117,10 +117,10 @@ int main() {
 
     token = tokenize(user_input);
 
+    // crt0
     printf("call main\n");
     printf("push r0\n");
     printf("halt\n");
-    printf("main:\n");
     program();
 
     return EXIT_SUCCESS;

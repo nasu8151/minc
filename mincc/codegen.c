@@ -165,7 +165,7 @@ primary    = num | ident | ident "(" ")" | "(" expr ")"
 void program() {
     long i = 0;
     while (!at_eof()) {
-        code[i++] = *expr(token->loc);
+        code[i++] = *toplevel(token->loc);
     }
     code[i] = *new_node(ND_EOF, NULL, NULL, token->loc);
 
@@ -506,6 +506,15 @@ void generate(Node *node) {
             generate(member->node);
             member = member->next;
         }
+        return;
+    } case ND_FUNC_DEF: {
+        printf("%s:\n", node->name);
+        generate_prologue(count_local_vars());
+        if (node->lhs->type != ND_BLOCK) {
+            error_at(node->loc, "Function body must be a block");
+        }
+        generate(node->lhs); // function body
+        generate_epilogue();
         return;
     }
     default:

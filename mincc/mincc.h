@@ -113,6 +113,7 @@ Node *new_while_node(Node *cond, Node *body, char *loc);
 
 // Syntax tree parsing functions
 void program();
+Node *toplevel(char *l);
 Node *stmt(char *l);
 Node *assign(char *l);
 Node *equality(char *l);
