@@ -52,7 +52,8 @@ typedef struct Node {
     struct Node *init;  // Initialization (for FOR statement)
     struct NodeVec_Member *body; // Block body (for BLOCK statements)
     long val;           // Value (only for ND_NUM)
-    long offset;        // Offset from BP (only for ND_LOCAL_VAR)
+    long ofs_addr;        // Offset from BP (only for ND_LOCAL_VAR)
+    long stack_frame_size; // Stack frame size (only for ND_FUNC_DEF)
     unsigned long name_len; // Length of identifier name
     char *name;    // Identifier name (only for ND_LOCAL_VAR)
     char *loc;
@@ -63,13 +64,41 @@ typedef struct NodeVec_Member {
     Node *node;
 } NodeVec_Member;
 
+typedef enum {
+    VAR_LOCAL,
+    VAR_GLOBAL_STATIC,
+} VarType;
+
 typedef struct Ident_Name {
     struct Ident_Name *next;
     unsigned long name_len; // Length of variable name
     char *name;       // Variable name (null-terminated)
+    VarType type;     // Variable type
     long address;     // Address for global variables
     long offset;      // Offset from BP or base address
 } Ident_Name;
+
+/*
+global variable list structure
+(top)
++ global_vars -> Ident_Name *next
+                    -> ...
++ Vars_list *next (local vars)
+    + local_vars -> Ident_Name *next
+                    -> ...
+    + Vars_list *next (block scope vars)
+    + block_vars -> Ident_Name *next
+                    -> ...
+        + ...
+*/
+
+typedef struct Vars_List {
+    struct Vars_List *parent;
+    struct Vars_List *child;
+    Ident_Name *var_head;
+    Ident_Name *var_tail;
+    long max_vars_count;
+} Vars_List;
 
 extern Token *token;
 
@@ -106,7 +135,7 @@ bool at_eof();
 // Genelate node
 Node *new_node(NodeType type, Node *lhs, Node *rhs, char *loc);
 Node *new_num_node(long val, char *loc);
-Node *new_ident_node(char *name, long offset, char *loc);
+Node *new_ident_node(NodeType type, char *name, long offset, char *loc);
 Node *new_if_else_node(NodeType type, Node *cond, Node *then, Node *else_, char *loc);
 Node *new_for_node(Node *cond, Node *inc, Node *init, Node *body, char *loc);
 Node *new_while_node(Node *cond, Node *body, char *loc);
@@ -125,9 +154,14 @@ Node *primary(char *l);
 Node *unary(char *l);
 
 // Local variable functions
-Ident_Name *find_local_var(Token *tok);
+Ident_Name *find_var(Token *tok);
 void add_local_var(Token *tok);
+void add_global_var(Token *tok);
 long count_local_vars();
+long count_global_vars();
+
+void new_scope();
+long end_scope();
 
 // Label generation function
 char *get_unique_label();

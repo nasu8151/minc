@@ -118,6 +118,7 @@ int main() {
     token = tokenize(user_input);
 
     // crt0
+    printf("call __on_entry\n");
     printf("call main\n");
     printf("push r0\n");
     printf("halt\n");

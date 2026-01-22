@@ -9,9 +9,9 @@
 
 Node code[256];
 
-Ident_Name *global_vars = NULL;
-
-Ident_Name *local_vars = NULL;
+Vars_List *head = NULL;
+Vars_List *current = NULL;
+Vars_List *tail = NULL;
 
 // Create new node (type != ND_NUM)
 Node *new_node(NodeType type, Node *lhs, Node *rhs, char *loc) {
@@ -77,20 +77,20 @@ Node *new_num_node(long val, char *loc) {
     return node;
 }
 
-Node *new_ident_node(char *name, long offset, char *loc) {
+Node *new_ident_node(NodeType type, char *name, long ofs_addr, char *loc) {
     Node *node = calloc(1, sizeof(Node));
     if (!node) {
         error("Memory allocation failed");
     }
-    node->type = ND_LOCAL_VAR;
-    node->offset = offset;
+    node->type = type;
+    node->ofs_addr = ofs_addr;
     node->name = mystrndup(name, strlen(name));
     node->name_len = strlen(name);
     node->loc = loc;
     return node;
 }
 
-Node *new_func_node(char *name, Node *body, char *loc) {
+Node *new_func_node(char *name, Node *body, long stack_frame_size, char *loc) {
     Node *node = calloc(1, sizeof(Node));
     if (!node) {
         error("Memory allocation failed");
@@ -99,6 +99,7 @@ Node *new_func_node(char *name, Node *body, char *loc) {
     node->name = mystrndup(name, strlen(name));
     node->name_len = strlen(name);
     node->lhs = body;
+    node->stack_frame_size = stack_frame_size;
     node->loc = loc;
     return node;
 }
@@ -125,20 +126,51 @@ NodeVec_Member *add_node_vec_member(Node *node) {
 
 void print_node(Node *node) {
     if (node->type == ND_NUM) {
-        printf("ND_NUM: %ld\n", node->val);
+        fprintf(stderr, "ND_NUM: %ld\n", node->val);
     } else if (node->type == ND_LOCAL_VAR) {
-        printf("ND_LOCAL_VAR: %s\n", node->name);
+        fprintf(stderr, "ND_LOCAL_VAR: %s\n", node->name);
+    } else if (node->type == ND_GLOBAL_VAR) {
+        fprintf(stderr, "ND_GLOBAL_VAR: %s\n", node->name);
     } else {
-        printf("Node type: %d\n", node->type);
+        fprintf(stderr, "Node type: %d\n", node->type);
         if (node->lhs) {
-            printf("(LHS:\n");
+            fprintf(stderr, "(LHS:\n");
             print_node(node->lhs);
-            printf(")\n");
+            fprintf(stderr, ")\n");
         }
         if (node->rhs) {
-            printf("(RHS:\n");
+            fprintf(stderr, "(RHS:\n");
             print_node(node->rhs);
-            printf(")\n");
+            fprintf(stderr, ")\n");
+        }
+        if (node->cond) {
+            fprintf(stderr, "(COND:\n");
+            print_node(node->cond);
+            fprintf(stderr, ")\n");
+        }
+        if (node->else_) {
+            fprintf(stderr, "(ELSE:\n");
+            print_node(node->else_);
+            fprintf(stderr, ")\n");
+        }
+        if (node->init) {
+            fprintf(stderr, "(INIT:\n");
+            print_node(node->init);
+            fprintf(stderr, ")\n");
+        }
+        if (node->inc) {
+            fprintf(stderr, "(INC:\n");
+            print_node(node->inc);
+            fprintf(stderr, ")\n");
+        }
+        if (node->body) {
+            fprintf(stderr, "(BODY:\n");
+            NodeVec_Member *cur = node->body;
+            while (cur) {
+                print_node(cur->node);
+                cur = cur->next;
+            }
+            fprintf(stderr, ")\n");
         }
     }
 }
@@ -164,13 +196,27 @@ primary    = num | ident | ident "(" ")" | "(" expr ")"
 
 void program() {
     long i = 0;
+    head = calloc(1, sizeof(Vars_List));
+    tail = head;
     while (!at_eof()) {
         code[i++] = *toplevel(token->loc);
     }
     code[i] = *new_node(ND_EOF, NULL, NULL, token->loc);
 
-    generate_prologue(count_local_vars());
     for (long j = 0; j < i; j++) {
+        print_node(&code[j]);
+    }
+
+    printf("__on_entry:\n");
+    for (long j = 0; j < i; j++) {
+        if (code[j].type == ND_ASSIGN) // Global variable assignment
+            generate(&code[j]);
+    }
+    printf("ret\n");
+
+    for (long j = 0; j < i; j++) {
+        if (code[j].type == ND_ASSIGN) // Global variable assignment
+            continue;
         generate(&code[j]);
     }
 }
@@ -180,12 +226,12 @@ Node *toplevel(char *loc) {
     char *name = expect_ident(l);
     if (consume_la("(", l)) {
         expect(")", l);
-        return new_func_node(name, stmt(l), l);
+        Node *node = new_func_node(name, stmt(l), 0, l);
     } else {
         expect("=", l);
         Node *rhs = assign(l);
         expect(";", l);
-        Node *node = new_node(ND_ASSIGN, new_ident_node(name, 0, l), rhs, l);
+        Node *node = new_node(ND_ASSIGN, new_ident_node(ND_GLOBAL_VAR, name, 0, l), rhs, l);
         return node;
     }
 }
@@ -236,6 +282,7 @@ Node *stmt(char *l) {
         Node *body = stmt(loc);
         node = new_while_node(cond, body, loc);
     } else if (consume_la("{", loc)) {
+        new_scope();
         node = new_node_vec();
         NodeVec_Member *head = calloc(1, sizeof(NodeVec_Member));
         if (!head) {
@@ -247,6 +294,7 @@ Node *stmt(char *l) {
             cur = cur->next;
         }
         node->body = head->next;
+        node->stack_frame_size = end_scope();
     } else {
         node = expr(loc);
         expect(";", loc);
@@ -342,19 +390,31 @@ Node *primary(char *l) {       // primary = num | ident | "(" expr ")"
     } else if (is_number_node()) {         // numの部分
         return new_num_node(expect_number(loc), loc);
     } else {                               // identの部分
-        Ident_Name *var = find_local_var(token);
+        Ident_Name *var = find_var(token);
         Token *tok = token;
         char *name = expect_ident(loc);
         long offset;
         if (var) {
-            offset = var->offset;
-            // fprintf(stderr, "Found local variable: %s at offset %ld\n", name, offset);
+            if (var->type == VAR_GLOBAL_STATIC) {
+                fprintf(stderr, "Found global variable: %s at address %ld\n", name, var->address);
+                return new_ident_node(ND_GLOBAL_VAR, name, var->address, loc);
+            } else {
+                fprintf(stderr, "Found variable: %s at offset %ld\n", name, var->offset);
+                return new_ident_node(ND_LOCAL_VAR, name, var->offset, loc);
+            }
         } else {
-            add_local_var(tok);
-            // fprintf(stderr, "Added local variable: %s at offset %ld\n", name, local_vars->offset);
-            offset = local_vars->offset;
+            if (tail->parent == NULL) { // グローバルスコープならグローバル変数として追加
+                add_global_var(tok);
+                fprintf(stderr, "Added global variable: %s at address %ld\n", name, head->var_tail->address);
+                return new_ident_node(ND_GLOBAL_VAR, name, count_global_vars(), loc);
+            } else {
+                add_local_var(tok);
+                fprintf(stderr, "Added local variable: %s at offset %ld\n", name, current->var_tail->offset);
+                offset = 0 - count_local_vars();
+                return new_ident_node(ND_LOCAL_VAR, name, offset, loc);
+            }
         }
-        return new_ident_node(name, offset, loc);
+        error_at(loc, "Undefined variable: %s", name);
     }
 }
 
@@ -369,14 +429,18 @@ Node *unary(char *l) {
     }
 }
 
-Ident_Name *find_local_var(Token *tok) {
-    Ident_Name *var = local_vars;
-    while (var) {
-        // fprintf(stderr, "Comparing %s with %s\n", var->name, tok->str);
-        if (strcmp(var->name, tok->str) == 0) {
-            return var;
+Ident_Name *find_var(Token *tok) {
+    Vars_List *cur = tail;
+    while (cur) {
+        Ident_Name *var = cur->var_head;
+        while (var) {
+            // fprintf(stderr, "Comparing %s with %s\n", var->name, tok->str);
+            if (strcmp(var->name, tok->str) == 0) {
+                return var;
+            }
+            var = var->next;
         }
-        var = var->next;
+        cur = cur->parent;
     }
     return NULL;
 }
@@ -385,30 +449,102 @@ void add_local_var(Token *tok) {
     Ident_Name *var = calloc(1, sizeof(Ident_Name));
     var->name_len = tok->size;
     var->name = mystrndup(tok->str, tok->size);
-    var->offset = (local_vars ? local_vars->offset - 1 : -1);
+    var->type = VAR_LOCAL;
     var->address = 0; // ローカル変数のアドレスは0に設定
-    var->next = local_vars;
-    local_vars = var;
+    var->next = NULL;
+    Vars_List *cur = tail;
+    if (!cur) {
+        error_at(tok->loc, "No variable scope available");
+    }
+    Ident_Name *lvar = cur->var_tail;
+    if (!lvar) {
+        cur->var_head = var;
+        cur->var_tail = var;
+    } else {
+        cur->var_tail->next = var;
+        cur->var_tail = var;
+    }
+    cur->max_vars_count++;
+    var->offset = 0 - count_local_vars(); // スタック上のオフセットを設定
 }
 
 void add_global_var(Token *tok) {
     Ident_Name *var = calloc(1, sizeof(Ident_Name));
     var->name_len = tok->size;
     var->name = mystrndup(tok->str, tok->size);
-    var->offset = 0; // グローバル変数のオフセットは0に設定
-    var->address = global_vars ? global_vars->address + 1 : 0;
-    var->next = global_vars;
-    global_vars = var;
+    var->type = VAR_GLOBAL_STATIC;
+    var->address = count_global_vars() + 1; // グローバル変数のアドレスを設定
+    var->next = NULL;
+    Ident_Name *gvar = head->var_head;
+    if (!gvar) {
+        head->var_head = var;
+        head->var_tail = var;
+    } else {
+        head->var_tail->next = var;
+        head->var_tail = var;
+    }
+    var->offset = 0;  // グローバル変数のオフセットは0に設定
+    head->max_vars_count++;
 }
 
 long count_local_vars() {
     long count = 0;
-    Ident_Name *var = local_vars;
+    Vars_List *cur = head->child;
+    while (cur) {
+        Ident_Name *var = cur->var_head;
+        while (var) {
+            count++;
+            var = var->next;
+        }
+        cur = cur->child;
+    }
+    return count;
+}
+
+long count_global_vars() {
+    long count = 0;
+    Ident_Name *var = head->var_head;
     while (var) {
         count++;
         var = var->next;
     }
     return count;
+}
+
+void new_scope() {
+    Vars_List *new_list = calloc(1, sizeof(Vars_List));
+    if (!new_list) {
+        error("Memory allocation failed");
+    }
+    new_list->parent = tail;
+    if (tail) {
+        tail->child = new_list;
+    }
+    tail = new_list;
+    current = tail;
+}
+
+long end_scope() {
+    if (tail) {
+        if (tail->child) {
+            error("Cannot end scope with active child scope");
+        }
+        if (!tail->parent) {
+            error("Cannot end global scope");
+        }
+        long current_max_vars_count = count_local_vars();
+        if (tail->parent->max_vars_count < current_max_vars_count) {
+            tail->parent->max_vars_count = current_max_vars_count;
+        }
+        Vars_List *old_tail = tail;
+        tail = tail->parent;
+        free(old_tail);
+        tail->child = NULL;
+        current = tail;
+    } else {
+        error("No scope to end");
+    }
+    return tail->max_vars_count;
 }
 
 char *get_unique_label() {
@@ -439,14 +575,20 @@ void generate(Node *node) {
         printf("mvi r0,%ld\npush r0\n", node->val);
         return;
     } case ND_LOCAL_VAR: {
-        printf("ldm r0,%ld\npush r0\n", node->offset);
+        printf("ldm r0,%ld\npush r0\n", node->ofs_addr);
+        return;
+    } case ND_GLOBAL_VAR: {
+        printf("push r15\nmvi r15,%ld\nldm r0,0\npop r15\npush r0\n", node->ofs_addr);
         return;
     } case ND_ASSIGN: {
         generate(node->rhs);
-        if (node->lhs->type != ND_LOCAL_VAR) {
-            error_at(node->lhs->loc, "Left-hand side of assignment must be a variable");
+        if (node->lhs->type == ND_LOCAL_VAR) {
+            printf("pop r0\nstm %ld,r0\n", node->lhs->ofs_addr);
+        } else if (node->lhs->type == ND_GLOBAL_VAR) {
+            printf("pop r0\npush r15\nmvi r15,%ld\nstm 0,r0\npop r15\n", node->lhs->ofs_addr);
+        } else {
+            error_at(node->loc, "Left-hand side of assignment must be a variable");
         }
-        printf("pop r0\nstm %ld,r0\n", node->lhs->offset);
         return;
     } case ND_RETURN: {
         generate(node->lhs);
@@ -509,10 +651,10 @@ void generate(Node *node) {
         return;
     } case ND_FUNC_DEF: {
         printf("%s:\n", node->name);
-        generate_prologue(count_local_vars());
         if (node->lhs->type != ND_BLOCK) {
             error_at(node->loc, "Function body must be a block");
         }
+        generate_prologue(node->lhs->stack_frame_size);
         generate(node->lhs); // function body
         generate_epilogue();
         return;
