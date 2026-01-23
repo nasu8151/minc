@@ -1,24 +1,6 @@
-#include <ctype.h>
-#include <stdarg.h>
-#include <stdbool.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include "parse.h"
 
-#include "mincc.h"
-
-// なかったから是非もないよネ！
-// strndup, but raise error() on failure
-char *mystrndup(const char *s, size_t n) {
-    char* new = malloc(n+1);
-    if (new) {
-        strncpy(new, s, n);
-        new[n] = '\0';
-    } else {
-        error("Memory allocation failed");
-    }
-    return new;
-}
+Token *token;
 
 // Consume a token if it matches the expected string
 // Return true if matched, false otherwise
