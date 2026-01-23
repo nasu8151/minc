@@ -6,6 +6,9 @@ Vars_List *head = NULL;
 Vars_List *current = NULL;
 Vars_List *tail = NULL;
 
+Ident_Name *func_head = NULL;
+Ident_Name *func_tail = NULL;
+
 // Create new node (type != ND_NUM)
 Node *new_node(NodeType type, Node *lhs, Node *rhs, char *loc) {
     Node *node = calloc(1, sizeof(Node));
@@ -124,6 +127,13 @@ void print_node(Node *node) {
         fprintf(stderr, "ND_LOCAL_VAR: %s at offset %ld\n", node->name, node->ofs_addr);
     } else if (node->type == ND_GLOBAL_VAR) {
         fprintf(stderr, "ND_GLOBAL_VAR: %s at address %ld\n", node->name, node->ofs_addr);
+    } else if (node->type == ND_FUNC_DEF) {
+        fprintf(stderr, "ND_FUNC_DEF: %s with stack frame size %ld\n", node->name, node->stack_frame_size);
+        fprintf(stderr, "(BODY:\n");
+        print_node(node->lhs);
+        fprintf(stderr, ")\n");
+    } else if (node->type == ND_FUNC_CALL) {
+        fprintf(stderr, "ND_FUNC_CALL\n");
     } else {
         fprintf(stderr, "Node type: %d\n", node->type);
         if (node->lhs) {
@@ -209,6 +219,7 @@ Node *toplevel(char *loc) {
     char *name = expect_ident(l);
     if (consume_la("(", l)) {
         expect(")", l);
+        add_function(tok);
         Node *node = new_func_node(name, stmt(l), 0, l);
         return node;
     } else {
@@ -369,15 +380,22 @@ Node *primary(char *l) {       // primary = num | ident | "(" expr ")"
     char *loc = l;
     if (consume_la("(", loc)) { // かっこがあるなら、"(" expr ")"のはず
         Node *node = expr(loc);
-
         expect(")", loc); // かっこは閉じられるはず...
         return node;
-    } else if (is_number_node()) {         // numの部分
+    } else if (is_number_token()) {         // numの部分
         return new_num_node(expect_number(loc), loc);
     } else {                               // identの部分
-        Ident_Name *var = find_var(token);
+        Ident_Name *var = find_name(token);
+        Ident_Name *func = find_function(token);
         Token *tok = token;
         char *name = expect_ident(loc);
+        if (func && consume_la("(", loc)) { // ident "(" ")" の部分（関数呼び出し）
+            expect(")", loc);
+            return new_ident_node(ND_FUNC_CALL, name, 0, loc);
+        }
+        if (consume_la("(", loc)) {
+            error_at(loc, "Function calls are not supported for variable identifiers: %s", name);
+        }
         if (var) {
             if (var->type == VAR_GLOBAL_STATIC) {
                 fprintf(stderr, "Found global variable: %s at address %ld\n", name, var->address);
@@ -412,13 +430,13 @@ Node *unary(char *l) {
     }
 }
 
-Ident_Name *find_var(Token *tok) {
+Ident_Name *find_name(Token *tok) {
     Vars_List *cur = tail;
     while (cur) {
         Ident_Name *var = cur->var_head;
         while (var) {
             fprintf(stderr, "Comparing %s with %s\n", var->name, tok->str);
-            if (strcmp(var->name, tok->str) == 0) {
+            if (var->name_len == tok->size && strncmp(var->name, tok->str, tok->size) == 0) {
                 return var;
             }
             var = var->next;
@@ -477,6 +495,40 @@ void add_global_var(Token *tok) {
     fprintf(stderr, "Adding global variable: %.*s at address %ld\n", (int)tok->size, tok->str, var->address);
 }
 
+void add_function(Token *tok) {
+    Ident_Name *var = calloc(1, sizeof(Ident_Name));
+    if (!var) {
+        error("Memory allocation failed");
+    }
+    var->name_len = tok->size;
+    var->name = mystrndup(tok->str, tok->size);
+    var->type = FUNCTION;
+    var->next = NULL;
+    Ident_Name *gvar = func_head;
+    if (!gvar) {
+        func_head = var;
+        func_tail = var;
+    } else {
+        func_tail->next = var;
+        func_tail = var;
+    }
+    var->offset = 0;  // 関数のオフセットは0に設定
+    var->address = 0; // 関数のアドレスは0に設定
+    fprintf(stderr, "Adding function: %.*s \n", (int)tok->size, tok->str);
+}
+
+Ident_Name *find_function(Token *tok) {
+    Ident_Name *cur = func_head;
+    while (cur) {
+        fprintf(stderr, "Comparing function %s with %s\n", cur->name, tok->str);
+        if (cur->name_len == tok->size && strncmp(cur->name, tok->str, tok->size) == 0) {
+            return cur;
+        }
+        cur = cur->next;
+    }
+    return NULL;
+}
+
 long count_local_vars() {
     long count = 0;
     Vars_List *cur = head->child;
@@ -528,11 +580,23 @@ long end_scope() {
         }
         Vars_List *old_tail = tail;
         tail = tail->parent;
-        free(old_tail);
+        free_vars_list(old_tail);
         tail->child = NULL;
         current = tail;
     } else {
         error("No scope to end");
     }
     return tail->max_vars_count;
+}
+
+void free_vars_list(Vars_List *list) {
+    if (!list) return;
+    Ident_Name *var = list->var_head;
+    while (var) {
+        Ident_Name *next_var = var->next;
+        free(var->name);
+        free(var);
+        var = next_var;
+    }
+    free(list);
 }

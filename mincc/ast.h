@@ -54,14 +54,22 @@ Node *mul(char *l);
 Node *primary(char *l);
 Node *unary(char *l);
 
-// Local variable functions
-Ident_Name *find_var(Token *tok);
+// Find local or global variable by Token
+Ident_Name *find_name(Token *tok);
+// Find function by Token
+Ident_Name *find_function(Token *tok);
+// Add local variable to current scope
 void add_local_var(Token *tok);
+// Add global variable to global scope
 void add_global_var(Token *tok);
+// Count local variables from current funciton scope
 long count_local_vars();
+// Count global variables
 long count_global_vars();
 
 void new_scope();
 long end_scope();
+void print_node(Node *node);
+void free_vars_list(Vars_List *vars_list);
 
 #endif // MINCC_AST_H

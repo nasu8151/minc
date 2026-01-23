@@ -75,7 +75,7 @@ char *expect_ident(char *loc) {
     return name;
 }
 
-bool is_number_node() {
+bool is_number_token() {
     return token->type == TOKEN_NUMBER;
 }
 

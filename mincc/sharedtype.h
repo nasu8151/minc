@@ -54,13 +54,14 @@ typedef struct NodeVec_Member {
 typedef enum {
     VAR_LOCAL,
     VAR_GLOBAL_STATIC,
-} VarType;
+    FUNCTION,
+} IdentType;
 
 typedef struct Ident_Name {
     struct Ident_Name *next;
     unsigned long name_len; // Length of variable name
     char *name;       // Variable name (null-terminated)
-    VarType type;     // Variable type
+    IdentType type;     // Variable type
     long address;     // Address for global variables
     long offset;      // Offset from BP or base address
 } Ident_Name;

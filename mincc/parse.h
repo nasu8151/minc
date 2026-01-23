@@ -39,7 +39,7 @@ long expect_number(char *loc);
 // If reached EOF, throw an error
 // Otherwise, throw NULL
 char *expect_ident(char *loc);
-bool is_number_node();
+bool is_number_token();
 bool at_eof();
 
 #endif // MINCC_PARSE_H

@@ -3,14 +3,16 @@
 void generate_top(Node *code, long i) {
     printf("__on_entry:\n");
     for (long j = 0; j < i; j++) {
-        if (code[j].type == ND_ASSIGN) // Global variable assignment
+        if (code[j].type == ND_ASSIGN) { // Global variable assignment
             generate(&code[j]);
+        }
     }
     printf("ret\n");
 
     for (long j = 0; j < i; j++) {
-        if (code[j].type == ND_ASSIGN) // Global variable assignment
+        if (code[j].type == ND_ASSIGN) {// Global variable assignment
             continue;
+        }
         generate(&code[j]);
     }
 
@@ -69,6 +71,7 @@ void generate(Node *node) {
         printf("pop r0\njz %s,r0\n", end_label);
         generate(node->lhs); // then節
         printf("%s:\n", end_label);
+        free(end_label);
         return;
     } case ND_IF_ELSE: {
         generate(node->cond); // 条件式
@@ -80,6 +83,8 @@ void generate(Node *node) {
         printf("%s:\n", else_label);
         generate(node->else_); // else節
         printf("%s:\n", end_label);
+        free(else_label);
+        free(end_label);
         return;
     } case ND_FOR: {
         if (node->init) {
@@ -100,6 +105,8 @@ void generate(Node *node) {
         }
         printf("mvi r0,0\njz %s,r0\n", begin_label);
         printf("%s:\n", end_label);
+        free(begin_label);
+        free(end_label);
         return;
     } case ND_WHILE: {
         char *begin_label = get_unique_label();
@@ -110,6 +117,8 @@ void generate(Node *node) {
         generate(node->lhs); // body
         printf("mvi r0,0\njz %s,r0\n", begin_label);
         printf("%s:\n", end_label);
+        free(begin_label);
+        free(end_label);
         return;
     } case ND_BLOCK: {
         NodeVec_Member *member = node->body;
@@ -126,6 +135,9 @@ void generate(Node *node) {
         generate_prologue(node->lhs->stack_frame_size);
         generate(node->lhs); // function body
         generate_epilogue();
+        return;
+    } case ND_FUNC_CALL: {
+        printf("call %s\npush r0\n", node->name);
         return;
     }
     default:
