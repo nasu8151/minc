@@ -1,0 +1,1 @@
+int global_var=0;main(){while(global_var<21){for (int i=1;i<5;i=i+1) global_var=global_var+i;}return global_var;}

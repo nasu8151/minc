@@ -55,6 +55,8 @@ if __name__ == "__main__":
     tf.test_e2e("main(){sum=0;\nfor(i=1;i<5;i=i+1) sum=sum+i;\nreturn sum;}", 10)
     tf.test_e2e("main(){i=0;\nwhile(i<3) i=i+1;\nreturn i;}", 3)
     tf.test_e2e("main(){i=0;\nwhile(i<10) {\n i=i+1;\n if (i==5) {\nreturn 20*i;\n}\n}\nreturn 0;}", 100)
+    tf.test_e2e("gvar=10;\nmain(){return gvar+5;}", 15, verbose=True)
+    tf.test_e2e("global_var=0;\nmain(){while(global_var<21){for (i=1;i<5;i=i+1) global_var=global_var+i;}\nreturn global_var;}", 30)
 
 
     print()

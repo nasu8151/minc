@@ -47,7 +47,7 @@ module minc_tb;
         @(posedge nRESET);
         // wait a little after reset release
         #1;
-        for (i = 0; i < 256; i = i + 1) begin
+        for (i = 0; i < 1024; i = i + 1) begin
             @(posedge CLK);
         end
         #10;

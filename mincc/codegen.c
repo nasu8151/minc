@@ -128,9 +128,9 @@ void print_node(Node *node) {
     if (node->type == ND_NUM) {
         fprintf(stderr, "ND_NUM: %ld\n", node->val);
     } else if (node->type == ND_LOCAL_VAR) {
-        fprintf(stderr, "ND_LOCAL_VAR: %s\n", node->name);
+        fprintf(stderr, "ND_LOCAL_VAR: %s at offset %ld\n", node->name, node->ofs_addr);
     } else if (node->type == ND_GLOBAL_VAR) {
-        fprintf(stderr, "ND_GLOBAL_VAR: %s\n", node->name);
+        fprintf(stderr, "ND_GLOBAL_VAR: %s at address %ld\n", node->name, node->ofs_addr);
     } else {
         fprintf(stderr, "Node type: %d\n", node->type);
         if (node->lhs) {
@@ -197,6 +197,7 @@ primary    = num | ident | ident "(" ")" | "(" expr ")"
 void program() {
     long i = 0;
     head = calloc(1, sizeof(Vars_List));
+    head->parent = NULL;
     tail = head;
     while (!at_eof()) {
         code[i++] = *toplevel(token->loc);
@@ -223,6 +224,7 @@ void program() {
 
 Node *toplevel(char *loc) {
     char *l = loc;
+    Token *tok = token;
     char *name = expect_ident(l);
     if (consume_la("(", l)) {
         expect(")", l);
@@ -231,7 +233,8 @@ Node *toplevel(char *loc) {
         expect("=", l);
         Node *rhs = assign(l);
         expect(";", l);
-        Node *node = new_node(ND_ASSIGN, new_ident_node(ND_GLOBAL_VAR, name, 0, l), rhs, l);
+        add_global_var(tok);
+        Node *node = new_node(ND_ASSIGN, new_ident_node(ND_GLOBAL_VAR, name, head->var_tail->address, l), rhs, l);
         return node;
     }
 }
@@ -406,12 +409,11 @@ Node *primary(char *l) {       // primary = num | ident | "(" expr ")"
             if (tail->parent == NULL) { // グローバルスコープならグローバル変数として追加
                 add_global_var(tok);
                 fprintf(stderr, "Added global variable: %s at address %ld\n", name, head->var_tail->address);
-                return new_ident_node(ND_GLOBAL_VAR, name, count_global_vars(), loc);
+                return new_ident_node(ND_GLOBAL_VAR, name, head->var_tail->address, loc);
             } else {
                 add_local_var(tok);
                 fprintf(stderr, "Added local variable: %s at offset %ld\n", name, current->var_tail->offset);
-                offset = 0 - count_local_vars();
-                return new_ident_node(ND_LOCAL_VAR, name, offset, loc);
+                return new_ident_node(ND_LOCAL_VAR, name, current->var_tail->offset, loc);
             }
         }
         error_at(loc, "Undefined variable: %s", name);
@@ -434,7 +436,7 @@ Ident_Name *find_var(Token *tok) {
     while (cur) {
         Ident_Name *var = cur->var_head;
         while (var) {
-            // fprintf(stderr, "Comparing %s with %s\n", var->name, tok->str);
+            fprintf(stderr, "Comparing %s with %s\n", var->name, tok->str);
             if (strcmp(var->name, tok->str) == 0) {
                 return var;
             }
@@ -447,6 +449,9 @@ Ident_Name *find_var(Token *tok) {
 
 void add_local_var(Token *tok) {
     Ident_Name *var = calloc(1, sizeof(Ident_Name));
+    if (!var) {
+        error("Memory allocation failed");
+    }
     var->name_len = tok->size;
     var->name = mystrndup(tok->str, tok->size);
     var->type = VAR_LOCAL;
@@ -470,10 +475,12 @@ void add_local_var(Token *tok) {
 
 void add_global_var(Token *tok) {
     Ident_Name *var = calloc(1, sizeof(Ident_Name));
+    if (!var) {
+        error("Memory allocation failed");
+    }
     var->name_len = tok->size;
     var->name = mystrndup(tok->str, tok->size);
     var->type = VAR_GLOBAL_STATIC;
-    var->address = count_global_vars() + 1; // グローバル変数のアドレスを設定
     var->next = NULL;
     Ident_Name *gvar = head->var_head;
     if (!gvar) {
@@ -485,6 +492,8 @@ void add_global_var(Token *tok) {
     }
     var->offset = 0;  // グローバル変数のオフセットは0に設定
     head->max_vars_count++;
+    var->address = count_global_vars(); // グローバル変数のアドレスを設定
+    fprintf(stderr, "Adding global variable: %.*s at address %ld\n", (int)tok->size, tok->str, var->address);
 }
 
 long count_local_vars() {
