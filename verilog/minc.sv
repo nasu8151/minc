@@ -17,6 +17,7 @@ module minc (
     logic  [14:0] rom  [0:255];
     // Data RAM: 256 x 8-bit (stack and data unified)
     logic  [7:0]  ram  [0:255];
+    logic  [7:0]  ram_addr;
 
     // ROM load (one word per line, hex). TEST selects test.hex
     `ifdef TEST
@@ -119,8 +120,9 @@ module minc (
                         end
                         4'b1000: begin
                             // push rs : (--sp) = rs  (pattern 000 1000 0000 ssss)
-                            ram[sp - 8'd1] <= regs[rs];
-                            sp <= sp - 8'd1; // wrap naturally (8-bit)
+                            ram_addr = sp - 8'd1;
+                            ram[ram_addr] <= regs[rs];
+                            sp <= ram_addr; // wrap naturally (8-bit)
                             $display("push r%0d", rs);
                         end
                         4'b1001: begin
@@ -141,7 +143,8 @@ module minc (
                         end
                         4'b1100: begin
                             // ret : PC = (SP++) + 1 (pattern 000 0101 0000 0010)
-                            next_pc = ram[sp] + 8'd1;
+                            ram_addr = sp;
+                            next_pc = ram[ram_addr] + 8'd1;
                             sp <= sp + 8'd1;
                             $display("ret");
                         end
@@ -157,12 +160,14 @@ module minc (
                 end
                 3'b010: begin
                     // stm n, rs : [r15 + n] = rs
-                    ram[regs[15] + imm8] <= regs[rs];
+                    ram_addr = regs[15] + imm8;
+                    ram[ram_addr] <= regs[rs];
                     $display("stm 0x%0h, r%0d", imm8, rs);
                 end
                 3'b011: begin
                     // ldm n, rd : rd = [r15 + n]
-                    regs[rd] <= ram[regs[15] + imm8];
+                    ram_addr = regs[15] + imm8;
+                    regs[rd] <= ram[ram_addr];
                     $display("ldm 0x%0h, r%0d", imm8, rd);
                 end
                 3'b100: begin
@@ -171,8 +176,9 @@ module minc (
                 end
                 3'b101: begin
                     // call n : (--sp) = PC; PC = n  (low nibble must be 0000)
-                    ram[sp - 8'd1] <= pc;
-                    sp <= sp - 8'd1;
+                    ram_addr = sp - 8'd1;
+                    ram[ram_addr] <= pc;
+                    sp <= ram_addr;
                     $display("call 0x%0h", imm8);
                 end
                 default: begin

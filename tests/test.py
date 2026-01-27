@@ -59,7 +59,8 @@ if __name__ == "__main__":
     tf.test_e2e("global_var=0;\nmain(){while(global_var<21){for (i=1;i<5;i=i+1) global_var=global_var+i;}\nreturn global_var;}", 30)
     tf.test_e2e("a=1;\nb=2;\nmain(){c=3;\nreturn a+b+c;}", 6)
     tf.test_e2e("ret42(){return 42;}\nmain(){return ret42();}", 42)
-    tf.test_e2e("arg=0;fac(){i=arg;\nif (i==0) return 1;\narg=i-1;\nreturn i*fac();}main(){arg=5;\nreturn fac();}", 120)
+    tf.test_e2e("arg=0;fac(){i=arg;\nif (i==0) return 1;\narg=i-1;\nreturn fac()*i;}main(){arg=5;\nreturn fac();}", 120)
+    tf.test_e2e("fib(i){if(i==0) return 0;\nif(i==1) return 1;\na=fib(i-1);\nb=fib(i-2);\nreturn a+b;}\nmain(){return fib(10);}" , 55, verbose=True)
 
 
     print()

@@ -11,7 +11,7 @@
 #include "codegen.h"
 
 /*
-global variable list structure
+Variable list structure
 (top)
 + global_vars -> Ident_Name *next
                     -> ...
@@ -24,6 +24,25 @@ global variable list structure
         + ...
 */
 
+/***************************************************************
+program     = toplevel*
+toplevel    = ident "=" assign ";" | ident "(" (expr ",")* expr? ")" stmt  <-- must be a block
+stmt        = expr ";"
+            | "{" stmt* "}"
+            | "return" expr ";"
+            | "if" "(" expr ")" stmt ("else" stmt)?
+            | "for" "(" expr? ";" expr? ";" expr? ")" stmt
+            | "while" "(" expr ")" stmt
+expr       = assign
+assign     = equality ("=" assign)?
+equality   = relational ("==" relational | "!=" relational)*
+relational = add ("<" add | "<=" add | ">" add | ">=" add)*
+add        = mul ("+" mul | "-" mul)*
+mul        = unary ("*" unary)*
+unary      = ("+" | "-")? primary
+primary    = num | ident | ident "(" (expr ",")* expr? ")" | "(" expr ")"
+****************************************************************/
+
 typedef struct Vars_List {
     struct Vars_List *parent;
     struct Vars_List *child;
@@ -33,13 +52,14 @@ typedef struct Vars_List {
 } Vars_List;
 
 
-// Genelate node
+// Generate node
 Node *new_node(NodeType type, Node *lhs, Node *rhs, char *loc);
 Node *new_num_node(long val, char *loc);
 Node *new_ident_node(NodeType type, char *name, long offset, char *loc);
 Node *new_if_else_node(NodeType type, Node *cond, Node *then, Node *else_, char *loc);
 Node *new_for_node(Node *cond, Node *inc, Node *init, Node *body, char *loc);
 Node *new_while_node(Node *cond, Node *body, char *loc);
+Node *new_func_node(NodeType type, char *name, NodeList_Member *args, Node *body, long arg_sf_size, char *loc);
 
 // Syntax tree parsing functions
 void program();
@@ -62,6 +82,8 @@ Ident_Name *find_function(Token *tok);
 void add_local_var(Token *tok);
 // Add global variable to global scope
 void add_global_var(Token *tok);
+// Add function to function list
+void add_function(Token *tok);
 // Count local variables from current funciton scope
 long count_local_vars();
 // Count global variables

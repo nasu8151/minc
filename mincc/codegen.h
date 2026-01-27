@@ -18,7 +18,7 @@ char *get_unique_label();
 
 // node genelator function
 void generate(Node *node);
-void generate_prologue(long local_var_count);
+void generate_prologue(long arg_count, long local_var_count);
 void generate_epilogue();
 
 #endif // MINCC_CODEGEN_H

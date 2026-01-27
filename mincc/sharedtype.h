@@ -27,7 +27,7 @@ typedef enum {
 } NodeType;
 
 
-struct NodeVec_Member;
+struct NodeList_Member;
 
 typedef struct Node {
     NodeType type;      // Node type
@@ -37,19 +37,19 @@ typedef struct Node {
     struct Node *cond;  // Condition (for IF, WHILE, FOR statements)
     struct Node *inc;   // Increment (for FOR statement)
     struct Node *init;  // Initialization (for FOR statement)
-    struct NodeVec_Member *body; // Block body (for BLOCK statements)
+    struct NodeList_Member *body; // Block body (for BLOCK, FUNC_DEF statements)
     long val;           // Value (only for ND_NUM)
-    long ofs_addr;        // Offset from BP (only for ND_LOCAL_VAR)
-    long stack_frame_size; // Stack frame size (only for ND_FUNC_DEF)
+    long ofs_addr;        // Offset from BP or Absolute address (only for ND_LOCAL_VAR, ND_GLOBAL_VAR)
+    long arg_sf_size; // Stack frame size (only for ND_BLOCK used in FUNC_DEF) or number of arguments (only for ND_FUNC_DEF)
     unsigned long name_len; // Length of identifier name
-    char *name;    // Identifier name (only for ND_LOCAL_VAR)
+    char *name;    // Identifier name (for ND_LOCAL_VAR, ND_GLOBAL_VAR, ND_FUNC_DEF, ND_FUNC_CALL)
     char *loc;
 } Node;
 
-typedef struct NodeVec_Member {
-    struct NodeVec_Member *next;
+typedef struct NodeList_Member {
+    struct NodeList_Member *next;
     Node *node;
-} NodeVec_Member;
+} NodeList_Member;
 
 typedef enum {
     VAR_LOCAL,

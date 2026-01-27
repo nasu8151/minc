@@ -25,10 +25,13 @@ char *get_unique_label() {
     return label;
 }
 
-void generate_prologue(long local_var_count) {
+void generate_prologue(long arg_count, long local_var_count) {
     printf("push r15\n");
+    for (long i = 0; i < arg_count; i++) {
+        printf("push r%d\n", i + 2);
+    }
     printf("lds r15\n");
-    printf("mvi r0,%ld\n", -local_var_count);  // ローカル変数の分の領域を確保
+    printf("mvi r0,%ld\n", -(local_var_count - arg_count));  // local_var_count includes arguments
     printf("add r0,r15\n");
     printf("sts r0\n");
 }
@@ -121,7 +124,7 @@ void generate(Node *node) {
         free(end_label);
         return;
     } case ND_BLOCK: {
-        NodeVec_Member *member = node->body;
+        NodeList_Member *member = node->body;
         while (member) {
             generate(member->node);
             member = member->next;
@@ -132,11 +135,19 @@ void generate(Node *node) {
         if (node->lhs->type != ND_BLOCK) {
             error_at(node->loc, "Function body must be a block");
         }
-        generate_prologue(node->lhs->stack_frame_size);
+        generate_prologue(node->arg_sf_size, node->lhs->arg_sf_size);
         generate(node->lhs); // function body
         generate_epilogue();
         return;
     } case ND_FUNC_CALL: {
+        NodeList_Member *arg = node->body;
+        long arg_count = 0;
+        while (arg) {
+            generate(arg->node);
+            printf("pop r%ld\n", 2 + arg_count); // r2, r3, ... に引数をセット
+            arg = arg->next;
+            arg_count++;
+        }
         printf("call %s\npush r0\n", node->name);
         return;
     }

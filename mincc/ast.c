@@ -86,21 +86,22 @@ Node *new_ident_node(NodeType type, char *name, long ofs_addr, char *loc) {
     return node;
 }
 
-Node *new_func_node(char *name, Node *body, long stack_frame_size, char *loc) {
+Node *new_func_node(NodeType type, char *name, NodeList_Member *args, Node *body, long arg_sf_size, char *loc) {
     Node *node = calloc(1, sizeof(Node));
     if (!node) {
         error("Memory allocation failed");
     }
-    node->type = ND_FUNC_DEF;
+    node->type = type;
     node->name = mystrndup(name, strlen(name));
     node->name_len = strlen(name);
+    node->body = args;
     node->lhs = body;
-    node->stack_frame_size = stack_frame_size;
+    node->arg_sf_size = arg_sf_size;
     node->loc = loc;
     return node;
 }
 
-Node *new_node_vec() {
+Node *new_node_list() {
     Node *node = calloc(1, sizeof(Node));
     if (!node) {
         error("Memory allocation failed");
@@ -110,8 +111,8 @@ Node *new_node_vec() {
     return node;
 }
 
-NodeVec_Member *add_node_vec_member(Node *node) {
-    NodeVec_Member *member = calloc(1, sizeof(NodeVec_Member));
+NodeList_Member *add_node_list(Node *node) {
+    NodeList_Member *member = calloc(1, sizeof(NodeList_Member));
     if (!member) {
         error("Memory allocation failed");
     }
@@ -128,7 +129,7 @@ void print_node(Node *node) {
     } else if (node->type == ND_GLOBAL_VAR) {
         fprintf(stderr, "ND_GLOBAL_VAR: %s at address %ld\n", node->name, node->ofs_addr);
     } else if (node->type == ND_FUNC_DEF) {
-        fprintf(stderr, "ND_FUNC_DEF: %s with stack frame size %ld\n", node->name, node->stack_frame_size);
+        fprintf(stderr, "ND_FUNC_DEF: %s with stack frame size %ld\n", node->name, node->arg_sf_size);
         fprintf(stderr, "(BODY:\n");
         print_node(node->lhs);
         fprintf(stderr, ")\n");
@@ -168,7 +169,7 @@ void print_node(Node *node) {
         }
         if (node->body) {
             fprintf(stderr, "(BODY:\n");
-            NodeVec_Member *cur = node->body;
+            NodeList_Member *cur = node->body;
             while (cur) {
                 print_node(cur->node);
                 cur = cur->next;
@@ -177,25 +178,6 @@ void print_node(Node *node) {
         }
     }
 }
-
-/***************************************************************
-program     = toplevel*
-toplevel    = ident "=" assign ";" | ident "(" ")" stmt  <-- must be a block
-stmt        = expr ";"
-            | "{" stmt* "}"
-            | "return" expr ";"
-            | "if" "(" expr ")" stmt ("else" stmt)?
-            | "for" "(" expr? ";" expr? ";" expr? ")" stmt
-            | "while" "(" expr ")" stmt
-expr       = assign
-assign     = equality ("=" assign)?
-equality   = relational ("==" relational | "!=" relational)*
-relational = add ("<" add | "<=" add | ">" add | ">=" add)*
-add        = mul ("+" mul | "-" mul)*
-mul        = unary ("*" unary)*
-unary      = ("+" | "-")? primary
-primary    = num | ident | ident "(" ")" | "(" expr ")"
-****************************************************************/
 
 void program() {
     long i = 0;
@@ -218,9 +200,22 @@ Node *toplevel(char *loc) {
     Token *tok = token;
     char *name = expect_ident(l);
     if (consume_la("(", l)) {
-        expect(")", l);
+        NodeList_Member *nl = calloc(1, sizeof(NodeList_Member));
+        long arg_count = 0;
+        while (!consume(")", l)) {
+            arg_count++;
+            new_scope();
+            Token *arg_tok = token;
+            char *arg_name = expect_ident(l);
+            add_local_var(arg_tok);
+            nl->next = add_node_list(new_ident_node(ND_LOCAL_VAR, arg_name, current->var_tail->offset, l));
+            if (!consume(",", l)) {
+                expect(")", l);
+                break;
+            }
+        }
         add_function(tok);
-        Node *node = new_func_node(name, stmt(l), 0, l);
+        Node *node = new_func_node(ND_FUNC_DEF, name, nl->next, stmt(l), arg_count, l);
         return node;
     } else {
         expect("=", l);
@@ -279,18 +274,18 @@ Node *stmt(char *l) {
         node = new_while_node(cond, body, loc);
     } else if (consume_la("{", loc)) {
         new_scope();
-        node = new_node_vec();
-        NodeVec_Member *head = calloc(1, sizeof(NodeVec_Member));
+        node = new_node_list();
+        NodeList_Member *head = calloc(1, sizeof(NodeList_Member));
         if (!head) {
             error("Memory allocation failed");
         }
-        NodeVec_Member *cur = head;
+        NodeList_Member *cur = head;
         while (!consume("}", loc)) {
-            cur->next = add_node_vec_member(stmt(loc));
+            cur->next = add_node_list(stmt(loc));
             cur = cur->next;
         }
         node->body = head->next;
-        node->stack_frame_size = end_scope();
+        node->arg_sf_size = end_scope();
     } else {
         node = expr(loc);
         expect(";", loc);
@@ -389,9 +384,16 @@ Node *primary(char *l) {       // primary = num | ident | "(" expr ")"
         Ident_Name *func = find_function(token);
         Token *tok = token;
         char *name = expect_ident(loc);
-        if (func && consume_la("(", loc)) { // ident "(" ")" の部分（関数呼び出し）
-            expect(")", loc);
-            return new_ident_node(ND_FUNC_CALL, name, 0, loc);
+        if (func && consume_la("(", loc)) { // ident "(" (expr ",")* expr? ")" の部分（関数呼び出し）
+            NodeList_Member *args = calloc(1, sizeof(NodeList_Member));
+            while (!consume(")", loc)) {
+                args->next = add_node_list(expr(loc));
+                if (!consume(",", loc)) {
+                    expect(")", loc);
+                    break;
+                }
+            }
+            return new_func_node(ND_FUNC_CALL, name, args->next, NULL, 0, loc);
         }
         if (consume_la("(", loc)) {
             error_at(loc, "Function calls are not supported for variable identifiers: %s", name);
@@ -451,6 +453,7 @@ void add_local_var(Token *tok) {
     if (!var) {
         error("Memory allocation failed");
     }
+    fprintf(stderr, "Adding local variable: %.*s\n", (int)tok->size, tok->str);
     var->name_len = tok->size;
     var->name = mystrndup(tok->str, tok->size);
     var->type = VAR_LOCAL;
