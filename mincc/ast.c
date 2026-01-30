@@ -201,21 +201,27 @@ Node *toplevel(char *loc) {
     char *name = expect_ident(l);
     if (consume_la("(", l)) {
         NodeList_Member *nl = calloc(1, sizeof(NodeList_Member));
+        if (!nl) {
+            error("Memory allocation failed");
+        }
+        NodeList_Member *nl_head = nl;
         long arg_count = 0;
+        new_scope();
         while (!consume(")", l)) {
             arg_count++;
-            new_scope();
             Token *arg_tok = token;
             char *arg_name = expect_ident(l);
             add_local_var(arg_tok);
             nl->next = add_node_list(new_ident_node(ND_LOCAL_VAR, arg_name, current->var_tail->offset, l));
+            nl = nl->next;
             if (!consume(",", l)) {
                 expect(")", l);
                 break;
             }
         }
         add_function(tok);
-        Node *node = new_func_node(ND_FUNC_DEF, name, nl->next, stmt(l), arg_count, l);
+        Node *node = new_func_node(ND_FUNC_DEF, name, nl_head->next, stmt(l), arg_count, l);
+        end_scope();
         return node;
     } else {
         expect("=", l);
@@ -250,6 +256,7 @@ Node *stmt(char *l) {
     } else if (consume_la("for", loc)) {
         expect("(", loc);
         Node *init = NULL;
+        new_scope();
         if (!consume_la(";", loc)) {
             init = expr(loc);
             expect(";", loc);
@@ -265,6 +272,7 @@ Node *stmt(char *l) {
             expect(")", loc);
         }
         Node *body = stmt(loc);
+        end_scope();
         node = new_for_node(cond, inc, init, body, loc);
     } else if (consume_la("while", loc)) {
         expect("(", loc);
@@ -386,14 +394,19 @@ Node *primary(char *l) {       // primary = num | ident | "(" expr ")"
         char *name = expect_ident(loc);
         if (func && consume_la("(", loc)) { // ident "(" (expr ",")* expr? ")" の部分（関数呼び出し）
             NodeList_Member *args = calloc(1, sizeof(NodeList_Member));
+            if (!args) {
+                error("Memory allocation failed");
+            }
+            NodeList_Member *args_head = args;
             while (!consume(")", loc)) {
                 args->next = add_node_list(expr(loc));
+                args = args->next;
                 if (!consume(",", loc)) {
                     expect(")", loc);
                     break;
                 }
             }
-            return new_func_node(ND_FUNC_CALL, name, args->next, NULL, 0, loc);
+            return new_func_node(ND_FUNC_CALL, name, args_head->next, NULL, 0, loc);
         }
         if (consume_la("(", loc)) {
             error_at(loc, "Function calls are not supported for variable identifiers: %s", name);
@@ -577,9 +590,12 @@ long end_scope() {
         if (!tail->parent) {
             error("Cannot end global scope");
         }
-        long current_max_vars_count = count_local_vars();
-        if (tail->parent->max_vars_count < current_max_vars_count) {
-            tail->parent->max_vars_count = current_max_vars_count;
+        long cur_max_vars_count = count_local_vars();
+        if (tail->max_vars_count < cur_max_vars_count) {
+            tail->max_vars_count = cur_max_vars_count;
+        }
+        if (tail->parent->max_vars_count < tail->max_vars_count) {
+            tail->parent->max_vars_count = tail->max_vars_count;
         }
         Vars_List *old_tail = tail;
         tail = tail->parent;

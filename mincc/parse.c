@@ -204,7 +204,7 @@ Token *tokenize(const char *p){
             continue;
         }
 
-        if (*p == '+' || *p == '-' || *p == '*' || *p == '(' || *p == ')' || *p == '<' || *p == '>' || *p == '=' || *p == ';' || *p == '{' || *p == '}') {
+        if (*p == '+' || *p == '-' || *p == '*' || *p == '(' || *p == ')' || *p == '<' || *p == '>' || *p == '=' || *p == ';' || *p == '{' || *p == '}' || *p == ',' ) {
             cur = new_token(TOKEN_RESERVED, cur, p, 1, 0, (char *)p);
             p++;
             continue;

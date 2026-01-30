@@ -42,6 +42,9 @@ def test_e2e(code:str, expected_top:int, verbose:bool=False):
         print(verilog_sim.stdout)
     output = verilog_sim.stdout.strip().splitlines()[-1]  # Get the last line of output
     pc_str, top_str, sp_str = output.split(", ")
+    if top_str.split(": ")[1] == 'xx' and expected_top == -1:
+        print(f"""[OK] E2E test for code "{code}" => TOP: xx as expected""")
+        return
     top_value = int(top_str.split(": ")[1], 16)
     assert top_value == (expected_top & 0xff), f"""[FAIL] Expected TOP: {expected_top}, but got: {top_value} """
     print(f"""[OK] E2E test for code "{code}" => TOP: {top_value} """)

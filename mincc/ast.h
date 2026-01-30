@@ -26,7 +26,7 @@ Variable list structure
 
 /***************************************************************
 program     = toplevel*
-toplevel    = ident "=" assign ";" | ident "(" (expr ",")* expr? ")" stmt  <-- must be a block
+toplevel    = ident "=" assign ";" | ident "(" ((expr ",")* expr)? ")" stmt  <-- must be a block
 stmt        = expr ";"
             | "{" stmt* "}"
             | "return" expr ";"
@@ -40,7 +40,7 @@ relational = add ("<" add | "<=" add | ">" add | ">=" add)*
 add        = mul ("+" mul | "-" mul)*
 mul        = unary ("*" unary)*
 unary      = ("+" | "-")? primary
-primary    = num | ident | ident "(" (expr ",")* expr? ")" | "(" expr ")"
+primary    = num | ident | ident "(" ((expr ",")* expr)? ")" | "(" expr ")"
 ****************************************************************/
 
 typedef struct Vars_List {

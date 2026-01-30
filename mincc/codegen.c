@@ -27,11 +27,11 @@ char *get_unique_label() {
 
 void generate_prologue(long arg_count, long local_var_count) {
     printf("push r15\n");
-    for (long i = 0; i < arg_count; i++) {
-        printf("push r%d\n", i + 2);
-    }
     printf("lds r15\n");
-    printf("mvi r0,%ld\n", -(local_var_count - arg_count));  // local_var_count includes arguments
+    for (long i = 0; i < arg_count; i++) {
+        printf("push r%ld\n", i + 2);
+    }
+    printf("mvi r0,%ld\n", -local_var_count);  // local_var_count includes arguments
     printf("add r0,r15\n");
     printf("sts r0\n");
 }
