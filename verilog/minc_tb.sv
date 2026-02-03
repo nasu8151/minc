@@ -1,5 +1,7 @@
 `timescale 1ns/1ps
 
+`define SIM
+
 module minc_tb;
 
     reg CLK;

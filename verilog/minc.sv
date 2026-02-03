@@ -10,6 +10,8 @@ module minc (
     logic  [7:0] pc;
     logic  [7:0] sp;
 
+    logic [1:0] state;
+
     // General purpose registers r0..r15 (8-bit)
     logic  [7:0]  regs [0:15];
 
@@ -17,7 +19,6 @@ module minc (
     logic  [14:0] rom  [0:255];
     // Data RAM: 256 x 8-bit (stack and data unified)
     logic  [7:0]  ram  [0:255];
-    logic  [7:0]  ram_addr;
 
     // ROM load (one word per line, hex). TEST selects test.hex
     `ifdef TEST
@@ -46,37 +47,27 @@ module minc (
     integer i;
 
     // Next PC logic
-    logic [7:0] next_pc;
-    always_comb begin
-        if (op == 3'b000) begin
-            if (subop == 4'b1100) begin
-                // ret instruction special case: next_pc from stack
-                next_pc = ram[sp] + 8'd1;
-            end else begin
-                next_pc = pc + 8'd1;
-            end
-        end else if (op == 3'b100) begin
-            // jz
-            if (regs[rs] == 8'd0) begin
-                next_pc = imm8;
-            end else begin
-                next_pc = pc + 8'd1;
-            end
-        end else if (op == 3'b101) begin
-            // call
-            next_pc = imm8;
-        end else if (op == 3'b110) begin
-            // jnz
-            if (regs[rs] != 8'd0) begin
-                next_pc = imm8;
-            end else begin
-                next_pc = pc + 8'd1;
-            end
-        end else begin
-            next_pc = pc + 8'd1;
-        end
-    end
+    wire [7:0] next_pc =    op == 3'b000 && subop == 4'b1100 ? ram[sp] + 8'd1 :
+                            op == 3'b100 ? (regs[rs] == 8'd0 ? imm8 : pc + 8'd1) :
+                            op == 3'b101 ? imm8 :
+                            op == 3'b110 ? (regs[rs] != 8'd0 ? imm8 : pc + 8'd1) :
+                            pc + 8'd1;
 
+    wire [7:0] alu_out =    subop == 4'b0000 ? rs_val :
+                            subop == 4'b0001 ? rd_val + rs_val :
+                            subop == 4'b0010 ? rd_val - rs_val :
+                            subop == 4'b0011 ? (rd_val < rs_val ? 8'b1 : 8'b0) :
+                            subop == 4'b0100 ? rd_val * rs_val :
+                            8'h00; // default
+
+    wire [7:0] ram_addr =   op == 3'b000 ?
+                                (subop == 4'b1000 ? sp - 8'd1 : // push
+                                subop == 4'b1010 ? sp :         // pop
+                                sp) :
+                            op == 3'b101 ? sp - 8'd1 :          // call
+                            (regs[15] + imm8);                  // ldm, stm
+
+    // Main sequential logic
     always_ff @(posedge CLK or negedge nRESET) begin
         if (!nRESET) begin
             pc <= 8'h00;
@@ -92,61 +83,58 @@ module minc (
             case (op)
                 3'b000: begin
                     // subop-based operations
-                    case (subop)
-                        4'b0000: begin
-                            // mov rd,rs : rd = rs
-                            regs[rd] <= regs[rs];
-                            $display("mov r%0d, r%0d", rd, rs);
-                        end
-                        4'b0001: begin
-                            // add rd,rs : rd = rd + rs
-                            regs[rd] <= regs[rd] + regs[rs];
-                            $display("add r%0d, r%0d", rd, rs);
-                        end
-                        4'b0010: begin
-                            // sub rd,rs : rd = rd - rs
-                            regs[rd] <= regs[rd] - regs[rs];
-                            $display("sub r%0d, r%0d", rd, rs);
-                        end
-                        4'b0011: begin
-                            // lt rd,rs : set registers for comparison (rd - rs)
-                            regs[rd] <= regs[rd] - regs[rs] > 9'b1_0000_0000 ? 8'b1 : 8'b0;
-                            $display("lt r%0d, r%0d", rd, rs);
-                        end
-                        4'b0100: begin
-                            // mul rd,rs : rd = rd * rs
-                            regs[rd] <= regs[rd] * regs[rs];
-                            $display("mul r%0d, r%0d", rd, rs);
+                    casez (subop)
+                        4'b0???: begin
+                            // ALU operations: rd = rd <op> rs
+                            regs[rd] <= alu_out;
+                            `ifdef SIM
+                            case (subop)
+                                4'b0000: $display("mov r%0d, r%0d", rd, rs);
+                                4'b0001: $display("add r%0d, r%0d", rd, rs);
+                                4'b0010: $display("sub r%0d, r%0d", rd, rs);
+                                4'b0011: $display("cmp r%0d, r%0d", rd, rs);
+                                4'b0100: $display("mul r%0d, r%0d", rd, rs);
+                                default: $display("Unknown ALU operation: 0x%0h", instr); // should not occur
+                            endcase
+                            `endif
                         end
                         4'b1000: begin
                             // push rs : (--sp) = rs  (pattern 000 1000 0000 ssss)
-                            ram_addr = sp - 8'd1;
                             ram[ram_addr] <= regs[rs];
                             sp <= ram_addr; // wrap naturally (8-bit)
+                            `ifdef SIM
                             $display("push r%0d", rs);
+                            `endif
                         end
                         4'b1001: begin
                             // lds rs : SP = rs (pattern 000 0100 0001 ssss)
                             sp <= regs[rs];
+                            `ifdef SIM
                             $display("lds r%0d", rs);
+                            `endif
                         end
                         4'b1010: begin
                             // pop rd : rd = (SP++) (pattern 000 0101 dddd 0000)
-                            $display("pop r%0d", rd);
                             regs[rd] <= ram[sp];
                             sp <= sp + 8'd1;
+                            `ifdef SIM
+                            $display("pop r%0d", rd);
+                            `endif
                         end
                         4'b1011: begin
                             // sts rd : rd = SP (pattern 000 0101 dddd 0001)
                             regs[rd] <= sp;
+                            `ifdef SIM
                             $display("sts r%0d", rd);
+                            `endif
                         end
                         4'b1100: begin
                             // ret : PC = (SP++) + 1 (pattern 000 0101 0000 0010)
-                            ram_addr = sp;
-                            next_pc = ram[ram_addr] + 8'd1;
+                            // next_pc = ram[ram_addr] + 8'd1;
                             sp <= sp + 8'd1;
+                            `ifdef SIM
                             $display("ret");
+                            `endif
                         end
                         default: begin
                             // no-op for undefined subops in this group
@@ -156,35 +144,44 @@ module minc (
                 3'b001: begin
                     // mvi rd, n : rd = n
                     regs[rd] <= imm8;
+                    `ifdef SIM
                     $display("mvi r%0d, 0x%0h", rd, imm8);
+                    `endif
                 end
                 3'b010: begin
                     // stm n, rs : [r15 + n] = rs
-                    ram_addr = regs[15] + imm8;
                     ram[ram_addr] <= regs[rs];
+                    `ifdef SIM
                     $display("stm 0x%0h, r%0d", imm8, rs);
+                    `endif
                 end
                 3'b011: begin
                     // ldm n, rd : rd = [r15 + n]
-                    ram_addr = regs[15] + imm8;
                     regs[rd] <= ram[ram_addr];
+                    `ifdef SIM
                     $display("ldm 0x%0h, r%0d", imm8, rd);
+                    `endif
                 end
                 3'b100: begin
                     // jz n, rs : PC = n if rs == 0
+                    `ifdef SIM
                     $display("jz 0x%0h, r%0d", imm8, rs);
+                    `endif
                 end
                 3'b101: begin
                     // call n : (--sp) = PC; PC = n  (low nibble must be 0000)
-                    ram_addr = sp - 8'd1;
                     ram[ram_addr] <= pc;
-                    sp <= ram_addr;
+                    sp <= sp - 8'd1;
+                    `ifdef SIM
                     $display("call 0x%0h", imm8);
+                    `endif
                 end
                 default: begin
                     // 110,111: unused -> HALT
+                    `ifdef SIM
                     $display("halt");
                     $finish;
+                    `endif
                 end
             endcase
 
