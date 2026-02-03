@@ -16,7 +16,7 @@ module minc (
     logic  [7:0]  regs [0:15];
 
     // Instruction ROM: 256 words x 15-bit (instruction is 15-bit)
-    logic  [14:0] rom  [0:255];
+    logic  [15:0] rom  [0:255];
     // Data RAM: 256 x 8-bit (stack and data unified)
     logic  [7:0]  ram  [0:255];
 
@@ -33,7 +33,7 @@ module minc (
     assign top_out = ram[sp]; // current stack top
 
     // Fetch current instruction (15-bit in [14:0])
-    wire [14:0] instr = rom[pc];
+    wire [14:0] instr = rom[pc][14:0];
 
     // Decode fields
     wire [2:0] op    = instr[14:12];
@@ -52,20 +52,6 @@ module minc (
                             op == 3'b101 ? imm8 :
                             op == 3'b110 ? (regs[rs] != 8'd0 ? imm8 : pc + 8'd1) :
                             pc + 8'd1;
-
-    wire [7:0] alu_out =    subop == 4'b0000 ? rs_val :
-                            subop == 4'b0001 ? rd_val + rs_val :
-                            subop == 4'b0010 ? rd_val - rs_val :
-                            subop == 4'b0011 ? (rd_val < rs_val ? 8'b1 : 8'b0) :
-                            subop == 4'b0100 ? rd_val * rs_val :
-                            8'h00; // default
-
-    wire [7:0] ram_addr =   op == 3'b000 ?
-                                (subop == 4'b1000 ? sp - 8'd1 : // push
-                                subop == 4'b1010 ? sp :         // pop
-                                sp) :
-                            op == 3'b101 ? sp - 8'd1 :          // call
-                            (regs[15] + imm8);                  // ldm, stm
 
     // Main sequential logic
     always_ff @(posedge CLK or negedge nRESET) begin
@@ -130,6 +116,7 @@ module minc (
                         end
                         4'b1100: begin
                             // ret : PC = (SP++) + 1 (pattern 000 0101 0000 0010)
+                            ram_addr = sp;
                             // next_pc = ram[ram_addr] + 8'd1;
                             sp <= sp + 8'd1;
                             `ifdef SIM
