@@ -21,7 +21,7 @@ module minc_gw_top (
         if (!sys_nrst) begin
             presc_cnt <= 24'd0;
             int_clk   <= 1'b0;
-        end else if (presc_cnt == 24'd13_499_999) begin
+        end else if (presc_cnt == 24'd13_499) begin
             presc_cnt <= 24'd0;
             int_clk   <= ~int_clk;
         end else begin
