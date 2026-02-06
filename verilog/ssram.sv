@@ -1,3 +1,6 @@
+`ifndef __SSRAM_SV__
+`define __SSRAM_SV__
+
 module ssram #(
     parameter ADDR_WIDTH = 8,
     parameter DATA_WIDTH = 8
@@ -8,7 +11,9 @@ module ssram #(
     input  logic [ADDR_WIDTH-1:0]  addr,
     input  logic [DATA_WIDTH-1:0]  din,
     input  logic        we,
-    output logic [DATA_WIDTH-1:0]  dout
+    output logic [DATA_WIDTH-1:0]  dout,
+    input  logic [ADDR_WIDTH-1:0]  dbg_addr,
+    output logic [DATA_WIDTH-1:0]  dbg_dout
 );
 
     // Data RAM: 256 x 8-bit
@@ -28,4 +33,7 @@ module ssram #(
     end
 
     assign dout = ram[addr_reg];
+    assign dbg_dout = ram[dbg_addr];
 endmodule
+
+`endif // __SSRAM_SV__

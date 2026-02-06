@@ -2,37 +2,60 @@
 
 `define SIM
 
+`include "ssram.sv"
+
 module minc_tb;
 
-    reg CLK;
-    reg nRESET;
+    reg clk;
+    reg reset_n;
     wire [7:0] pc_out;
     wire [7:0] top_out;
     wire [7:0] sp_out;
+    wire [7:0] address;
+    wire [7:0] data_out;
+    wire [7:0] data_in;
+    wire       we;
     integer i;
 
     // Instantiate the DUT
     minc uut (
-        .CLK(CLK),
-        .nRESET(nRESET),
+        .clk(clk),
+        .reset_n(reset_n),
         .pc_out(pc_out),
-        .top_out(top_out),
-        .sp_out(sp_out)
+        .sp_out(sp_out),
+        .address(address),
+        .data_out(data_out),
+        .we(we),
+        .data_in(data_in)
+    );
+
+    ssram #(
+        .ADDR_WIDTH(8),
+        .DATA_WIDTH(8)
+    ) data_ram (
+        .clk(clk),
+        .rst_n(reset_n),
+        .addr(address),
+        .din(data_out),
+        .we(we),
+        .dout(data_in),
+        .dbg_addr(sp_out),
+        .dbg_dout(top_out)
     );
 
     // Clock generator: 10 ns period
     initial begin
-        CLK = 0;
-        forever #5 CLK = ~CLK;
+        clk = 0;
+        forever #5 clk = ~clk;
     end
 
     // Reset sequence
     initial begin
-        nRESET = 1;
+        reset_n = 1;
         #1;
-        nRESET = 0;
+        reset_n = 0;
         #20;
-        nRESET = 1;
+        reset_n = 1;
     end
 
     // `ifndef TEST
@@ -46,11 +69,11 @@ module minc_tb;
     // Simple monitor and stop after a number of cycles
     initial begin
         // wait for reset to deassert
-        @(posedge nRESET);
+        @(posedge reset_n);
         // wait a little after reset release
         #1;
         for (i = 0; i < 65535; i = i + 1) begin
-            @(posedge CLK);
+            @(posedge clk);
         end
         #10;
         $display("Timeout reached, finishing simulation.");
@@ -59,7 +82,7 @@ module minc_tb;
     `ifdef VERBOSE
     // Verbose output on each clock cycle
     initial $display("TIME\tPC\tTOP\tSP");
-    always @(posedge CLK) $display("%0t\t%0h\t%0h\t%0h", $time, pc_out, top_out, sp_out);
+    always @(posedge clk) $display("%0t\t%0h\t%0h\t%0h", $time, pc_out, top_out, sp_out);
     `endif
 
     final begin
