@@ -75,7 +75,7 @@ module minc (
     //                         (regs[15] + imm8);                  // ldm, stm
 
     // Main sequential logic
-    always_ff @(posedge clk or negedge reset_n) begin
+    always_ff @(posedge clk) begin
         if (!reset_n) begin
             pc <= 8'h00;
             sp <= 8'h00;
@@ -153,6 +153,11 @@ module minc (
                         end
                         default: begin
                             // 110,111: unused -> HALT
+                            `ifdef SIM
+                            $display("HALT encountered at PC=%h", pc - 8'd1);
+                            $finish;
+                            `endif
+                            pc <= pc - 8'd1; // stay on HALT instruction
                         end
                     endcase
                     state <= `S_WB;

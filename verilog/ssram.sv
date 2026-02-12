@@ -21,7 +21,7 @@ module ssram #(
     logic  [ADDR_WIDTH-1:0]  addr_reg;
 
     // Synchronous read/write
-    always_ff @(posedge clk or negedge rst_n) begin
+    always_ff @(negedge clk or negedge rst_n) begin
         if (!rst_n) begin
             // do nothing on reset
         end else begin
