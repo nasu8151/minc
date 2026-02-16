@@ -198,14 +198,14 @@ void program() {
 
 Node *toplevel(char *loc) {
     char *l = loc;
-    Token *tok = token;
     if (consume_la("uint8_t", l) || consume_la("int", l) || consume_la("char", l)) {
         // Currently only uint8_t and int types are supported for global variables
     } else if (consume_la("void", l)) {
         // void type is supported for function return type
     } else {
-        error_at(l, "Type specifier expected for global variable and function: %s", tok->str);
+        error_at(l, "Type specifier expected for global variable and function: %.*s", token->len, token->str);
     }
+    Token *tok = token;
     char *name = expect_ident(l);
 
     if (consume_la("(", l)) {
@@ -421,7 +421,7 @@ Node *primary(char *l) {       // primary = num | ident | "(" expr ")"
         } else if (consume_la("void", loc)) {
             size = 0; // void type has size 0
         } else {
-
+            // Considers reference to variable or function if there is no type specifier
         }
         Ident_Name *name = find_name(token);
         Token *tok = token;
@@ -442,20 +442,20 @@ Node *primary(char *l) {       // primary = num | ident | "(" expr ")"
             }
             return new_func_node(ND_FUNC_CALL, name, args_head->next, NULL, 0, loc);
         }
-        if (size != -1) {
+        if (size == -1 && name) {
             if (name->type == VAR_GLOBAL_STATIC) {
-                fprintf(stderr, "Found global variable: %.*s at address %ld\n", (int)tok->size, tok->str, name->address);
+                fprintf(stderr, "Found global variable: %.*s at address %ld\n", (int)tok->len, tok->str, name->address);
                 return new_ident_node(ND_GLOBAL_VAR, var_name, name->address, loc);
-            } else {
-                fprintf(stderr, "Found variable: %.*s at offset %ld\n", (int)tok->size, tok->str, name->offset);
+            } else if (name->type == VAR_LOCAL) {
+                fprintf(stderr, "Found variable: %.*s at offset %ld\n", (int)tok->len, tok->str, name->offset);
                 return new_ident_node(ND_LOCAL_VAR, var_name, name->offset, loc);
             }
-        } else {
+        } else if (size > 0) {
             add_local_var(tok);
-            fprintf(stderr, "Added local variable: %.*s at offset %ld\n", (int)tok->size, tok->str, current->var_tail->offset);
+            fprintf(stderr, "Added local variable: %.*s at offset %ld\n", (int)tok->len, tok->str, current->var_tail->offset);
             return new_ident_node(ND_LOCAL_VAR, var_name, current->var_tail->offset, loc);
         }
-        error_at(loc, "Undefined variable: %.*s", (int)tok->size, tok->str);
+        error_at(loc, "Undefined or invalid variable: %.*s", (int)tok->len, tok->str);
     }
 }
 
@@ -476,7 +476,7 @@ Ident_Name *find_name(Token *tok) {
         Ident_Name *var = cur->var_head;
         while (var) {
             fprintf(stderr, "Comparing %s with %s\n", var->name, tok->str);
-            if (var->name_len == tok->size && strncmp(var->name, tok->str, tok->size) == 0) {
+            if (var->name_len == tok->len && strncmp(var->name, tok->str, tok->len) == 0) {
                 return var;
             }
             var = var->next;
@@ -491,9 +491,9 @@ void add_local_var(Token *tok) {
     if (!var) {
         error("Memory allocation failed");
     }
-    fprintf(stderr, "Adding local variable: %.*s\n", (int)tok->size, tok->str);
-    var->name_len = tok->size;
-    var->name = mystrndup(tok->str, tok->size);
+    fprintf(stderr, "Adding local variable: %.*s\n", (int)tok->len, tok->str);
+    var->name_len = tok->len;
+    var->name = mystrndup(tok->str, tok->len);
     var->type = VAR_LOCAL;
     var->address = 0; // ローカル変数のアドレスは0に設定
     var->next = NULL;
@@ -518,8 +518,8 @@ void add_global_var(Token *tok, long address) {
     if (!var) {
         error("Memory allocation failed");
     }
-    var->name_len = tok->size;
-    var->name = mystrndup(tok->str, tok->size);
+    var->name_len = tok->len;
+    var->name = mystrndup(tok->str, tok->len);
     var->type = VAR_GLOBAL_STATIC;
     var->next = NULL;
     Ident_Name *gvar = head->var_head;
@@ -533,7 +533,7 @@ void add_global_var(Token *tok, long address) {
     var->offset = 0;  // グローバル変数のオフセットは0に設定
     head->max_var_count++;
     var->address = address; // グローバル変数のアドレスを設定
-    fprintf(stderr, "Adding global variable: %.*s at address %ld\n", (int)tok->size, tok->str, var->address);
+    fprintf(stderr, "Adding global variable: %.*s at address %ld\n", (int)tok->len, tok->str, var->address);
 }
 
 void add_function(Token *tok) {
@@ -541,8 +541,8 @@ void add_function(Token *tok) {
     if (!var) {
         error("Memory allocation failed");
     }
-    var->name_len = tok->size;
-    var->name = mystrndup(tok->str, tok->size);
+    var->name_len = tok->len;
+    var->name = mystrndup(tok->str, tok->len);
     var->type = FUNCTION;
     var->next = NULL;
     Ident_Name *gvar = head->var_head;
@@ -555,14 +555,14 @@ void add_function(Token *tok) {
     }
     var->offset = 0;  // 関数のオフセットは0に設定
     var->address = 0; // 関数のアドレスは0に設定
-    fprintf(stderr, "Adding function: %.*s \n", (int)tok->size, tok->str);
+    fprintf(stderr, "Adding function: %.*s \n", (int)tok->len, tok->str);
 }
 
 Ident_Name *find_function(Token *tok) {
     Ident_Name *cur = head->var_head;
     while (cur) {
         fprintf(stderr, "Comparing function %s with %s\n", cur->name, tok->str);
-        if (cur->name_len == tok->size && strncmp(cur->name, tok->str, tok->size) == 0) {
+        if (cur->name_len == tok->len && strncmp(cur->name, tok->str, tok->len) == 0) {
             return cur;
         }
         cur = cur->next;

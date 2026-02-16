@@ -78,7 +78,7 @@ typedef struct Token {
     TokenType type;
     struct Token *next;
     long value;
-    unsigned long size; // Token size
+    unsigned long len; // Token size
     char *str;       // Token string (must be null-terminated)
     char *loc;
 } Token;

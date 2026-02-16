@@ -84,7 +84,7 @@ Ident_Name *find_function(Token *tok);
 // Add local variable to current scope
 void add_local_var(Token *tok);
 // Add global variable to global scope
-void add_global_var(Token *tok);
+void add_global_var(Token *tok, long address);
 // Add function to function list
 void add_function(Token *tok);
 // Count local variables from current funciton scope

@@ -90,7 +90,7 @@ Token *new_token(TokenType type, Token *current, const char *str, unsigned long 
     if (str) {
         tok->str = mystrndup(str, size);
     }
-    tok->size = size;
+    tok->len = size;
     tok->value = val;
     tok->loc = loc;
     current->next = tok;
