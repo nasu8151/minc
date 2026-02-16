@@ -22,6 +22,7 @@ typedef enum {
     ND_BLOCK,
     ND_FUNC_DEF,
     ND_FUNC_CALL,
+    ND_ATTR,
 
     ND_EOF
 } NodeType;
@@ -38,7 +39,7 @@ typedef struct Node {
     struct Node *inc;   // Increment (for FOR statement)
     struct Node *init;  // Initialization (for FOR statement)
     struct NodeList_Member *body; // Block body (for BLOCK, FUNC_DEF statements)
-    long val;           // Value (only for ND_NUM)
+    long val;           // Value (only for ND_NUM) or size of type (only for ND_GLOBAL_VAR and ND_LOCAL_VAR)
     long ofs_addr;        // Offset from BP or Absolute address (only for ND_LOCAL_VAR, ND_GLOBAL_VAR)
     long arg_sf_size; // Stack frame size (only for ND_BLOCK used in FUNC_DEF) or number of arguments (only for ND_FUNC_DEF)
     unsigned long name_len; // Length of identifier name

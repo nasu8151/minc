@@ -156,6 +156,19 @@ unsigned long read_ident_size(const char *p) {
     return p - start;
 }
 
+const char* reserved_words[] = {
+    "return",
+    "if",
+    "else",
+    "for",
+    "while",
+    "int",
+    "uint8_t",
+    "char",
+    "void",
+    NULL
+};
+
 Token *tokenize(const char *p){
     Token head;
     head.next = NULL;
@@ -167,36 +180,23 @@ Token *tokenize(const char *p){
             p++;
             continue;
         }
+
         size_t len;
-        len = tokenize_reserved(p, "return", 6);
-        if (len) {
-            p += len;
+        unsigned int i = 0;
+        bool matched = false;
+        char **rp = (char **)reserved_words;
+        while (*rp) {
+            len = tokenize_reserved(p, *rp, strlen(*rp));
+            if (len) {
+                p += len;
+                matched = true;
+                break;
+            }
+            rp++;
+        }
+        if (matched) {
             continue;
         }
-        len = tokenize_reserved(p, "if", 2);
-        if (len) {
-            p += len;
-            continue;
-        }
-
-        len = tokenize_reserved(p, "else", 4);
-        if (len) {
-            p += len;
-            continue;
-        }
-
-        len = tokenize_reserved(p, "for", 3);
-        if (len) {
-            p += len;
-            continue;
-        }
-
-        len = tokenize_reserved(p, "while", 5);
-        if (len) {
-            p += len;
-            continue;
-        }
-
 
         if (strncmp(p, "==", 2) == 0 || strncmp(p, "!=", 2) == 0 || strncmp(p, "<=", 2) == 0 || strncmp(p, ">=", 2) == 0) {
             cur = new_token(TOKEN_RESERVED, cur, p, 2, 0, (char *)p);
@@ -204,7 +204,7 @@ Token *tokenize(const char *p){
             continue;
         }
 
-        if (*p == '+' || *p == '-' || *p == '*' || *p == '(' || *p == ')' || *p == '<' || *p == '>' || *p == '=' || *p == ';' || *p == '{' || *p == '}' || *p == ',' ) {
+        if (*p == '+' || *p == '-' || *p == '*' || *p == '(' || *p == ')' || *p == '<' || *p == '>' || *p == '=' || *p == ';' || *p == '{' || *p == '}' || *p == ',' || *p == '[' || *p == ']') {
             cur = new_token(TOKEN_RESERVED, cur, p, 1, 0, (char *)p);
             p++;
             continue;

@@ -183,6 +183,7 @@ void program() {
     long i = 0;
     head = calloc(1, sizeof(Vars_List));
     head->parent = NULL;
+    head->var_alloc_ptr = 0x10; // グローバル変数のアドレスは0x10から割り当てる
     tail = head;
     while (!at_eof()) {
         code[i++] = *toplevel(token->loc);
@@ -198,7 +199,15 @@ void program() {
 Node *toplevel(char *loc) {
     char *l = loc;
     Token *tok = token;
+    if (consume_la("uint8_t", l) || consume_la("int", l) || consume_la("char", l)) {
+        // Currently only uint8_t and int types are supported for global variables
+    } else if (consume_la("void", l)) {
+        // void type is supported for function return type
+    } else {
+        error_at(l, "Type specifier expected for global variable and function: %s", tok->str);
+    }
     char *name = expect_ident(l);
+
     if (consume_la("(", l)) {
         NodeList_Member *nl = calloc(1, sizeof(NodeList_Member));
         if (!nl) {
@@ -224,10 +233,28 @@ Node *toplevel(char *loc) {
         end_scope();
         return node;
     } else {
+        if (consume_la("[", l)) {
+            expect("[", l);
+            char *attr = expect_ident(l);
+            if (strcmp(attr, "address") == 0) {
+                expect("=", l);
+                long address = expect_number(l);
+                Ident_Name *var = find_name(tok);
+                if (var) {
+                    error_at(l, "Redefinition of global variable: %s", name);
+                }
+                add_global_var(tok, address);
+                head->var_tail->address = address;
+                expect("]", l);
+                expect("]", l);
+            } else {
+                error_at(l, "Unknown attribute for global variable: %s", attr);
+            }
+        }
         expect("=", l);
         Node *rhs = assign(l);
         expect(";", l);
-        add_global_var(tok);
+        add_global_var(tok, head->var_alloc_ptr++);
         Node *node = new_node(ND_ASSIGN, new_ident_node(ND_GLOBAL_VAR, name, head->var_tail->address, l), rhs, l);
         return node;
     }
@@ -388,11 +415,18 @@ Node *primary(char *l) {       // primary = num | ident | "(" expr ")"
     } else if (is_number_token()) {         // numの部分
         return new_num_node(expect_number(loc), loc);
     } else {                               // identの部分
-        Ident_Name *var = find_name(token);
-        Ident_Name *func = find_function(token);
+        long size = -1;
+        if (consume_la("uint8_t", loc) || consume_la("int", loc) || consume_la("char", loc)) {
+            size = 1; // Currently uint8_t, int and char mean the same (1 byte int) type.
+        } else if (consume_la("void", loc)) {
+            size = 0; // void type has size 0
+        } else {
+
+        }
+        Ident_Name *name = find_name(token);
         Token *tok = token;
-        char *name = expect_ident(loc);
-        if (func && consume_la("(", loc)) { // ident "(" (expr ",")* expr? ")" の部分（関数呼び出し）
+        char *var_name = expect_ident(loc);
+        if (name && name->type == FUNCTION && consume_la("(", loc)) { // ident "(" ((expr ",")* expr)? ")" の部分（関数呼び出し）
             NodeList_Member *args = calloc(1, sizeof(NodeList_Member));
             if (!args) {
                 error("Memory allocation failed");
@@ -408,29 +442,20 @@ Node *primary(char *l) {       // primary = num | ident | "(" expr ")"
             }
             return new_func_node(ND_FUNC_CALL, name, args_head->next, NULL, 0, loc);
         }
-        if (consume_la("(", loc)) {
-            error_at(loc, "Function calls are not supported for variable identifiers: %s", name);
-        }
-        if (var) {
-            if (var->type == VAR_GLOBAL_STATIC) {
-                fprintf(stderr, "Found global variable: %s at address %ld\n", name, var->address);
-                return new_ident_node(ND_GLOBAL_VAR, name, var->address, loc);
+        if (size != -1) {
+            if (name->type == VAR_GLOBAL_STATIC) {
+                fprintf(stderr, "Found global variable: %.*s at address %ld\n", (int)tok->size, tok->str, name->address);
+                return new_ident_node(ND_GLOBAL_VAR, var_name, name->address, loc);
             } else {
-                fprintf(stderr, "Found variable: %s at offset %ld\n", name, var->offset);
-                return new_ident_node(ND_LOCAL_VAR, name, var->offset, loc);
+                fprintf(stderr, "Found variable: %.*s at offset %ld\n", (int)tok->size, tok->str, name->offset);
+                return new_ident_node(ND_LOCAL_VAR, var_name, name->offset, loc);
             }
         } else {
-            if (tail->parent == NULL) { // グローバルスコープならグローバル変数として追加
-                add_global_var(tok);
-                fprintf(stderr, "Added global variable: %s at address %ld\n", name, head->var_tail->address);
-                return new_ident_node(ND_GLOBAL_VAR, name, head->var_tail->address, loc);
-            } else {
-                add_local_var(tok);
-                fprintf(stderr, "Added local variable: %s at offset %ld\n", name, current->var_tail->offset);
-                return new_ident_node(ND_LOCAL_VAR, name, current->var_tail->offset, loc);
-            }
+            add_local_var(tok);
+            fprintf(stderr, "Added local variable: %.*s at offset %ld\n", (int)tok->size, tok->str, current->var_tail->offset);
+            return new_ident_node(ND_LOCAL_VAR, var_name, current->var_tail->offset, loc);
         }
-        error_at(loc, "Undefined variable: %s", name);
+        error_at(loc, "Undefined variable: %.*s", (int)tok->size, tok->str);
     }
 }
 
@@ -484,11 +509,11 @@ void add_local_var(Token *tok) {
         cur->var_tail->next = var;
         cur->var_tail = var;
     }
-    cur->max_vars_count++;
+    cur->max_var_count++;
     var->offset = 0 - count_local_vars(); // スタック上のオフセットを設定
 }
 
-void add_global_var(Token *tok) {
+void add_global_var(Token *tok, long address) {
     Ident_Name *var = calloc(1, sizeof(Ident_Name));
     if (!var) {
         error("Memory allocation failed");
@@ -506,8 +531,8 @@ void add_global_var(Token *tok) {
         head->var_tail = var;
     }
     var->offset = 0;  // グローバル変数のオフセットは0に設定
-    head->max_vars_count++;
-    var->address = count_global_vars(); // グローバル変数のアドレスを設定
+    head->max_var_count++;
+    var->address = address; // グローバル変数のアドレスを設定
     fprintf(stderr, "Adding global variable: %.*s at address %ld\n", (int)tok->size, tok->str, var->address);
 }
 
@@ -520,13 +545,13 @@ void add_function(Token *tok) {
     var->name = mystrndup(tok->str, tok->size);
     var->type = FUNCTION;
     var->next = NULL;
-    Ident_Name *gvar = func_head;
+    Ident_Name *gvar = head->var_head;
     if (!gvar) {
-        func_head = var;
-        func_tail = var;
+        head->var_head = var;
+        head->var_tail = var;
     } else {
-        func_tail->next = var;
-        func_tail = var;
+        head->var_tail->next = var;
+        head->var_tail = var;
     }
     var->offset = 0;  // 関数のオフセットは0に設定
     var->address = 0; // 関数のアドレスは0に設定
@@ -534,7 +559,7 @@ void add_function(Token *tok) {
 }
 
 Ident_Name *find_function(Token *tok) {
-    Ident_Name *cur = func_head;
+    Ident_Name *cur = head->var_head;
     while (cur) {
         fprintf(stderr, "Comparing function %s with %s\n", cur->name, tok->str);
         if (cur->name_len == tok->size && strncmp(cur->name, tok->str, tok->size) == 0) {
@@ -563,7 +588,9 @@ long count_global_vars() {
     long count = 0;
     Ident_Name *var = head->var_head;
     while (var) {
-        count++;
+        if (var->type == VAR_GLOBAL_STATIC) {
+            count++;
+        }
         var = var->next;
     }
     return count;
@@ -591,11 +618,11 @@ long end_scope() {
             error("Cannot end global scope");
         }
         long cur_max_vars_count = count_local_vars();
-        if (tail->max_vars_count < cur_max_vars_count) {
-            tail->max_vars_count = cur_max_vars_count;
+        if (tail->max_var_count < cur_max_vars_count) {
+            tail->max_var_count = cur_max_vars_count;
         }
-        if (tail->parent->max_vars_count < tail->max_vars_count) {
-            tail->parent->max_vars_count = tail->max_vars_count;
+        if (tail->parent->max_var_count < tail->max_var_count) {
+            tail->parent->max_var_count = tail->max_var_count;
         }
         Vars_List *old_tail = tail;
         tail = tail->parent;
@@ -605,7 +632,7 @@ long end_scope() {
     } else {
         error("No scope to end");
     }
-    return tail->max_vars_count;
+    return tail->max_var_count;
 }
 
 void free_vars_list(Vars_List *list) {

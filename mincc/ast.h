@@ -26,7 +26,7 @@ Variable list structure
 
 /***************************************************************
 program     = toplevel*
-toplevel    = ident "=" assign ";" | ident "(" ((expr ",")* expr)? ")" stmt  <-- must be a block
+toplevel    = type [[attr]]? ident "=" assign ";" | type ident "(" ((expr ",")* expr)? ")" stmt  <-- must be a block
 stmt        = expr ";"
             | "{" stmt* "}"
             | "return" expr ";"
@@ -40,7 +40,9 @@ relational = add ("<" add | "<=" add | ">" add | ">=" add)*
 add        = mul ("+" mul | "-" mul)*
 mul        = unary ("*" unary)*
 unary      = ("+" | "-")? primary
-primary    = num | ident | ident "(" ((expr ",")* expr)? ")" | "(" expr ")"
+primary    = num | type? ("[[" attr "]]")? ident | ident "(" ((expr ",")* expr)? ")" | "(" expr ")"
+type       = "uint8_t" | "void" | "int" | "char"  // Currently uint8_t, int and char mean the same (1 byte int) type.
+attr       = ("address") "=" num
 ****************************************************************/
 
 typedef struct Vars_List {
@@ -48,7 +50,8 @@ typedef struct Vars_List {
     struct Vars_List *child;
     Ident_Name *var_head;
     Ident_Name *var_tail;
-    long max_vars_count;
+    long var_alloc_ptr;
+    long max_var_count;
 } Vars_List;
 
 
