@@ -5,14 +5,14 @@ Token *token;
 // Consume a token if it matches the expected string
 // Return true if matched, false otherwise
 // If reached EOF, return false
-bool consume_la(const char *op, char *loc) {
+bool consume_la(const char *op, char **loc) {
     if (token->type == TOKEN_EOF) {
         return false;
     }
     if (token->type != TOKEN_RESERVED || strcmp(token->str, op) != 0) {
         return false;
     }
-    loc = token->loc;
+    *loc = token->loc;
     token = token->next;
     return true;
 }
@@ -20,41 +20,41 @@ bool consume_la(const char *op, char *loc) {
 // Consume a token if it matches the expected string
 // Return true if matched, false otherwise
 // If reached EOF, throw an error
-bool consume(const char *op, char *loc) {
+bool consume(const char *op, char **loc) {
     if (token->type == TOKEN_EOF) {
         error_at(token->loc, "Expected '%s', but got EOF", op);
     }
     if (token->type != TOKEN_RESERVED || strcmp(token->str, op) != 0) {
         return false;
     }
-    loc = token->loc;
+    *loc = token->loc;
     token = token->next;
     return true;
 }
 
 // Consume a token if it matches the expected string
 // Otherwise, throw an error
-void expect(const char *op, char *loc) {
+void expect(const char *op, char **loc) {
     if (token->type == TOKEN_EOF) {
         error_at(token->loc, "Expected '%s', but got EOF", op);
     }
     if (token->type != TOKEN_RESERVED || strcmp(token->str, op) != 0) {
         error_at(token->loc, "Expected '%s', but got '%s'", op, token->str);
     }
-    loc = token->loc;
+    *loc = token->loc;
     token = token->next;
 }
 
 // Expect a number token and return its value
 // Otherwise, throw an error
-long expect_number(char *loc) {
+long expect_number(char **loc) {
     if (token->type == TOKEN_EOF) {
         error_at(token->loc, "Expected a number, but got EOF");
     }
     if (token->type != TOKEN_NUMBER) {
         error_at(token->loc, "Expected a number, but got '%s'", token->str);
     }
-    loc = token->loc;
+    *loc = token->loc;
     long val = token->value;
     token = token->next;
     return val;
@@ -62,7 +62,7 @@ long expect_number(char *loc) {
 
 // Expect an identifier token and return its string
 // Otherwise, throw NULL
-char *expect_ident(char *loc) {
+char *expect_ident(char **loc) {
     if (token->type == TOKEN_EOF) {
         error_at(token->loc, "Expected an identifier, but got EOF");
     }
@@ -70,7 +70,7 @@ char *expect_ident(char *loc) {
         error_at(token->loc, "Expected an identifier, but got '%s'", token->str);
     }
     char *name = token->str;
-    loc = token->loc;
+    *loc = token->loc;
     token = token->next;
     return name;
 }

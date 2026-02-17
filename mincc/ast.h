@@ -89,8 +89,6 @@ void add_global_var(Token *tok, long address);
 void add_function(Token *tok);
 // Count local variables from current funciton scope
 long count_local_vars();
-// Count global variables
-long count_global_vars();
 
 void new_scope();
 long end_scope();

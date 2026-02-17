@@ -24,21 +24,21 @@ Token *tokenize(const char *p);
 // Consume a token if it matches the expected string
 // Return true if matched, false otherwise
 // If reached EOF, return false
-bool consume_la(const char *op, char *loc);
+bool consume_la(const char *op, char **loc);
 // Consume a token if it matches the expected string
 // Return true if matched, false otherwise
 // If reached EOF, throw an error
-bool consume(const char *op, char *loc);
+bool consume(const char *op, char **loc);
 // Consume a token if it matches the expected string
 // Otherwise, throw an error
-void expect(const char *op, char *loc);
+void expect(const char *op, char **loc);
 // Expect a number token and return its value
 // Otherwise, throw an error
-long expect_number(char *loc);
+long expect_number(char **loc);
 // Expect an identifier token and return its string
 // If reached EOF, throw an error
 // Otherwise, throw NULL
-char *expect_ident(char *loc);
+char *expect_ident(char **loc);
 bool is_number_token();
 bool at_eof();
 

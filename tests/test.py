@@ -58,10 +58,11 @@ if __name__ == "__main__":
     tf.test_e2e("char global_var=0;\nvoid main(){while(global_var<21){for (int i=1;i<5;i=i+1) global_var=global_var+i;}\nreturn global_var;}", 30)
     tf.test_e2e("char a=1;\nchar b=2;\nvoid main(){char c=3;\nreturn a+b+c;}", 6)
     tf.test_e2e("char ret42(){return 42;}\nvoid main(){return ret42();}", 42)
-    tf.test_e2e("char arg=0;fac(){i=arg;\nif (i==0) return 1;\narg=i-1;\nreturn fac()*i;}void main(){arg=5;\nreturn fac();}", 120)
-    tf.test_e2e("char fib(i){if(i==0) return 0;\nif(i==1) return 1;\na=fib(i-1);\nb=fib(i-2);\nreturn a+b;}\nvoid main(){return fib(11);}" , 89)
-    tf.test_e2e("char mac(a,b,c){return a*b+c;}void main(){return mac(2,3,4);}", 10)
+    tf.test_e2e("char arg=0;char fac(){char i=arg;\nif (i==0) return 1;\narg=i-1;\nreturn fac()*i;}void main(){arg=5;\nreturn fac();}", 120)
+    tf.test_e2e("char fib(char i){if(i==0) return 0;\nif(i==1) return 1;\nchar a=fib(i-1);\nchar b=fib(i-2);\nreturn a+b;}\nvoid main(){return fib(11);}" , 89)
+    tf.test_e2e("char mac(char a,char b,char c){return a*b+c;}void main(){return mac(2,3,4);}", 10)
     tf.test_e2e("void main(){int j=0;for(int i=0;i<7;i=i+1){} int k=0; int i=i+5; return i;}", -1)
+    tf.test_e2e("char [[address=0x00]] port_a_out;char [[address=0x01]] port_a_dir;void main(){port_a_dir = 0xFF;port_a_out=0x55; return 0;}", 0, porta=0x55)
 
 
     print()
