@@ -1,6 +1,7 @@
 `define S_FETCH   2'b00
 `define S_DECEXEC 2'b01
 `define S_WB      2'b10
+`define S_WAIT    2'b11
 
 module minc (
     input  logic        clk,
@@ -11,7 +12,8 @@ module minc (
     output logic [7:0]  data_out,
     output logic        we,
     input  logic [7:0]  data_in,
-    input  logic        wait_e
+    input  logic        wait_req,
+    input  logic        wait_rel
 );
 
     // PC, SP
@@ -53,27 +55,12 @@ module minc (
     wire [7:0] rs_val = regs[rs];
     integer i;
 
-    // Next PC logic
-    // wire [7:0] next_pc =    op == 3'b000 && subop == 4'b1100 ? ram[sp] :
-    //                         op == 3'b100 ? (regs[rs] == 8'd0 ? imm8 : pc + 8'd1) :
-    //                         op == 3'b101 ? imm8 :
-    //                         op == 3'b110 ? (regs[rs] != 8'd0 ? imm8 : pc + 8'd1) :
-    //                         op == 3'b111 ? pc :
-    //                         pc + 8'd1;
-
     wire [7:0] alu_out =    subop == 4'b0000 ? rs_val :
                             subop == 4'b0001 ? rd_val + rs_val :
                             subop == 4'b0010 ? rd_val - rs_val :
                             subop == 4'b0011 ? (rd_val < rs_val ? 8'b1 : 8'b0) :
                             subop == 4'b0100 ? rd_val * rs_val :
                             8'h00; // default
-
-    // wire [7:0] ram_addr =   op == 3'b000 ?
-    //                             (subop == 4'b1000 ? sp - 8'd1 : // push
-    //                             subop == 4'b1010 ? sp :         // pop
-    //                             sp) :
-    //                         op == 3'b101 ? sp - 8'd1 :          // call
-    //                         (regs[15] + imm8);                  // ldm, stm
 
     // Main sequential logic
     always_ff @(posedge clk) begin
@@ -161,8 +148,7 @@ module minc (
                             pc <= pc - 8'd1; // stay on HALT instruction
                         end
                     endcase
-                    if (!wait_e)
-                        state <= `S_WB;
+                    state <= `S_WB;
                 end
                 `S_WB: begin
                     // Writeback phase
@@ -226,7 +212,14 @@ module minc (
                         end
                     endcase
                     we <= 1'b0;
-                    state <= `S_FETCH;
+                    if (wait_req)
+                        state <= `S_WAIT;
+                    else 
+                        state <= `S_FETCH;
+                end
+                `S_WAIT: begin
+                    if (wait_rel)
+                        state <= `S_FETCH;
                 end
                 default: state <= `S_FETCH;
             endcase
