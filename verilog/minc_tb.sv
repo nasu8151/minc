@@ -15,6 +15,7 @@ module minc_tb;
     logic [7:0] data_out;
     logic [7:0] data_in;
     logic       we;
+    logic       wait_e;
     integer i;
 
     wire ram_ce = address > 8'h0F ? 1'b1 : 1'b0; // RAM is enabled for addresses > 0x0F
@@ -32,7 +33,8 @@ module minc_tb;
         .address(address),
         .data_out(data_out),
         .we(we),
-        .data_in(data_in)
+        .data_in(data_in),
+        .wait_e(wait_e)
     );
 
     ssram #(
@@ -78,11 +80,23 @@ module minc_tb;
     // Reset sequence
     initial begin
         reset_n = 1;
+        wait_e = 0;
         #1;
         reset_n = 0;
         #20;
         reset_n = 1;
     end
+
+    `ifdef WAIT_TEST
+    initial begin
+        #50;
+        $display("Asserting wait signal at time %0t", $time);
+        wait_e = 1;
+        #30;
+        $display("Deasserting wait signal at time %0t", $time);
+        wait_e = 0;
+    end
+    `endif
 
     // `ifndef TEST
     // Waveform dump for Icarus / GTKWave

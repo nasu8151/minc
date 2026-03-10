@@ -10,7 +10,8 @@ module minc (
     output logic [7:0]  address,
     output logic [7:0]  data_out,
     output logic        we,
-    input  logic [7:0]  data_in
+    input  logic [7:0]  data_in,
+    input  logic        wait_e
 );
 
     // PC, SP
@@ -160,7 +161,8 @@ module minc (
                             pc <= pc - 8'd1; // stay on HALT instruction
                         end
                     endcase
-                    state <= `S_WB;
+                    if (!wait_e)
+                        state <= `S_WB;
                 end
                 `S_WB: begin
                     // Writeback phase
