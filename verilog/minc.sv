@@ -60,6 +60,9 @@ module minc (
                             subop == 4'b0010 ? rd_val - rs_val :
                             subop == 4'b0011 ? (rd_val < rs_val ? 8'b1 : 8'b0) :
                             subop == 4'b0100 ? rd_val * rs_val :
+                            subop == 4'b0101 ? rd_val | rs_val :
+                            subop == 4'b0110 ? rd_val & rs_val :
+                            subop == 4'b0111 ? rd_val ^ rs_val :
                             8'h00; // default
 
     // Main sequential logic

@@ -337,13 +337,50 @@ Node *expr(char *l) {
 
 Node *assign(char *l) {
     char *loc = l;
-    Node *node = equality(loc);
+    Node *node = bitwise_or(loc);
 
     if (consume_la("=", &loc)) {
         node = new_node(ND_ASSIGN, node, assign(loc), loc);
     }
     return node;
 }
+
+Node *bitwise_or(char *l) {
+    char *loc = l;
+    Node *node = bitwise_xor(loc);
+    while (true) {
+        if (consume_la("|", &loc)) {
+            node = new_node(ND_BITWISE_OR, node, bitwise_xor(loc), loc);
+        } else {
+            return node;
+        }
+    }
+}
+
+Node *bitwise_xor(char *l) {
+    char *loc = l;
+    Node *node = bitwise_and(loc);
+    while (true) {
+        if (consume_la("^", &loc)) {
+            node = new_node(ND_BITWISE_XOR, node, bitwise_and(loc), loc);
+        } else {
+            return node;
+        }
+    }
+}
+
+Node *bitwise_and(char *l) {
+    char *loc = l;
+    Node *node = equality(loc);
+    while (true) {
+        if (consume_la("&", &loc)) {
+            node = new_node(ND_BITWISE_AND, node, equality(loc), loc);
+        } else {
+            return node;
+        }
+    }
+}
+
 
 Node *equality(char *l) {
     char *loc = l;
@@ -466,6 +503,8 @@ Node *unary(char *l) {
         return new_node(ND_ADD, new_num_node(0, loc), unary(loc), loc);
     } else if (consume_la("-", &loc)) {
         return new_node(ND_SUB, new_num_node(0, loc), unary(loc), loc);
+    } else if (consume_la("~", &loc)){
+        return new_node(ND_BITWISE_XOR, new_num_node(0xFF, loc), unary(loc), loc);
     } else {
         return primary(loc);
     }

@@ -180,6 +180,15 @@ void generate(Node *node) {
     case ND_GE:
         printf("pop r1\npop r0\nlt r0,r1\nmvi r2,1\nlt r0,r2\npush r0\n");
         break;
+    case ND_BITWISE_AND:
+        printf("pop r1\npop r0\nand r0,r1\npush r0\n");
+        break;
+    case ND_BITWISE_OR:
+        printf("pop r1\npop r0\nor r0,r1\npush r0\n");
+        break;
+    case ND_BITWISE_XOR:
+        printf("pop r1\npop r0\nxor r0,r1\npush r0\n");
+        break;
     default:
         error_at(node->loc, "Unknown node type");
         break;

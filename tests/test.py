@@ -2,8 +2,8 @@ import testfuncs as tf
 
 if __name__ == "__main__":
     # MINCASM tests
-    tf.expect("""echo "mov r0,r1\nadd r2,r3\nsub r4,r5\nlt r6,r7\nmul r7,r8" | ./target/mincasm""", 
-                "0001\n0123\n0245\n0367\n0478") # Arithmetic instructions
+    tf.expect("""echo "mov r0,r1\nadd r2,r3\nsub r4,r5\nlt r6,r7\nmul r7,r8\nor r8,r9\nand r9,r10\nxor r10,r11" | ./target/mincasm""", 
+                "0001\n0123\n0245\n0367\n0478\n0589\n069A\n07AB") # Arithmetic instructions
     tf.expect("""echo "push r0\nsts r1\npop r2\nlds r3" | ./target/mincasm""",
                 "0800\n0901\n0A20\n0B30") # Stack and load/store instructions
     tf.expect("""echo "jz 10,r0\njnz 15,r1\ncall 20\nret\nhalt" | ./target/mincasm""",
@@ -46,6 +46,7 @@ if __name__ == "__main__":
     tf.test_e2e("void main(){return (3+3<=6)+(3+3<=5);}", 1)
     tf.test_e2e("void main(){return (5>2+2)+(4>2+2);}", 1)
     tf.test_e2e("void main(){return (2+2>=4)+(2+2>=5);}", 1)
+    tf.test_e2e("void main(){return ~(((255 & 240) | 15) ^ 60);}", 60, verbose=True)
     tf.test_e2e("void main(){int a=3;return a+2;}", 5)
     tf.test_e2e("void main(){int a=2;int b=3;return a*b;}", 6)
     tf.test_e2e("void main(){int a=1;int b=2;int c=3;return a + b* c;}", 7)
