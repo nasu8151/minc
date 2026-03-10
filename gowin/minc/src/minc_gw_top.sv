@@ -3,7 +3,9 @@ module minc_gw_top (
     input  logic        sys_nrst,
     output logic [7:0]  pc_out,
     output logic [7:0]  port_a,
-    output logic [7:0]  address
+    output logic [7:0]  address,
+    output logic        uart_tx,
+    input  logic        uart_rx
 );
 
 //    logic [23:0] presc_cnt;
@@ -11,14 +13,23 @@ module minc_gw_top (
 
     logic [7:0] sp_out;
     logic [7:0] data_in;
+
+    logic [7:0] ram_data_out;
+    logic [7:0] uartc_data_out;
+
     logic [7:0] data_out;
     logic       we;
+    logic       wait_req;
+    logic       wait_rel;
     wire        ram_ce = address > 8'h0F ? 1'b1 : 1'b0; // RAM is enabled for addresses > 0x0F
 
     logic [7:0] port_a_out;
     logic [7:0] port_a_in;
     logic [7:0] port_a_dir; // 1 = output, 0 = input
     assign port_a = port_a_out;
+
+    assign data_in = ram_ce ? ram_data_out : uartc_data_out; // Mux data from RAM or UART based on address
+    assign wait_req = address[7:4] == 5'b00001;
 
     minc u_minc (
         .clk    (sys_clk),
@@ -28,11 +39,13 @@ module minc_gw_top (
         .address(address),
         .data_out(data_out),
         .we(we),
-        .data_in(data_in)
+        .data_in(data_in),
+        .wait_req(wait_req),
+        .wait_rel(wait_rel)
     );
 
     Gowin_SP ram(
-        .dout(data_in), //output [7:0] dout
+        .dout(ram_data_out), //output [7:0] dout
         .clk(~sys_clk), //input clk
         .ce(ram_ce), //input ce
         .oce(1'b1), //input oce
@@ -41,6 +54,29 @@ module minc_gw_top (
         .ad(address), //input [7:0] ad
         .din(data_out) //input [7:0] din
     );
+
+    UART_MASTER_Top uartc(
+		.I_CLK(sys_clk), //input I_CLK
+		.I_RESETN(sys_nrst), //input I_RESETN
+		.I_TX_EN(we & address[7:3] == 5'b00001), //input I_TX_EN
+		.I_WADDR(address[2:0]), //input [2:0] I_WADDR
+		.I_WDATA(data_out), //input [7:0] I_WDATA
+		.I_RX_EN(address[7:3] == 5'b00001), //input I_RX_EN
+		.I_RADDR(address[2:0]), //input [2:0] I_RADDR
+		.O_RDATA(uartc_data_out), //output [7:0] O_RDATA
+		.SIN(uart_rx), //input SIN
+		.RxRDYn(), //output RxRDYn
+		.SOUT(uart_tx), //output SOUT
+		.TxRDYn(), //output TxRDYn
+		.DDIS(), //output DDIS
+		.INTR(), //output INTR
+		.DCDn(1'b1), //input DCDn
+		.CTSn(1'b1), //input CTSn
+		.DSRn(1'b1), //input DSRn
+		.RIn(1'b1), //input RIn
+		.DTRn(), //output DTRn
+		.RTSn() //output RTSn
+	);
 
     always_ff @(negedge sys_clk or negedge sys_nrst) begin
         if (!sys_nrst) begin
@@ -58,6 +94,21 @@ module minc_gw_top (
             end else if (address == 8'h02) begin
                 // data_in <= port_a_in & ~port_a_dir; // Read input values on bits set as input
             end
+        end
+    end
+    
+    always_ff @(negedge sys_clk or negedge sys_nrst) begin
+        logic [3:0] int_cnt;
+        if (!sys_nrst) begin
+            int_cnt <= 4'd0;
+            wait_rel <= 1'b0;
+        end else if (wait_req) begin
+            int_cnt <= int_cnt + 1'd1;
+        end else if (int_cnt > 4'd2) begin
+            int_cnt <= 4'd0;
+            wait_rel <= 1'b1;
+        end else if (wait_rel) begin
+            wait_rel <= 1'b0;
         end
     end
 
