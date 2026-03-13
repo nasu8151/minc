@@ -264,6 +264,9 @@ Node *stmt(char *l) {
     Node *node;
     char *loc = l;
     if (consume_la("return", &loc)) {
+        if (consume_la(";", &loc)) {
+            return new_node(ND_RETURN, NULL, NULL, loc);
+        }
         node = new_node(ND_RETURN, expr(loc), NULL, loc);
         expect(";", &loc);
 
@@ -308,6 +311,9 @@ Node *stmt(char *l) {
         expect(")", &loc);
         Node *body = stmt(loc);
         node = new_while_node(cond, body, loc);
+    } else if (consume_la("break", &loc)){
+        expect(";", &loc);
+        node = new_node(ND_BREAK, NULL, NULL, loc);
     } else if (consume_la("{", &loc)) {
         new_scope();
         node = new_node_list();

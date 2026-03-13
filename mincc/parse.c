@@ -166,6 +166,7 @@ const char* reserved_words[] = {
     "uint8_t",
     "char",
     "void",
+    "break",
     NULL
 };
 
@@ -182,7 +183,6 @@ Token *tokenize(const char *p){
         }
 
         size_t len;
-        unsigned int i = 0;
         bool matched = false;
         char **rp = (char **)reserved_words;
         while (*rp) {
@@ -220,7 +220,14 @@ Token *tokenize(const char *p){
 
         if (isdigit(*p)) {
             char *q = (char *)p;
-            long val = strtol(p, &q, 0);
+            long val;
+            if (strncmp(p, "0b", 2) == 0) {
+                val = strtol(p + 2, &q, 2);
+            } else if(strncmp(p, "0x", 2) == 0){
+                val = strtol(p + 2, &q, 16);
+            } else {
+                val = strtol(p, &q, 0);
+            }
             if (val < 0 || val > 0xFF) {
                 warn_at((char *)p, "Number out of range");
             }

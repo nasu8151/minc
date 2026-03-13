@@ -33,6 +33,7 @@ stmt        = expr ";"
             | "if" "(" expr ")" stmt ("else" stmt)?
             | "for" "(" expr? ";" expr? ";" expr? ")" stmt
             | "while" "(" expr ")" stmt
+            | "break" ";"
 expr       = assign
 assign     = equality ("=" assign)?
 bitwise_or     = bitwise_xor ("|" bitwise_xor)*
