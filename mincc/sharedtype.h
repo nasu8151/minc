@@ -27,6 +27,7 @@ typedef enum {
     ND_FUNC_DEF,
     ND_FUNC_CALL,
     ND_ATTR,
+    ND_BREAK,
 
     ND_EOF
 } NodeType;
