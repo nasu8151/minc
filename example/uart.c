@@ -10,10 +10,8 @@ void uart_init() {
     UARTC_LCR = 0x03;
 }
 
-void putch(char c) {
-    while (~(UARTC_LSR & 0x40));
+void uart_putch(char c) {
     UARTC_DATA = c;
-    return;
 }
 
 void main() {
