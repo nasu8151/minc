@@ -15,8 +15,8 @@ module minc_tb;
     logic [7:0] data_out;
     logic [7:0] data_in;
     logic       we;
-    logic       wait_req;
-    logic       wait_rel;
+    logic        wait_req;
+    logic        wait_rel;
     integer i;
 
     wire ram_ce = address > 8'h0F ? 1'b1 : 1'b0; // RAM is enabled for addresses > 0x0F
@@ -82,8 +82,6 @@ module minc_tb;
     // Reset sequence
     initial begin
         reset_n = 1;
-        wait_req = 0;
-        wait_rel = 0;
         #1;
         reset_n = 0;
         #20;
@@ -91,18 +89,27 @@ module minc_tb;
     end
 
     `ifdef WAIT_TEST
-    initial begin
-        #70;
-        $display("Asserting wait require signal at time %0t", $time);
-        wait_req = 1;
-        #10;
-        wait_req = 0;
-        #20;
-        $display("Asserting wait release signal at time %0t", $time);
-        wait_rel = 1;
-        #10;
-        wait_rel = 0;
+    assign wait_req = 8'h10 > address ? 1'b1 : 1'b0;
+    always_ff @(posedge clk or negedge reset_n) begin
+        logic [3:0] int_cnt;
+        if (!reset_n) begin
+            int_cnt <= 4'd0;
+            wait_rel <= 1'b0;
+        end else begin
+            if (wait_rel && !wait_req) begin
+                wait_rel <= 1'b0;
+                int_cnt <= 4'd0;
+            end else if (int_cnt > 4'd2) begin
+                wait_rel <= 1'b1;
+            end
+            if (wait_req) begin
+                int_cnt <= int_cnt + 1'd1;
+            end
+        end
     end
+    `else
+    assign wait_req = 1'b0;
+    assign wait_rel = 1'b0;
     `endif
 
     // `ifndef TEST

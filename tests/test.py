@@ -47,7 +47,7 @@ if __name__ == "__main__":
     tf.test_e2e("int main(){return (3+3<=6)+(3+3<=5);}", 1)
     tf.test_e2e("int main(){return (5>2+2)+(4>2+2);}", 1)
     tf.test_e2e("int main(){return (2+2>=4)+(2+2>=5);}", 1)
-    tf.test_e2e("int main(){return ~(((255 & 240) | 15) ^ 60);}", 60, verbose=True)
+    tf.test_e2e("int main(){return ~(((0b11111111 & 0b11000011) | 0b00001111) ^ 0b00111100);}", 0b00001100, verbose=True)
     tf.test_e2e("int main(){int a=3;return a+2;}", 5)
     tf.test_e2e("int main(){int a=2;int b=3;return a*b;}", 6)
     tf.test_e2e("int main(){int a=1;int b=2;int c=3;return a + b* c;}", 7)
