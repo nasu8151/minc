@@ -9,6 +9,9 @@
 | sub rd,rs | 000 0010 dddd ssss | rd = rd - rs                            |
 | lt rd,rs  | 000 0011 dddd ssss | rd = 1 if rd - rs < 0, otherwise rd = 0 |
 | mul rd,rs | 000 0100 dddd ssss | rd = rd * rs                            |
+| or rd,rs  | 000 0101 dddd ssss | rd = rd \| rs                           |
+| and rd,rs | 000 0110 dddd ssss | rd = rd & rs                            |
+| xor rd,rs | 000 0111 dddd ssss | rd = rd ^ rs                            |
 | push rs   | 000 1000 0000 ssss | (--sp) = rs                             |
 | sts rs    | 000 1001 0000 ssss | SP = rs                                 |
 | pop rd    | 000 1010 dddd 0000 | rd = (SP++)                             |

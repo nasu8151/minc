@@ -18,10 +18,21 @@ void generate_top(Node *code, long i) {
 
 }
 
-char *get_unique_label() {
-    static long label_id = 0;
+unsigned long current_end = 0;
+
+char *get_unique_label(bool isloopend) {
+    static unsigned long label_id = 0;
     char *label = calloc(20, sizeof(char));
-    sprintf(label, "__L%ld", label_id++);
+    sprintf(label, "__L%ld", ++label_id);
+    if (isloopend) {
+        current_end = label_id;
+    }
+    return label;
+}
+
+char *get_break_label() {
+    char *label = calloc(20, sizeof(char));
+    sprintf(label, "__L%ld", current_end);
     return label;
 }
 
@@ -65,12 +76,14 @@ void generate(Node *node) {
         }
         return;
     } case ND_RETURN: {
-        generate(node->lhs);
+        if (node->lhs) {
+            generate(node->lhs);
+        }
         generate_epilogue();
         return;
     } case ND_IF: {
         generate(node->cond); // 条件式
-        char *end_label = get_unique_label();
+        char *end_label = get_unique_label(false);
         printf("pop r0\njz %s,r0\n", end_label);
         generate(node->lhs); // then節
         printf("%s:\n", end_label);
@@ -78,8 +91,8 @@ void generate(Node *node) {
         return;
     } case ND_IF_ELSE: {
         generate(node->cond); // 条件式
-        char *else_label = get_unique_label();
-        char *end_label = get_unique_label();
+        char *else_label = get_unique_label(false);
+        char *end_label = get_unique_label(false);
         printf("pop r0\njz %s,r0\n", else_label);
         generate(node->lhs); // then節
         printf("mvi r0,0\njz %s,r0\n", end_label);
@@ -93,8 +106,8 @@ void generate(Node *node) {
         if (node->init) {
             generate(node->init);
         }
-        char *begin_label = get_unique_label();
-        char *end_label = get_unique_label();
+        char *begin_label = get_unique_label(false);
+        char *end_label = get_unique_label(true);
         if (node->cond) {
             printf("%s:\n", begin_label);
             generate(node->cond);
@@ -112,8 +125,8 @@ void generate(Node *node) {
         free(end_label);
         return;
     } case ND_WHILE: {
-        char *begin_label = get_unique_label();
-        char *end_label = get_unique_label();
+        char *begin_label = get_unique_label(false);
+        char *end_label = get_unique_label(true);
         printf("%s:\n", begin_label);
         generate(node->cond);
         printf("pop r0\njz %s,r0\n", end_label);
@@ -150,6 +163,9 @@ void generate(Node *node) {
         }
         printf("call %s\npush r0\n", node->name);
         return;
+    } case ND_BREAK: {
+        printf("mvi r0,0\njz %s,r0\n", get_break_label());
+        return;
     }
     default:
         break;
@@ -179,6 +195,15 @@ void generate(Node *node) {
         break;
     case ND_GE:
         printf("pop r1\npop r0\nlt r0,r1\nmvi r2,1\nlt r0,r2\npush r0\n");
+        break;
+    case ND_BITWISE_AND:
+        printf("pop r1\npop r0\nand r0,r1\npush r0\n");
+        break;
+    case ND_BITWISE_OR:
+        printf("pop r1\npop r0\nor r0,r1\npush r0\n");
+        break;
+    case ND_BITWISE_XOR:
+        printf("pop r1\npop r0\nxor r0,r1\npush r0\n");
         break;
     default:
         error_at(node->loc, "Unknown node type");

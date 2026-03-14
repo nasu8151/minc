@@ -26,21 +26,27 @@ Variable list structure
 
 /***************************************************************
 program     = toplevel*
-toplevel    = ident "=" assign ";" | ident "(" ((expr ",")* expr)? ")" stmt  <-- must be a block
+toplevel    = type [[attr]]? ident "=" assign ";" | type ident "(" ((expr ",")* expr)? ")" stmt  <-- must be a block
 stmt        = expr ";"
             | "{" stmt* "}"
             | "return" expr ";"
             | "if" "(" expr ")" stmt ("else" stmt)?
             | "for" "(" expr? ";" expr? ";" expr? ")" stmt
             | "while" "(" expr ")" stmt
+            | "break" ";"
 expr       = assign
 assign     = equality ("=" assign)?
+bitwise_or     = bitwise_xor ("|" bitwise_xor)*
+bitwise_xor    = bitwise_and ("^" bitwise_and)*
+bitwise_and    = equality ("&" equality)*
 equality   = relational ("==" relational | "!=" relational)*
 relational = add ("<" add | "<=" add | ">" add | ">=" add)*
 add        = mul ("+" mul | "-" mul)*
 mul        = unary ("*" unary)*
-unary      = ("+" | "-")? primary
-primary    = num | ident | ident "(" ((expr ",")* expr)? ")" | "(" expr ")"
+unary      = ("+" | "-" | "~")? primary
+primary    = num | type? ("[[" attr "]]")? ident | ident "(" ((expr ",")* expr)? ")" | "(" expr ")"
+type       = "uint8_t" | "void" | "int" | "char"  // Currently uint8_t, int and char mean the same (1 byte int) type.
+attr       = ("address") "=" num
 ****************************************************************/
 
 typedef struct Vars_List {
@@ -48,7 +54,8 @@ typedef struct Vars_List {
     struct Vars_List *child;
     Ident_Name *var_head;
     Ident_Name *var_tail;
-    long max_vars_count;
+    long var_alloc_ptr;
+    long max_var_count;
 } Vars_List;
 
 
@@ -66,6 +73,9 @@ void program();
 Node *toplevel(char *l);
 Node *stmt(char *l);
 Node *assign(char *l);
+Node *bitwise_or(char *l);
+Node *bitwise_xor(char *l);
+Node *bitwise_and(char *l);
 Node *equality(char *l);
 Node *relational(char *l);
 Node *expr(char *l);
@@ -81,13 +91,11 @@ Ident_Name *find_function(Token *tok);
 // Add local variable to current scope
 void add_local_var(Token *tok);
 // Add global variable to global scope
-void add_global_var(Token *tok);
+void add_global_var(Token *tok, long address);
 // Add function to function list
 void add_function(Token *tok);
 // Count local variables from current funciton scope
 long count_local_vars();
-// Count global variables
-long count_global_vars();
 
 void new_scope();
 long end_scope();

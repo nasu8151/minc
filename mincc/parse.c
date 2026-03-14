@@ -5,14 +5,14 @@ Token *token;
 // Consume a token if it matches the expected string
 // Return true if matched, false otherwise
 // If reached EOF, return false
-bool consume_la(const char *op, char *loc) {
+bool consume_la(const char *op, char **loc) {
     if (token->type == TOKEN_EOF) {
         return false;
     }
     if (token->type != TOKEN_RESERVED || strcmp(token->str, op) != 0) {
         return false;
     }
-    loc = token->loc;
+    *loc = token->loc;
     token = token->next;
     return true;
 }
@@ -20,41 +20,41 @@ bool consume_la(const char *op, char *loc) {
 // Consume a token if it matches the expected string
 // Return true if matched, false otherwise
 // If reached EOF, throw an error
-bool consume(const char *op, char *loc) {
+bool consume(const char *op, char **loc) {
     if (token->type == TOKEN_EOF) {
         error_at(token->loc, "Expected '%s', but got EOF", op);
     }
     if (token->type != TOKEN_RESERVED || strcmp(token->str, op) != 0) {
         return false;
     }
-    loc = token->loc;
+    *loc = token->loc;
     token = token->next;
     return true;
 }
 
 // Consume a token if it matches the expected string
 // Otherwise, throw an error
-void expect(const char *op, char *loc) {
+void expect(const char *op, char **loc) {
     if (token->type == TOKEN_EOF) {
         error_at(token->loc, "Expected '%s', but got EOF", op);
     }
     if (token->type != TOKEN_RESERVED || strcmp(token->str, op) != 0) {
         error_at(token->loc, "Expected '%s', but got '%s'", op, token->str);
     }
-    loc = token->loc;
+    *loc = token->loc;
     token = token->next;
 }
 
 // Expect a number token and return its value
 // Otherwise, throw an error
-long expect_number(char *loc) {
+long expect_number(char **loc) {
     if (token->type == TOKEN_EOF) {
         error_at(token->loc, "Expected a number, but got EOF");
     }
     if (token->type != TOKEN_NUMBER) {
         error_at(token->loc, "Expected a number, but got '%s'", token->str);
     }
-    loc = token->loc;
+    *loc = token->loc;
     long val = token->value;
     token = token->next;
     return val;
@@ -62,7 +62,7 @@ long expect_number(char *loc) {
 
 // Expect an identifier token and return its string
 // Otherwise, throw NULL
-char *expect_ident(char *loc) {
+char *expect_ident(char **loc) {
     if (token->type == TOKEN_EOF) {
         error_at(token->loc, "Expected an identifier, but got EOF");
     }
@@ -70,7 +70,7 @@ char *expect_ident(char *loc) {
         error_at(token->loc, "Expected an identifier, but got '%s'", token->str);
     }
     char *name = token->str;
-    loc = token->loc;
+    *loc = token->loc;
     token = token->next;
     return name;
 }
@@ -90,7 +90,7 @@ Token *new_token(TokenType type, Token *current, const char *str, unsigned long 
     if (str) {
         tok->str = mystrndup(str, size);
     }
-    tok->size = size;
+    tok->len = size;
     tok->value = val;
     tok->loc = loc;
     current->next = tok;
@@ -156,6 +156,20 @@ unsigned long read_ident_size(const char *p) {
     return p - start;
 }
 
+const char* reserved_words[] = {
+    "return",
+    "if",
+    "else",
+    "for",
+    "while",
+    "int",
+    "uint8_t",
+    "char",
+    "void",
+    "break",
+    NULL
+};
+
 Token *tokenize(const char *p){
     Token head;
     head.next = NULL;
@@ -167,36 +181,22 @@ Token *tokenize(const char *p){
             p++;
             continue;
         }
+
         size_t len;
-        len = tokenize_reserved(p, "return", 6);
-        if (len) {
-            p += len;
+        bool matched = false;
+        char **rp = (char **)reserved_words;
+        while (*rp) {
+            len = tokenize_reserved(p, *rp, strlen(*rp));
+            if (len) {
+                p += len;
+                matched = true;
+                break;
+            }
+            rp++;
+        }
+        if (matched) {
             continue;
         }
-        len = tokenize_reserved(p, "if", 2);
-        if (len) {
-            p += len;
-            continue;
-        }
-
-        len = tokenize_reserved(p, "else", 4);
-        if (len) {
-            p += len;
-            continue;
-        }
-
-        len = tokenize_reserved(p, "for", 3);
-        if (len) {
-            p += len;
-            continue;
-        }
-
-        len = tokenize_reserved(p, "while", 5);
-        if (len) {
-            p += len;
-            continue;
-        }
-
 
         if (strncmp(p, "==", 2) == 0 || strncmp(p, "!=", 2) == 0 || strncmp(p, "<=", 2) == 0 || strncmp(p, ">=", 2) == 0) {
             cur = new_token(TOKEN_RESERVED, cur, p, 2, 0, (char *)p);
@@ -204,7 +204,8 @@ Token *tokenize(const char *p){
             continue;
         }
 
-        if (*p == '+' || *p == '-' || *p == '*' || *p == '(' || *p == ')' || *p == '<' || *p == '>' || *p == '=' || *p == ';' || *p == '{' || *p == '}' || *p == ',' ) {
+        if (*p == '+' || *p == '-' || *p == '*' || *p == '(' || *p == ')' || *p == '<' || *p == '>' || *p == '=' || *p == ';' 
+            || *p == '{' || *p == '}' || *p == ',' || *p == '[' || *p == ']' || *p == '|' || *p == '&' || *p == '^' || *p == '~') {
             cur = new_token(TOKEN_RESERVED, cur, p, 1, 0, (char *)p);
             p++;
             continue;
@@ -219,7 +220,14 @@ Token *tokenize(const char *p){
 
         if (isdigit(*p)) {
             char *q = (char *)p;
-            long val = strtol(p, &q, 0);
+            long val;
+            if (strncmp(p, "0b", 2) == 0) {
+                val = strtol(p + 2, &q, 2);
+            } else if(strncmp(p, "0x", 2) == 0){
+                val = strtol(p + 2, &q, 16);
+            } else {
+                val = strtol(p, &q, 0);
+            }
             if (val < 0 || val > 0xFF) {
                 warn_at((char *)p, "Number out of range");
             }

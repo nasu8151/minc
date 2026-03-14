@@ -14,7 +14,8 @@
 void generate_top(Node *code, long i);
 
 // Label generation function
-char *get_unique_label();
+char *get_unique_label(bool isloopend);
+char *get_break_label();
 
 // node genelator function
 void generate(Node *node);
