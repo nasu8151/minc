@@ -28,8 +28,9 @@ module minc_gw_top (
     logic [7:0] port_a_dir; // 1 = output, 0 = input
     assign port_a = port_a_out;
 
+    logic [3:0] int_cnt;
+
     assign data_in = ram_ce ? ram_data_out : uartc_data_out; // Mux data from RAM or UART based on address
-    assign wait_req = address[7:4] == 5'b00001;
 
     minc u_minc (
         .clk    (sys_clk),
@@ -56,12 +57,12 @@ module minc_gw_top (
     );
 
     UART_MASTER_Top uartc(
-		.I_CLK(sys_clk), //input I_CLK
+		.I_CLK(~sys_clk), //input I_CLK
 		.I_RESETN(sys_nrst), //input I_RESETN
 		.I_TX_EN(we & address[7:3] == 5'b00001), //input I_TX_EN
 		.I_WADDR(address[2:0]), //input [2:0] I_WADDR
 		.I_WDATA(data_out), //input [7:0] I_WDATA
-		.I_RX_EN(address[7:3] == 5'b00001), //input I_RX_EN
+		.I_RX_EN(address[7:3] == 5'b00001 && int_cnt == 4'd0), //input I_RX_EN
 		.I_RADDR(address[2:0]), //input [2:0] I_RADDR
 		.O_RDATA(uartc_data_out), //output [7:0] O_RDATA
 		.SIN(uart_rx), //input SIN
@@ -97,18 +98,21 @@ module minc_gw_top (
         end
     end
     
+    assign wait_req = 8'h10 > address ? 1'b1 : 1'b0;
     always_ff @(negedge sys_clk or negedge sys_nrst) begin
-        logic [3:0] int_cnt;
         if (!sys_nrst) begin
             int_cnt <= 4'd0;
             wait_rel <= 1'b0;
-        end else if (wait_req) begin
-            int_cnt <= int_cnt + 1'd1;
-        end else if (int_cnt > 4'd2) begin
-            int_cnt <= 4'd0;
-            wait_rel <= 1'b1;
-        end else if (wait_rel) begin
-            wait_rel <= 1'b0;
+        end else begin
+            if (wait_rel && !wait_req) begin
+                wait_rel <= 1'b0;
+                int_cnt <= 4'd0;
+            end else if (int_cnt > 4'd2) begin
+                wait_rel <= 1'b1;
+            end
+            if (wait_req) begin
+                int_cnt <= int_cnt + 1'd1;
+            end
         end
     end
 
