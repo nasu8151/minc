@@ -15,11 +15,7 @@ void uart_init() {
 }
 
 void uart_putch(char c) {
-    while (1) {
-        if (UARTC_LSR & 0b01000000) {
-            break;
-        }
-    }
+    while (~(UARTC_LSR & 0b01000000)) { }
     UARTC_DATA = c;
 }
 

@@ -3,7 +3,7 @@ module minc_gw_top (
     input  logic        sys_nrst,
     output logic [7:0]  pc_out,
     output logic [7:0]  port_a,
-    output logic [7:0]  address,
+    output logic [7:0]  address_out,
     output logic        uart_tx,
     input  logic        uart_rx
 );
@@ -21,6 +21,9 @@ module minc_gw_top (
     logic       we;
     logic       wait_req;
     logic       wait_rel;
+    logic [7:0] address;
+    // logic       int_clk;
+    assign address_out = ~address;
     wire        ram_ce = address > 8'h0F ? 1'b1 : 1'b0; // RAM is enabled for addresses > 0x0F
 
     logic [7:0] port_a_out;
@@ -57,7 +60,7 @@ module minc_gw_top (
     );
 
     UART_MASTER_Top uartc(
-		.I_CLK(~sys_clk), //input I_CLK
+		.I_CLK(sys_clk), //input I_CLK
 		.I_RESETN(sys_nrst), //input I_RESETN
 		.I_TX_EN(we & address[7:3] == 5'b00001), //input I_TX_EN
 		.I_WADDR(address[2:0]), //input [2:0] I_WADDR
@@ -116,16 +119,17 @@ module minc_gw_top (
         end
     end
 
-//    always_ff @(posedge sys_clk or negedge sys_nrst) begin
-//        if (!sys_nrst) begin
-//            presc_cnt <= 24'd0;
-//            int_clk   <= 1'b0;
-//        end else if (presc_cnt == 24'd13_499) begin
-//            presc_cnt <= 24'd0;
-//            int_clk   <= ~int_clk;
-//        end else begin
-//            presc_cnt <= presc_cnt + 24'd1;
-//        end
-//    end
+    // always_ff @(posedge sys_clk or negedge sys_nrst) begin
+    //     logic [23:0] presc_cnt;
+    //     if (!sys_nrst) begin
+    //         presc_cnt <= 24'd0;
+    //         int_clk   <= 1'b0;
+    //     end else if (presc_cnt == 24'd13_499) begin
+    //         presc_cnt <= 24'd0;
+    //         int_clk   <= ~int_clk;
+    //     end else begin
+    //         presc_cnt <= presc_cnt + 24'd1;
+    //     end
+    // end
 
 endmodule
