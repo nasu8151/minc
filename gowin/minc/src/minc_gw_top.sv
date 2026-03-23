@@ -60,7 +60,7 @@ module minc_gw_top (
     );
 
     UART_MASTER_Top uartc(
-		.I_CLK(sys_clk), //input I_CLK
+		.I_CLK(~sys_clk), //input I_CLK
 		.I_RESETN(sys_nrst), //input I_RESETN
 		.I_TX_EN(we & address[7:3] == 5'b00001), //input I_TX_EN
 		.I_WADDR(address[2:0]), //input [2:0] I_WADDR
