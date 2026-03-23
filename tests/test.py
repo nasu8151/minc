@@ -66,6 +66,7 @@ if __name__ == "__main__":
     tf.test_e2e("int main(){int j=0;for(int i=0;i<7;i=i+1){} int k=0; int i=i+5; return i;}", -1)
     tf.test_e2e("char [[address=0x00]] port_a_out;char [[address=0x01]] port_a_dir;int main(){port_a_dir = 0xFF;port_a_out=0x55; return 0;}", 0, porta=0x55)
     tf.test_e2e("int main(){int i=0;while(1){if(i==5) break;i=i+1;}return i;}", 5)
+    tf.test_e2e("char [[address = 0x00]] b;int a;int addi(int s){a = a + s;return a;}void main(){a = 0;while(addi(3) < 20){b = b;}return a;}", 21)
 
 
     print()
