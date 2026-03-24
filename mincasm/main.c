@@ -50,6 +50,17 @@ int check_immediate_range(int imm) {
     return 1; // In range
 }
 
+int check_long_addr_range(int addr) {
+    if (addr < -2048 || addr > 2047) {
+        fprintf(stderr, "Error: Long address value out of range: %d\n\
+                         in line %d\n\
+                         \"%s\"", addr, line_num, line_to_assemble);
+        return 0; // Out of range
+    }
+    return 1; // In range
+}
+
+
 char *find_comma(char *str, char *inst) {
     char *comma = strchr(str, ',');
     if (comma == NULL) {
@@ -81,6 +92,7 @@ typedef struct {
 typedef struct {
     int index;    // opcode index to patch
     char *name;   // label to resolve
+    int line_num;
 } Fixup;
 
 typedef struct {
@@ -142,7 +154,7 @@ static int find_symbol(LinkState *ls, const char *name) {
     return -1;
 }
 
-static int add_fixup(LinkState *ls, int index, const char *name) {
+static int add_fixup(LinkState *ls, int index, const char *name, int line_num) {
     if (ls->fix_size == ls->fix_cap) {
         size_t ncap = ls->fix_cap ? ls->fix_cap * 2 : 64;
         Fixup *nf = (Fixup *)realloc(ls->fix, ncap * sizeof(Fixup));
@@ -151,6 +163,7 @@ static int add_fixup(LinkState *ls, int index, const char *name) {
     }
     ls->fix[ls->fix_size].index = index;
     ls->fix[ls->fix_size].name = dupstr(name);
+    ls->fix[ls->fix_size].line_num = line_num;
     ls->fix_size++;
     return 1;
 }
@@ -272,7 +285,9 @@ int main(){
 
         int opcode = find_opcode(instruction, inst_dict, sizeof(inst_dict)/sizeof(inst_dict[0]));
         if (opcode == -1) {
-            fprintf(stderr, "Error: Unknown instruction '%s'\n", instruction);
+            fprintf(stderr, "Error: Unknown instruction '%s'\n\
+                         in line %d\n\
+                         \"%s\"", instruction, line_num, line_to_assemble);
             return EXIT_FAILURE;
         }
 
@@ -323,7 +338,9 @@ int main(){
             char* address_str = first_space + 1;
             address_str = lskip(address_str);
             if (*address_str == '\0') {
-                fprintf(stderr, "Error: Missing address operand for '%s'\n", instruction);
+                fprintf(stderr, "Error: Missing address operand for '%s'\n\
+                         in line %d\n\
+                         \"%s\"", instruction, line_num, line_to_assemble);
                 return EXIT_FAILURE;
             }
             // decide label or number
@@ -333,7 +350,9 @@ int main(){
                 size_t ti = 0;
                 while (address_str[ti] && address_str[ti] != ' ' && address_str[ti] != '\t') {
                     if (ti + 1 >= sizeof(tok)) {
-                        fprintf(stderr, "Error: Label too long\n");
+                        fprintf(stderr, "Error: Label too long\n\
+                         in line %d\n\
+                         \"%s\"", line_num, line_to_assemble);
                         return EXIT_FAILURE;
                     }
                     tok[ti] = address_str[ti];
@@ -341,7 +360,9 @@ int main(){
                 }
                 tok[ti] = '\0';
                 if (!is_valid_label_name(tok)) {
-                    fprintf(stderr, "Error: Invalid label name '%s'\n", tok);
+                    fprintf(stderr, "Error: Invalid label name '%s'\n\
+                         in line %d\n\
+                         \"%s\"", tok, line_num, line_to_assemble);
                     return EXIT_FAILURE;
                 }
                 // emit placeholder; patch later
@@ -349,12 +370,13 @@ int main(){
                     fprintf(stderr, "Error: out of memory\n");
                     return EXIT_FAILURE;
                 }
-                if (!add_fixup(&ls, (int)(code.size - 1), tok)) return EXIT_FAILURE;
+                if (!add_fixup(&ls, (int)(code.size - 1), tok, line_num)) return EXIT_FAILURE;
                 instr_index++;
                 continue; // next line
             } else {
                 int address = strtol(address_str, NULL, 0);
-                if (!check_immediate_range(address)) return EXIT_FAILURE;
+                if (!check_long_addr_range(address)) return EXIT_FAILURE;
+                if (!check_immediate_range(address) && !(opcode == find_opcode("call", inst_dict, sizeof(inst_dict)/sizeof(inst_dict[0])))) return EXIT_FAILURE;
                 opcode = opcode | (address << 4);
             }
         } else if (is_in_array(instruction, insts_op_addr, sizeof(insts_op_addr)/sizeof(insts_op_addr[0]))){
@@ -372,7 +394,9 @@ int main(){
                 size_t ti = 0;
                 while (address_str[ti] && address_str[ti] != ' ' && address_str[ti] != '\t' && address_str[ti] != ',') {
                     if (ti + 1 >= sizeof(tok)) {
-                        fprintf(stderr, "Error: Label too long\n");
+                        fprintf(stderr, "Error: Label too long\n\
+                         in line %d\n\
+                         \"%s\"", line_num, line_to_assemble);
                         return EXIT_FAILURE;
                     }
                     tok[ti] = address_str[ti];
@@ -380,7 +404,9 @@ int main(){
                 }
                 tok[ti] = '\0';
                 if (!is_valid_label_name(tok)) {
-                    fprintf(stderr, "Error: Invalid label name '%s'\n", tok);
+                    fprintf(stderr, "Error: Invalid label name '%s'\n\
+                         in line %d\n\
+                         \"%s\"", tok, line_num, line_to_assemble);
                     return EXIT_FAILURE;
                 }
                 // emit opcode with rs set; address will be backpatched later
@@ -389,7 +415,7 @@ int main(){
                     fprintf(stderr, "Error: out of memory\n");
                     return EXIT_FAILURE;
                 }
-                if (!add_fixup(&ls, (int)(code.size - 1), tok)) return EXIT_FAILURE;
+                if (!add_fixup(&ls, (int)(code.size - 1), tok, line_num)) return EXIT_FAILURE;
                 instr_index++;
                 continue;
             } else {
@@ -398,7 +424,9 @@ int main(){
                 opcode = opcode | ((addr & 0xFF) << 4) | (reg & 0xF);
             }
         } else {
-            fprintf(stderr, "Error: Unhandled instruction type for '%s'\n", instruction);
+            fprintf(stderr, "Error: Unhandled instruction type for '%s'\n\
+                         in line %d\n\
+                         \"%s\"", instruction, line_num, line_to_assemble);
             return EXIT_FAILURE;
         }
 
@@ -417,14 +445,13 @@ int main(){
             fprintf(stderr, "Error: Undefined label '%s'\n", f->name);
             return EXIT_FAILURE;
         }
-        if (!check_immediate_range(addr)) {
-            return EXIT_FAILURE;
-        }
         int ofs = (addr - f->index - 1);
-        if ((code.data[f->index] & 0xF000) == 0x5000/*find_opcode("call", inst_dict, sizeof(inst_dict)/sizeof(inst_dict[0]))*/) {
+        if ((code.data[f->index] & 0xF000) == find_opcode("call", inst_dict, sizeof(inst_dict)/sizeof(inst_dict[0]))) {
             // keep top nibble and low nibble, set middle 8 bits with (addr<<4)
+            if (!check_long_addr_range(ofs)) return EXIT_FAILURE;
             code.data[f->index] = (uint16_t)((code.data[f->index] & 0xF000) + (((ofs & 0xFF) << 4) | ((ofs & 0x0F00) >> 8)));
         } else {
+            if (!check_immediate_range(ofs)) return EXIT_FAILURE;
             code.data[f->index] = (uint16_t)((code.data[f->index] & 0xF00F) | ((ofs & 0xFF) << 4));
         }
     }
