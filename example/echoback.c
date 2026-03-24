@@ -23,16 +23,19 @@ void uart_getch() {
     return c;
 }
 
+void uart_putch(char c) {
+    while ((UARTC_LSR & 0b00100000) ^ 0b00100000) { }
+    UARTC_DATA = c;
+}
+
 void main() {
     uart_init();
 
     while (1) {
-        PORTA_OUT = 0x01;
-        char c;
-        while (UARTC_LSR & 0x01) {
-            c = UARTC_DATA;
+        if (UARTC_LSR & 0x01) {
+            char c = UARTC_DATA;
             PORTA_OUT = c;
+            uart_putch(c);
         }
-        PORTA_OUT = c;
     }
 }
