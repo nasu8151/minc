@@ -404,8 +404,15 @@ int main(){
         if (!check_immediate_range(addr)) {
             return EXIT_FAILURE;
         }
-        // keep top nibble and low nibble, set middle 8 bits with (addr<<4)
-        code.data[f->index] = (uint16_t)((code.data[f->index] & 0xF00F) | ((addr & 0xFF) << 4));
+        int ofs = (addr - f->index - 1);
+        fprintf(stderr, "opc : %04X\nofs : %03X\n", code.data[f->index] & 0xF000, (((ofs & 0xFF) << 4) | ((ofs & 0x0F00) >> 8)));
+        if ((code.data[f->index] & 0xF000) == 0x5000/*find_opcode("call", inst_dict, sizeof(inst_dict)/sizeof(inst_dict[0]))*/) {
+            // keep top nibble and low nibble, set middle 8 bits with (addr<<4)
+            fprintf(stderr, "bananan");
+            code.data[f->index] = (uint16_t)((code.data[f->index] & 0xF000) + (((ofs & 0xFF) << 4) | ((ofs & 0x0F00) >> 8)));
+        } else {
+            code.data[f->index] = (uint16_t)((code.data[f->index] & 0xF00F) | ((ofs & 0xFF) << 4));
+        }
     }
 
     // output

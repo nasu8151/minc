@@ -20,6 +20,6 @@
 | stm n,rs  | 010 nnnn nnnn ssss | [r15+n] = rs                            |
 | ldm rd,n  | 011 nnnn nnnn dddd | rd = [r15+n]                            |
 | jz n,rs   | 100 nnnn nnnn ssss | PC = n if rs == 0                       |
-| call n    | 101 nnnn nnnn 0000 | (--sp) = PC;PC = n                      |
+| call n    | 101 nnnn nnnn rrrr | (--sp) = PC + 1;PC = PC + {r, n}        |
 | jnz n,rs  | 110 nnnn nnnn ssss | PC = n if rs != 0                       |
-| ret       | 111 1100 0000 0000 | PC = (SP++) + 1                         |
+| ret       | 111 1100 0000 0000 | PC = (SP++);PC = (SP++)                 |

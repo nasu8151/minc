@@ -8,7 +8,7 @@ module minc_tb;
 
     logic clk;
     logic reset_n;
-    logic [7:0] pc_out;
+    logic [15:0] pc_out;
     logic [7:0] top_out;
     logic [7:0] sp_out;
     logic [7:0] address;

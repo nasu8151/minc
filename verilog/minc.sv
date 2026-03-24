@@ -1,12 +1,13 @@
-`define S_FETCH   2'b00
-`define S_DECEXEC 2'b01
-`define S_WB      2'b10
-`define S_WAIT    2'b11
+`define S_FETCH   3'b000
+`define S_DECEXEC 3'b001
+`define S_WB      3'b010
+`define S_WB2     3'b011
+`define S_WAIT    3'b111
 
 module minc (
     input  logic        clk,
     input  logic        reset_n,
-    output logic [7:0]  pc_out,
+    output logic [15:0]  pc_out,
     output logic [7:0]  sp_out,
     output logic [7:0]  address,
     output logic [7:0]  data_out,
@@ -17,7 +18,7 @@ module minc (
 );
 
     // PC, SP
-    logic  [7:0] pc;
+    logic [15:0] pc;
     logic  [7:0] sp;
 
     logic [1:0] state;
@@ -25,10 +26,8 @@ module minc (
     // General purpose registers r0..r15 (8-bit)
     logic  [7:0]  regs [0:15]; /* synthesis syn_ramstyle = "distributed" */
 
-    // Instruction ROM: 256 words x 15-bit (instruction is 15-bit)
+    // Instruction ROM: 64k words x 15-bit (instruction is 15-bit)
     logic  [15:0] rom  [0:255]; 
-    // Data RAM: 256 x 8-bit (stack and data unified)
-    // logic  [7:0]  ram  [0:255];
 
     // ROM load (one word per line, hex). TEST selects test.hex
     `ifdef TEST
@@ -46,15 +45,14 @@ module minc (
 
     // Decode fields
     wire [3:0] op4   = instr[14:11];
-    wire [2:0] op    = instr[14:12];
     wire [2:0] op3   = instr[14:12];
     wire [3:0] subop = instr[11:8];
-    wire [3:0] rd    = op[0] == 1'b1 ? instr[3:0] : instr[7:4];
+    wire [3:0] rd    = op3[0] == 1'b1 ? instr[3:0] : instr[7:4];
     wire [3:0] rs    = instr[3:0];
     wire [7:0] imm8  = instr[11:4];
 
-wire [7:0] rd_val =       regs[op == 3'b000 ? rd : 4'd15];
-wire [7:0] rs_val =       regs[rs];
+    wire [7:0] rd_val =       regs[rd];
+    wire [7:0] rs_val =       regs[rs];
     integer i;
 
     wire [7:0] alu_out =    subop == 4'b0000 ? rs_val :
@@ -68,35 +66,36 @@ wire [7:0] rs_val =       regs[rs];
                             8'h00; // default
 
     // Decode flags 
-    wire is_alu  = (op == 3'b000) && (subop[3] == 1'b0);
-    wire is_push = (op == 3'b000) && (subop == 4'b1000);
-    wire is_lds  = (op == 3'b000) && (subop == 4'b1001);
-    wire is_pop  = (op == 3'b000) && (subop == 4'b1010);
-    wire is_sts  = (op == 3'b000) && (subop == 4'b1011);
-    wire is_ret  = (op == 3'b000) && (subop == 4'b1100);
-    wire is_mvi  = (op == 3'b001);
-    wire is_stm  = (op == 3'b010);
-    wire is_ldm  = (op == 3'b011);
-    wire is_jz   = (op == 3'b100);
-    wire is_call = (op == 3'b101);
+    wire is_alu  = (op3 == 3'b000) && (subop[3] == 1'b0);
+    wire is_push = (op3 == 3'b000) && (subop == 4'b1000);
+    wire is_lds  = (op3 == 3'b000) && (subop == 4'b1001);
+    wire is_pop  = (op3 == 3'b000) && (subop == 4'b1010);
+    wire is_sts  = (op3 == 3'b000) && (subop == 4'b1011);
+    wire is_ret  = (op3 == 3'b000) && (subop == 4'b1100);
+    wire is_mvi  = (op3 == 3'b001);
+    wire is_stm  = (op3 == 3'b010);
+    wire is_ldm  = (op3 == 3'b011);
+    wire is_jz   = (op3 == 3'b100);
+    wire is_call = (op3 == 3'b101);
 
     // Determines address the processor emits
-    wire [7:0] addr_next = is_push ? (sp - 8'd1) :
-                           is_pop  ? sp :
-                           is_ret  ? sp :
-                           (is_stm || is_ldm) ? (regs[15] + imm8) :
-                           is_call ? (sp - 8'd1) : 8'h00;
+    assign address =  is_push ? sp :
+                            is_pop  ? sp :
+                            is_ret  ? sp :
+                            (is_stm || is_ldm) ? (regs[15] + imm8) :
+                            is_call ? sp : 8'h00;
 
     // Determines written data
     // ALU out, rs_val for PUSH/STM, sp for STS, imm8 for MVI, pc for CALL
-    wire [7:0] data_out_next = is_alu ? alu_out :
-                               (is_push || is_lds || is_stm) ? rs_val :
-                               is_sts ? sp :
-                               is_mvi ? imm8 :
-                               is_call ? pc : 8'h00;
+    wire [7:0] data_out_next =  is_alu ? alu_out :
+                                (is_push || is_lds || is_stm) ? rs_val :
+                                is_sts ? sp :
+                                is_mvi ? imm8 :
+                                (is_call && (state == `S_DECEXEC)) ? pc[15:8] : 
+                                (is_call && (state == `S_WB)) ? pc[7:0]  : 8'h00;
 
     // Write Enable flag
-    wire we_next = (state == `S_DECEXEC) && (is_push || is_stm || is_call);
+    assign we = (state == `S_WB | state == `S_WB2) && (is_push || is_stm || is_call);
 
     // Main sequential logic
     always_ff @(posedge clk) begin
@@ -115,9 +114,7 @@ wire [7:0] rs_val =       regs[rs];
                 end
                 `S_DECEXEC: begin
                     // Assign combinational routing outputs at execution stage
-                    address  <= addr_next;
                     data_out <= data_out_next;
-                    we       <= we_next;
 
                     // Decode and Execute - Halting if unknown instruction
                     if (!(is_alu || is_push || is_lds || is_pop || is_sts || is_ret || 
@@ -129,11 +126,17 @@ wire [7:0] rs_val =       regs[rs];
                         `endif
                         pc <= pc - 8'd1; // stay on HALT instruction
                     end
+
+                    if (is_push || is_call) begin
+                        sp <= sp - 8'd1;
+                    end
+
                     state <= `S_WB;
                 end
                 `S_WB: begin
+                    data_out <= data_out_next;
                     // Writeback phase
-                    // Update registers appropriately
+                    // Update registers
                     if (is_alu || is_mvi || is_sts) begin
                         regs[rd] <= data_out;
                     end else if (is_pop || is_ldm) begin
@@ -141,30 +144,39 @@ wire [7:0] rs_val =       regs[rs];
                     end
 
                     // Update SP
-                    if (is_push || is_call) begin
-                        sp <= sp - 8'd1;
-                    end else if (is_pop || is_ret) begin
+                    if (is_pop || is_ret) begin
                         sp <= sp + 8'd1;
+                    end else if (is_call) begin
+                        sp <= sp - 8'd1;
                     end else if (is_lds) begin
                         sp <= data_out;
                     end
 
                     // Update PC
                     if (is_ret) begin
-                        pc <= data_in;
+                        pc[7:0] <= data_in;
                     end else if (is_jz) begin
-                        if (regs[rs] == 8'd0) begin
-                            pc <= imm8;
+                        if (rs_val == 8'd0) begin
+                            pc <= pc + 16'(signed'(imm8));
                         end
-                    end else if (is_call) begin
-                        pc <= imm8;
                     end
 
-                    we <= 1'b0;
                     if (wait_req)
                         state <= `S_WAIT;
-                    else 
+                    else if (is_call || is_ret)
+                        state <= `S_WB2;
+                    else
                         state <= `S_FETCH;
+                end
+                `S_WB2: begin
+                    // Update PC
+                    if (is_ret)
+                        pc[15:8] <= data_in;
+                    else if (is_call)
+                        pc <= pc + 16'(signed'({rs, imm8}));
+                    if (is_ret)
+                        sp <= sp + 8'd1;
+                    state <= `S_FETCH;
                 end
                 `S_WAIT: begin
                     if (wait_rel)

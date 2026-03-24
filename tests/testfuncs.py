@@ -8,7 +8,7 @@ def expect(command:str, expected_output:str):
     error  = result.stderr.strip()
 
     assert result.returncode == 0, f"""[FAIL] Command failed with return code {result.returncode}: "{command}" \nStderr: "{error}" """
-    assert output == expected_output, f"""[FAIL] Expected: "{expected_output}", but got: "{output}" """
+    assert output == expected_output, f"""[FAIL] Expected: "{expected_output}", but got: "{output}"\nStderr: "{error}"""
     print(f"""[OK] "{command}" => "{output}" """)
 
 def expect_fail(command:str):
@@ -47,11 +47,16 @@ def test_e2e(code:str, expected_top:int, verbose:bool=False, porta = None):
         raise Exception("No output from simulation")
     porta_str = lines[-2].strip().split(", ")
     pc_str, top_str, sp_str = lines[-1].split(", ")
-    if top_str.split(": ")[1] == 'xx' and expected_top == -1:
+    if top_str.split(":")[1].strip() == 'xx' and expected_top == -1:
         print(f"""[OK] E2E test for code "{code}" => TOP: xx as expected""")
         return
-    top_value = int(top_str.split(":")[1].strip(), 16)
-    sp_value  = int(sp_str.split(":")[1].strip(), 16)
+    try:
+        top_value = int(top_str.split(":")[1].strip(), 16)
+        sp_value  = int(sp_str.split(":")[1].strip(), 16)
+    except ValueError as e:
+        print(f"[FAIL] Verilog simulation failed: TOP:{top_str.split(":")[1].strip()}")
+        print(f"Verilog output:\n{output}")
+        raise e
     if porta is not None:
         port_a_value = int(porta_str[0].split(": ")[1], 16)
         assert port_a_value == (porta & 0xff), f"""[FAIL] Expected PORTA: {porta}, but got: {port_a_value} """
