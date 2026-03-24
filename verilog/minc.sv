@@ -27,7 +27,7 @@ module minc (
     logic  [7:0]  regs [0:15]; /* synthesis syn_ramstyle = "distributed" */
 
     // Instruction ROM: 64k words x 15-bit (instruction is 15-bit)
-    logic  [15:0] rom  [0:255]; 
+    logic  [15:0] rom  [0:65535]; 
 
     // ROM load (one word per line, hex). TEST selects test.hex
     `ifdef TEST
