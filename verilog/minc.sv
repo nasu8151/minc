@@ -2,7 +2,6 @@
 `define S_DECEXEC 3'b001
 `define S_WB      3'b010
 `define S_WB2     3'b011
-`define S_WAIT    3'b111
 
 module minc (
     input  logic        clk,
@@ -21,13 +20,15 @@ module minc (
     logic [15:0] pc;
     logic  [7:0] sp;
 
-    logic [1:0] state;
+    logic [2:0] state;
+
+    logic wait_reg;
 
     // General purpose registers r0..r15 (8-bit)
     logic  [7:0]  regs [0:15]; /* synthesis syn_ramstyle = "distributed" */
 
     // Instruction ROM: 64k words x 15-bit (instruction is 15-bit)
-    logic  [15:0] rom  [0:255]; 
+    logic  [15:0] rom  [0:65535]; 
 
     // ROM load (one word per line, hex). TEST selects test.hex
     `ifdef TEST
@@ -103,6 +104,7 @@ module minc (
             pc <= 8'h00;
             sp <= 8'h00;
             state <= `S_FETCH;
+            wait_reg <= 1'b0;
             instr <= 15'h0000;
         end else begin
             case (state)
@@ -164,9 +166,13 @@ module minc (
                     end
 
                     if (wait_req)
-                        state <= `S_WAIT;
-                    else if (is_call || is_ret)
+                        wait_reg <= 1'b1;
+                    if (wait_rel)
+                        wait_reg <= 1'b0;
+                    if (is_call || is_ret)
                         state <= `S_WB2;
+                    else if (wait_reg || wait_req)
+                        state <= `S_WB;
                     else
                         state <= `S_FETCH;
                 end
@@ -178,10 +184,10 @@ module minc (
                         pc <= pc + 16'(signed'({rs, imm8}));
                     state <= `S_FETCH;
                 end
-                `S_WAIT: begin
-                    if (wait_rel)
-                        state <= `S_FETCH;
-                end
+                // `S_WAIT: begin
+                //     if (wait_rel)
+                //         state <= `S_FETCH;
+                // end
                 default: state <= `S_FETCH;
             endcase
         end

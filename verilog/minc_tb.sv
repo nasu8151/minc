@@ -14,6 +14,7 @@ module minc_tb;
     logic [7:0] address;
     logic [7:0] data_out;
     logic [7:0] data_in;
+    logic [7:0] data_in_ram;
     logic       we;
     logic        wait_req;
     logic        wait_rel;
@@ -49,7 +50,7 @@ module minc_tb;
         .din(data_out),
         .we(we),
         .ce(ram_ce),
-        .dout(data_in),
+        .dout(data_in_ram),
         .dbg_addr(sp_out),
         .dbg_dout(top_out)
     );
@@ -89,27 +90,25 @@ module minc_tb;
     end
 
     `ifdef WAIT_TEST
-    assign wait_req = 8'h10 > address ? 1'b1 : 1'b0;
+    parameter WAITp3 = 6;
+    logic [WAITp3:0] wait_sr;
+    assign wait_req = wait_sr[1];
+    assign wait_rel = wait_sr[WAITp3 - 1];
     always_ff @(posedge clk or negedge reset_n) begin
-        logic [3:0] int_cnt;
         if (!reset_n) begin
-            int_cnt <= 4'd0;
-            wait_rel <= 1'b0;
+            wait_sr <= 'b1;
         end else begin
-            if (wait_rel && !wait_req) begin
-                wait_rel <= 1'b0;
-                int_cnt <= 4'd0;
-            end else if (int_cnt > 4'd2) begin
-                wait_rel <= 1'b1;
-            end
-            if (wait_req) begin
-                int_cnt <= int_cnt + 1'd1;
-            end
+            if (address[7:3] == 5'b00001) begin
+                {wait_sr[0], wait_sr[WAITp3:1]} <= wait_sr;
+            end else
+                wait_sr <= 'b1;
         end
     end
+    assign data_in = (address == 8'h0D) ? 8'h01 : data_in_ram;
     `else
     assign wait_req = 1'b0;
     assign wait_rel = 1'b0;
+    assign data_in = data_in_ram;
     `endif
 
     // `ifndef TEST
@@ -126,7 +125,7 @@ module minc_tb;
         @(posedge reset_n);
         // wait a little after reset release
         #1;
-        for (i = 0; i < 65535; i = i + 1) begin
+        for (i = 0; i < 524287; i = i + 1) begin
             @(posedge clk);
         end
         #10;
