@@ -129,6 +129,8 @@ module minc (
 
                     if (is_push || is_call) begin
                         sp <= sp - 8'd1;
+                    end else if (is_ret) begin
+                        sp <= sp + 8'd1;
                     end
 
                     state <= `S_WB;
@@ -174,8 +176,6 @@ module minc (
                         pc[15:8] <= data_in;
                     else if (is_call)
                         pc <= pc + 16'(signed'({rs, imm8}));
-                    if (is_ret)
-                        sp <= sp + 8'd1;
                     state <= `S_FETCH;
                 end
                 `S_WAIT: begin

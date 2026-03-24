@@ -4,6 +4,9 @@
 #include <ctype.h>
 #include <stdint.h>
 
+int line_num;
+char line_to_assemble[256];
+
 typedef struct insttype {
     const char *name;
     int opcode;
@@ -29,7 +32,9 @@ int is_in_array(const char *inst, const char **inst_array, size_t array_size) {
 
 int check_register_range(int reg) {
     if (reg < 0 || reg > 15) {
-        fprintf(stderr, "Error: Register out of range: r%d\n", reg);
+        fprintf(stderr, "Error: Register out of range: r%d\n\
+                         in line %d\n\
+                         \"%s\"", reg, line_num, line_to_assemble);
         return 0; // Out of range
     }
     return 1; // In range
@@ -37,7 +42,9 @@ int check_register_range(int reg) {
 
 int check_immediate_range(int imm) {
     if (imm < -128 || imm > 255) {
-        fprintf(stderr, "Error: Immediate value out of range: %d\n", imm);
+        fprintf(stderr, "Error: Immediate value out of range: %d\n\
+                         in line %d\n\
+                         \"%s\"", imm, line_num, line_to_assemble);
         return 0; // Out of range
     }
     return 1; // In range
@@ -46,7 +53,9 @@ int check_immediate_range(int imm) {
 char *find_comma(char *str, char *inst) {
     char *comma = strchr(str, ',');
     if (comma == NULL) {
-        fprintf(stderr, "Error: Expected two arguments in instruction '%s'\n", inst);
+        fprintf(stderr, "Error: Expected two arguments in instruction '%s'\n\
+                         in line %d\n\
+                         \"%s\"", inst, line_num, line_to_assemble);
         return NULL;
     }
     return comma;
@@ -108,7 +117,9 @@ static int add_symbol(LinkState *ls, const char *name, int addr) {
     // check duplicate
     for (size_t i = 0; i < ls->syms_size; i++) {
         if (strcmp(ls->syms[i].name, name) == 0) {
-            fprintf(stderr, "Error: Duplicate label '%s'\n", name);
+            fprintf(stderr, "Error: Duplicate label '%s'\n\
+                         in line %d\n\
+                         \"%s\"", name, line_num, line_to_assemble);
             return 0;
         }
     }
@@ -179,13 +190,17 @@ static int process_label(char **pp, LinkState *ls, int instr_index) {
             char labbuf[128];
             size_t len = (size_t)(colon - p);
             if (len >= sizeof(labbuf)) {
-                fprintf(stderr, "Error: Label too long\n");
+                fprintf(stderr, "Error: Label too long\n\
+                         in line %d\n\
+                         \"%s\"", line_num, line_to_assemble);
                 return -1;
             }
             memcpy(labbuf, p, len);
             labbuf[len] = '\0';
             if (!is_valid_label_name(labbuf)) {
-                fprintf(stderr, "Error: Invalid label name '%s'\n", labbuf);
+                fprintf(stderr, "Error: Invalid label name '%s'\n\
+                         in line %d\n\
+                         \"%s\"", labbuf, line_num, line_to_assemble);
                 return -1;
             }
             if (!add_symbol(ls, labbuf, instr_index)) {
@@ -215,15 +230,16 @@ int main(){
 
         {"mvi",  0x1000}, {"stm", 0x2000}, {"ldm", 0x3000}, {"jz", 0x4000}, {"call", 0x5000}, {"jnz", 0x6000}, {"halt", 0x7FFF}
     };
-    char line_to_assemble[256];
 
     CodeVec code;
     LinkState ls;
     codevec_init(&code);
     ls_init(&ls);
     int instr_index = 0; // counts only real instructions
+    line_num = 0;
 
     while (fgets(line_to_assemble, sizeof(line_to_assemble), stdin)) {
+        line_num++;
         char *cr_lf = strpbrk(line_to_assemble, "\r\n"); //改行コードを排除
         if (cr_lf) {
             *cr_lf = '\0';
@@ -405,10 +421,8 @@ int main(){
             return EXIT_FAILURE;
         }
         int ofs = (addr - f->index - 1);
-        fprintf(stderr, "opc : %04X\nofs : %03X\n", code.data[f->index] & 0xF000, (((ofs & 0xFF) << 4) | ((ofs & 0x0F00) >> 8)));
         if ((code.data[f->index] & 0xF000) == 0x5000/*find_opcode("call", inst_dict, sizeof(inst_dict)/sizeof(inst_dict[0]))*/) {
             // keep top nibble and low nibble, set middle 8 bits with (addr<<4)
-            fprintf(stderr, "bananan");
             code.data[f->index] = (uint16_t)((code.data[f->index] & 0xF000) + (((ofs & 0xFF) << 4) | ((ofs & 0x0F00) >> 8)));
         } else {
             code.data[f->index] = (uint16_t)((code.data[f->index] & 0xF00F) | ((ofs & 0xFF) << 4));

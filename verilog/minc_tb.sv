@@ -54,7 +54,7 @@ module minc_tb;
         .dbg_dout(top_out)
     );
 
-    always_ff @(negedge clk or negedge reset_n) begin
+    always_ff @(posedge clk or negedge reset_n) begin
         if (!reset_n) begin
             port_a_out <= 8'h00;
             port_a_dir <= 8'h00; // All inputs by default
