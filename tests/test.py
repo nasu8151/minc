@@ -13,16 +13,17 @@ if __name__ == "__main__":
     # MINCASM label tests (one-pass backpatch)
     # Forward reference: label after use
     tf.expect("""echo "jz L1,r0\nmvi r0,1\nL1: ret" | ./target/mincasm""",
-                "4020\n1010\n0C00")
+                "4010\n1010\n0C00")
     # Backward reference: label before use
     tf.expect("""echo "L0: mvi r0,1\njz L0,r0\nret" | ./target/mincasm""",
-                "1010\n4000\n0C00")
+                "1010\n4FE0\n0C00")
     # jnz to label
     tf.expect("""echo "L0: mvi r0,1\njnz L0,r1\nret" | ./target/mincasm""",
-                "1010\n6001\n0C00")
+                "1010\n6FE1\n0C00")
     # Call to label
-    tf.expect("""echo "call FUNC\nhalt\nFUNC: ret" | ./target/mincasm""",
-                "5020\n7FFF\n0C00")
+    tf.expect("""echo "call MAIN\nFUNC: ret\nMAIN: call FUNC\nhalt" | ./target/mincasm""",
+                "5010\n0C00\n5FEF\n7FFF")
+    tf.expect
     # Undefined label should fail
     tf.expect_fail("""echo "jz NO_SUCH_LABEL,r0" | ./target/mincasm""")
     # MINCC tests
@@ -56,7 +57,7 @@ if __name__ == "__main__":
     tf.test_e2e("int main(){int sum=0;\nfor(int i=1;i<5;i=i+1) sum=sum+i;\nreturn sum;}", 10)
     tf.test_e2e("int main(){int i=0;\nwhile(i<3) i=i+1;\nreturn i;}", 3)
     tf.test_e2e("int main(){int i=0;\nwhile(i<10) {\n i=i+1;\n if (i==5) {\nreturn 20*i;\n}\n}\nreturn 0;}", 100)
-    tf.test_e2e("char gvar=10;\nint main(){return gvar+5;}", 15, verbose=True)
+    tf.test_e2e("char gvar=10;\nint main(){return gvar+5;}", 15)
     tf.test_e2e("char global_var=0;\nint main(){while(global_var<21){for (int i=1;i<5;i=i+1) global_var=global_var+i;}\nreturn global_var;}", 30)
     tf.test_e2e("char a=1;\nchar b=2;\nint main(){char c=3;\nreturn a+b+c;}", 6)
     tf.test_e2e("char ret42(){return 42;}\nint main(){return ret42();}", 42)
@@ -66,6 +67,7 @@ if __name__ == "__main__":
     tf.test_e2e("int main(){int j=0;for(int i=0;i<7;i=i+1){} int k=0; int i=i+5; return i;}", -1)
     tf.test_e2e("char [[address=0x00]] port_a_out;char [[address=0x01]] port_a_dir;int main(){port_a_dir = 0xFF;port_a_out=0x55; return 0;}", 0, porta=0x55)
     tf.test_e2e("int main(){int i=0;while(1){if(i==5) break;i=i+1;}return i;}", 5)
+    tf.test_e2e("char [[address = 0x00]] b;int a;int addi(int s){a = a + s;return a;}void main(){a = 0;while(addi(3) < 20){b = b;}return a;}", 21)
 
 
     print()

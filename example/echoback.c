@@ -10,8 +10,17 @@ char [[address = 0x0D]] UARTC_LSR;
 char [[address = 0x0E]] UARTC_MSR;
 
 void uart_init() {
-    UARTC_LCR = 0x03;
     PORTA_DIR = 0xFF;
+    UARTC_LCR = 0x03;
+}
+
+void uart_getch() {
+    char c;
+    while (UARTC_LSR & 0x01) {
+        c = UARTC_DATA;
+    }
+    UARTC_LSR = 0b1110;
+    return c;
 }
 
 void uart_putch(char c) {
@@ -21,9 +30,12 @@ void uart_putch(char c) {
 
 void main() {
     uart_init();
-    uart_putch(104);
-    uart_putch(101);
-    uart_putch(108);
-    uart_putch(108);
-    uart_putch(111);
+
+    while (1) {
+        if (UARTC_LSR & 0x01) {
+            char c = UARTC_DATA;
+            PORTA_OUT = c;
+            uart_putch(c);
+        }
+    }
 }

@@ -3,9 +3,13 @@ module minc_gw_top (
     input  logic        sys_nrst,
     output logic [7:0]  pc_out,
     output logic [7:0]  port_a,
-    output logic [7:0]  address,
+    output logic [7:0]  address_out,
+    output logic [7:0]  address_out2,
     output logic        uart_tx,
-    input  logic        uart_rx
+    input  logic        uart_rx,
+    output logic        wait_req_out,
+    output logic        wait_rel_out,
+    output logic        we_out
 );
 
 //    logic [23:0] presc_cnt;
@@ -21,7 +25,14 @@ module minc_gw_top (
     logic       we;
     logic       wait_req;
     logic       wait_rel;
+    logic [7:0] address;
+    // logic       int_clk;
+    assign address_out = we ? data_out : data_in;
+    assign address_out2= ~address;
     wire        ram_ce = address > 8'h0F ? 1'b1 : 1'b0; // RAM is enabled for addresses > 0x0F
+    assign wait_req_out = wait_req;
+    assign wait_rel_out = wait_rel;
+    assign we_out = we;
 
     logic [7:0] port_a_out;
     logic [7:0] port_a_in;
@@ -47,7 +58,7 @@ module minc_gw_top (
 
     Gowin_SP ram(
         .dout(ram_data_out), //output [7:0] dout
-        .clk(~sys_clk), //input clk
+        .clk(sys_clk), //input clk
         .ce(ram_ce), //input ce
         .oce(1'b1), //input oce
         .reset(~sys_nrst), //input reset
@@ -57,12 +68,12 @@ module minc_gw_top (
     );
 
     UART_MASTER_Top uartc(
-		.I_CLK(~sys_clk), //input I_CLK
+		.I_CLK(sys_clk), //input I_CLK
 		.I_RESETN(sys_nrst), //input I_RESETN
-		.I_TX_EN(we & address[7:3] == 5'b00001), //input I_TX_EN
+		.I_TX_EN(we && address[7:3] == 5'b00001 && wait_req), //input I_TX_EN
 		.I_WADDR(address[2:0]), //input [2:0] I_WADDR
 		.I_WDATA(data_out), //input [7:0] I_WDATA
-		.I_RX_EN(address[7:3] == 5'b00001 && int_cnt == 4'd0), //input I_RX_EN
+		.I_RX_EN(address[7:3] == 5'b00001 && wait_req), //input I_RX_EN
 		.I_RADDR(address[2:0]), //input [2:0] I_RADDR
 		.O_RDATA(uartc_data_out), //output [7:0] O_RDATA
 		.SIN(uart_rx), //input SIN
@@ -79,7 +90,7 @@ module minc_gw_top (
 		.RTSn() //output RTSn
 	);
 
-    always_ff @(negedge sys_clk or negedge sys_nrst) begin
+    always_ff @(posedge sys_clk or negedge sys_nrst) begin
         if (!sys_nrst) begin
             port_a_out <= 8'h00;
             port_a_dir <= 8'h00; // All inputs by default
@@ -98,34 +109,35 @@ module minc_gw_top (
         end
     end
     
-    assign wait_req = 8'h10 > address ? 1'b1 : 1'b0;
-    always_ff @(negedge sys_clk or negedge sys_nrst) begin
+    // assign wait_req = 8'h10 > address ? 1'b1 : 1'b0;
+    parameter WAITp3 = 6;
+    logic [WAITp3:0] wait_sr;
+    assign wait_req = wait_sr[1];
+    assign wait_rel = wait_sr[WAITp3 - 1];
+    always_ff @(posedge sys_clk or negedge sys_nrst) begin
         if (!sys_nrst) begin
-            int_cnt <= 4'd0;
-            wait_rel <= 1'b0;
+            wait_sr <= 'b1;
         end else begin
-            if (wait_rel && !wait_req) begin
-                wait_rel <= 1'b0;
-                int_cnt <= 4'd0;
-            end else if (int_cnt > 4'd2) begin
-                wait_rel <= 1'b1;
-            end
-            if (wait_req) begin
-                int_cnt <= int_cnt + 1'd1;
-            end
+            if (address[7:3] == 5'b00001) begin
+                {wait_sr[0], wait_sr[WAITp3:1]} <= wait_sr;
+            end else
+                wait_sr <= 'b1;
         end
     end
 
-//    always_ff @(posedge sys_clk or negedge sys_nrst) begin
-//        if (!sys_nrst) begin
-//            presc_cnt <= 24'd0;
-//            int_clk   <= 1'b0;
-//        end else if (presc_cnt == 24'd13_499) begin
-//            presc_cnt <= 24'd0;
-//            int_clk   <= ~int_clk;
-//        end else begin
-//            presc_cnt <= presc_cnt + 24'd1;
-//        end
-//    end
+    // always_ff @(posedge sys_clk or negedge sys_nrst) begin
+    //     logic [23:0] presc_cnt;
+    //     if (!sys_nrst) begin
+    //         presc_cnt <= 24'd0;
+    //         int_clk   <= 1'b0;
+    //     end else if (presc_cnt == 24'd13_499) begin
+    //         presc_cnt <= 24'd0;
+    //         int_clk   <= ~int_clk;
+    //     end else begin
+    //         presc_cnt <= presc_cnt + 24'd1;
+    //     end
+    // end
 
+    // assign wait_req = 1'b0;
+    // assign wait_rel = 1'b0;
 endmodule
