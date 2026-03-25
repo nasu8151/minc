@@ -138,4 +138,6 @@ module minc_gw_top (
     //     end
     // end
 
+    // assign wait_req = 1'b0;
+    // assign wait_rel = 1'b0;
 endmodule
