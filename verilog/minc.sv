@@ -95,7 +95,7 @@ module minc (
                                 (is_call && (state == `S_DECEXEC)) ? pc[15:8] : 
                                 (is_call && (state == `S_WB)) ? pc[7:0]  : 8'h00;
 
-    // Write Enable flag
+    // Write Enable
     assign we = (state == `S_WB | state == `S_WB2) && (is_push || is_stm || is_call);
 
     // Main sequential logic
