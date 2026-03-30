@@ -83,7 +83,7 @@ Node *new_ident_node(NodeType type, char *name, long ofs_addr, char *loc) {
     return node;
 }
 
-Node *new_func_node(NodeType type, char *name, NodeList_Member *args, Node *body, long arg_sf_size, char *loc) {
+Node *new_func_node(NodeType type, char *name, Node **args, Node *body, long arg_sf_size, char *loc) {
     Node *node = calloc(1, sizeof(Node));
     if (!node) {
         error("Memory allocation failed");
@@ -108,14 +108,13 @@ Node *new_block_node() {
     return node;
 }
 
-NodeList_Member *add_node_list(Node *node) {
-    NodeList_Member *member = calloc(1, sizeof(NodeList_Member));
-    if (!member) {
-        error("Memory allocation failed");
-    }
-    member->node = node;
-    member->next = NULL;
-    return member;
+Node **nodevec_push(Node **old_vec, size_t old_len, Node *node) {
+    Node **new_nv = calloc(old_len + 2, sizeof(Node**));
+    if (!new_nv) error("Memory allocation failed");
+    memcpy(new_nv, old_vec, old_len);
+    new_nv[old_len] = node;
+    free(old_vec);
+    return new_nv;
 }
 
 void print_node(Node *node) {
@@ -166,10 +165,10 @@ void print_node(Node *node) {
         }
         if (node->body) {
             fprintf(stderr, "(BODY:\n");
-            NodeList_Member *cur = node->body;
-            while (cur) {
-                print_node(cur->node);
-                cur = cur->next;
+            Node **cur = node->body;
+            while (*cur) {
+                print_node(*cur);
+                cur++;
             }
             fprintf(stderr, ")\n");
         }

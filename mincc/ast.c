@@ -55,25 +55,19 @@ Node *toplevel(char *l) {
     char *name = expect_ident(&loc);
 
     if (consume_la("(", &loc)) {
-        NodeList_Member *nl = calloc(1, sizeof(NodeList_Member));
-        if (!nl) {
-            error("Memory allocation failed");
-        }
-        NodeList_Member *nl_head = nl;
+        Node **nv = calloc(1, sizeof(Node**));
         long arg_count = 0;
         new_scope();
         while (!consume(")", &loc)) {
-            arg_count++;
             Node *arg = expr(loc);
-            nl->next = add_node_list(arg);
-            nl = nl->next;
+            nv = nodevec_push(nv, arg_count++, arg);
             if (!consume(",", &loc)) {
                 expect(")", &loc);
                 break;
             }
         }
         add_function(tok);
-        Node *node = new_func_node(ND_FUNC_DEF, name, nl_head->next, stmt(loc), arg_count, loc);
+        Node *node = new_func_node(ND_FUNC_DEF, name, nv, stmt(loc), arg_count, loc);
         end_scope();
         return node;
     } else {
@@ -149,16 +143,13 @@ Node *stmt(char *l) {
     } else if (consume_la("{", &loc)) {
         new_scope();
         node = new_block_node();
-        NodeList_Member *head = calloc(1, sizeof(NodeList_Member));
-        if (!head) {
-            error("Memory allocation failed");
-        }
-        NodeList_Member *cur = head;
+        Node **nv = calloc(1, sizeof(Node**));
+        if (!nv) error("Memory allocation failed");
+        size_t len = 0;
         while (!consume("}", &loc)) {
-            cur->next = add_node_list(stmt(loc));
-            cur = cur->next;
+            nv = nodevec_push(nv, len++, stmt(loc));
         }
-        node->body = head->next;
+        node->body = nv;
         node->arg_sf_size = end_scope();
     } else {
         node = expr(loc);
@@ -303,20 +294,20 @@ Node *primary(char *l) {       // primary = num | ident | "(" expr ")"
         Token *tok = token;
         char *var_name = expect_ident(&loc);
         if (name && name->type == FUNCTION && consume_la("(", &loc)) { // ident "(" ((expr ",")* expr)? ")" の部分（関数呼び出し）
-            NodeList_Member *args = calloc(1, sizeof(NodeList_Member));
+            Node **args = calloc(1, sizeof(Node**));
             if (!args) {
                 error("Memory allocation failed");
             }
-            NodeList_Member *args_head = args;
+            size_t argnum = 0;
             while (!consume(")", &loc)) {
-                args->next = add_node_list(expr(loc));
-                args = args->next;
+                args = nodevec_push(args, argnum++, expr(loc));
+                args++;
                 if (!consume(",", &loc)) {
                     expect(")", &loc);
                     break;
                 }
             }
-            return new_func_node(ND_FUNC_CALL, var_name, args_head->next, NULL, 0, loc);
+            return new_func_node(ND_FUNC_CALL, var_name, args, NULL, 0, loc);
         }
         if (size == -1 && name) {
             if (name->type == VAR_GLOBAL_STATIC) {

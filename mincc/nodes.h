@@ -45,7 +45,7 @@ typedef struct Node {
     struct Node *cond;  // Condition (for IF, WHILE, FOR statements)
     struct Node *inc;   // Increment (for FOR statement)
     struct Node *init;  // Initialization (for FOR statement)
-    struct NodeList_Member *body; // Block body (for BLOCK, FUNC_DEF statements)
+    struct Node **body; // Block body (for BLOCK, FUNC_DEF statements)
     long val;           // Value (only for ND_NUM) or size of type (only for ND_GLOBAL_VAR and ND_LOCAL_VAR)
     long ofs_addr;        // Offset from BP or Absolute address (only for ND_LOCAL_VAR, ND_GLOBAL_VAR)
     long arg_sf_size; // Stack frame size (only for ND_BLOCK used in FUNC_DEF) or number of arguments (only for ND_FUNC_DEF)
@@ -53,11 +53,6 @@ typedef struct Node {
     char *name;    // Identifier name (for ND_LOCAL_VAR, ND_GLOBAL_VAR, ND_FUNC_DEF, ND_FUNC_CALL)
     char *loc;
 } Node;
-
-typedef struct NodeList_Member {
-    struct NodeList_Member *next;
-    Node *node;
-} NodeList_Member;
 
 typedef enum {
     VAR_LOCAL,
@@ -107,10 +102,10 @@ Node *new_ident_node(NodeType type, char *name, long offset, char *loc);
 Node *new_if_else_node(NodeType type, Node *cond, Node *then, Node *else_, char *loc);
 Node *new_for_node(Node *cond, Node *inc, Node *init, Node *body, char *loc);
 Node *new_while_node(Node *cond, Node *body, char *loc);
-Node *new_func_node(NodeType type, char *name, NodeList_Member *args, Node *body, long arg_sf_size, char *loc);
+Node *new_func_node(NodeType type, char *name, Node **args, Node *body, long arg_sf_size, char *loc);
 Node *new_block_node();
 
-NodeList_Member *add_node_list(Node *node);
+Node **nodevec_push(Node **old_vec, size_t old_len, Node *node);
 
 void print_node(Node *node);
 

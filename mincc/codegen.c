@@ -137,10 +137,10 @@ void generate(Node *node) {
         free(end_label);
         return;
     } case ND_BLOCK: {
-        NodeList_Member *member = node->body;
-        while (member) {
-            generate(member->node);
-            member = member->next;
+        Node **member = node->body;
+        while (*member) {
+            generate(*member);
+            member++;
         }
         return;
     } case ND_FUNC_DEF: {
@@ -153,12 +153,12 @@ void generate(Node *node) {
         generate_epilogue();
         return;
     } case ND_FUNC_CALL: {
-        NodeList_Member *arg = node->body;
+        Node **arg = node->body;
         long arg_count = 0;
         while (arg) {
-            generate(arg->node);
+            generate(*arg);
             printf("pop r%ld\n", 2 + arg_count); // r2, r3, ... に引数をセット
-            arg = arg->next;
+            arg++;
             arg_count++;
         }
         printf("call %s\npush r0\n", node->name);
