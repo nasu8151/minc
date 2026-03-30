@@ -8,7 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "ast.h"
-#include "sharedtype.h"
+#include "nodes.h"
 #include "errorhandle.h"
 
 void generate_top(Node *code, long i);

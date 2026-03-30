@@ -8,7 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "errorhandle.h"
-#include "sharedtype.h"
+#include "nodes.h"
 
 extern Token *token;
 

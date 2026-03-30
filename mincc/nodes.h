@@ -1,6 +1,8 @@
-#ifndef MINCC_SHAREDTYPE_H
-#define MINCC_SHAREDTYPE_H
+#ifndef __MINCC_NODES_H__
+#define __MINCC_NODES_H__
 
+#include <stdio.h>
+#include "errorhandle.h"
 
 typedef enum {
     ND_ADD,
@@ -88,4 +90,40 @@ typedef struct Token {
     char *loc;
 } Token;
 
-#endif // MINCC_SHAREDTYPE_H
+typedef struct Vars_List {
+    struct Vars_List *parent;
+    struct Vars_List *child;
+    Ident_Name *var_head;
+    Ident_Name *var_tail;
+    long var_alloc_ptr;
+    long max_var_count;
+} Vars_List;
+
+
+// Generate node
+Node *new_node(NodeType type, Node *lhs, Node *rhs, char *loc);
+Node *new_num_node(long val, char *loc);
+Node *new_ident_node(NodeType type, char *name, long offset, char *loc);
+Node *new_if_else_node(NodeType type, Node *cond, Node *then, Node *else_, char *loc);
+Node *new_for_node(Node *cond, Node *inc, Node *init, Node *body, char *loc);
+Node *new_while_node(Node *cond, Node *body, char *loc);
+Node *new_func_node(NodeType type, char *name, NodeList_Member *args, Node *body, long arg_sf_size, char *loc);
+Node *new_block_node();
+
+NodeList_Member *add_node_list(Node *node);
+
+void print_node(Node *node);
+
+void add_local_var(Token *tok);
+// Add global variable to global scope
+void add_global_var(Token *tok, long address);
+// Add function to function list
+void add_function(Token *tok);
+// Count local variables from current funciton scope
+long count_local_vars();
+
+Ident_Name *find_name(Token *tok);
+
+void free_vars_list(Vars_List *vars_list);
+
+#endif // __MINCC_NODES_H__
