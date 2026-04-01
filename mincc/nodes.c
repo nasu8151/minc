@@ -4,9 +4,6 @@ Vars_List *head = NULL;
 Vars_List *current = NULL;
 Vars_List *tail = NULL;
 
-Ident_Name *func_head = NULL;
-Ident_Name *func_tail = NULL;
-
 Node *new_node(NodeType type, Node *lhs, Node *rhs, char *loc) {
     Node *node = calloc(1, sizeof(Node));
     if (!node) {
@@ -111,7 +108,7 @@ Node *new_block_node() {
 Node **nodevec_push(Node **old_vec, size_t old_len, Node *node) {
     Node **new_nv = calloc(old_len + 2, sizeof(Node**));
     if (!new_nv) error("Memory allocation failed");
-    memcpy(new_nv, old_vec, old_len);
+    memcpy(new_nv, old_vec, (old_len + 1) * sizeof(Node*));
     new_nv[old_len] = node;
     free(old_vec);
     return new_nv;
@@ -131,6 +128,13 @@ void print_node(Node *node) {
         fprintf(stderr, ")\n");
     } else if (node->type == ND_FUNC_CALL) {
         fprintf(stderr, "ND_FUNC_CALL\n");
+        fprintf(stderr, "(ARG:");
+        Node **cur = node->body;
+        while (*cur) {
+            print_node(*cur);
+            cur++;
+        }
+        fprintf(stderr, ")\n");
     } else {
         fprintf(stderr, "Node type: %d\n", node->type);
         if (node->lhs) {

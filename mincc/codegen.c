@@ -1,6 +1,13 @@
 #include "codegen.h"
 
+static long       nxt_regstack_top;
+static long       cur_regstack_max;
+static long       cur_arg_count;
+static const long ast_min = 2;
+static const long caller_max = 5;
+
 void generate_top(Node *code, long i) {
+    nxt_regstack_top = ast_min;
     printf("__on_entry:\n");
     for (long j = 0; j < i; j++) {
         if (code[j].type == ND_ASSIGN) { // Global variable assignment
@@ -36,19 +43,51 @@ char *get_break_label() {
     return label;
 }
 
+// push value onto regstack
+// returns current top
+// nxt_regstack_top will be set to next top
+long push_regstack() {
+    if (cur_regstack_max < nxt_regstack_top) {
+        cur_regstack_max = nxt_regstack_top;
+        if (caller_max < nxt_regstack_top) { // callee責任のレジスタは自分で退避
+            printf("push r%ld\n", nxt_regstack_top);
+        }
+    }
+    return nxt_regstack_top++;
+}
+
+// pop value from regstack
+// returns current top
+long pop_regstack() {
+    nxt_regstack_top = nxt_regstack_top - 1;
+    return nxt_regstack_top;
+}
+
+// push and pop value on regstack
+// returns current top
+long chg_regstack() {
+    return nxt_regstack_top - 1;
+}
+
 void generate_prologue(long arg_count, long local_var_count) {
+    cur_arg_count = arg_count;
+    cur_regstack_max = ast_min;
+    nxt_regstack_top = ast_min;
     printf("push r15\n");
     printf("lds r15\n");
     for (long i = 0; i < arg_count; i++) {
-        printf("push r%ld\n", i + 2);
+        printf("push r%ld\n", i + ast_min);
     }
     printf("mvi r0,%ld\n", -local_var_count);  // local_var_count includes arguments
     printf("add r0,r15\n");
     printf("sts r0\n");
 }
 
-void generate_epilogue() {
-    printf("pop r0\n");
+void generate_epilogue(long arg_count) {
+    for (long i = cur_regstack_max; i >= ((caller_max > arg_count) ? caller_max : arg_count); i--) {
+        printf("pop %ld\n", i);
+    }
+    printf("mov r0,r%ld\n", pop_regstack());
     printf("sts r15\n");
     printf("pop r15\n");
     printf("ret\n");
@@ -57,20 +96,20 @@ void generate_epilogue() {
 void generate(Node *node) {
     switch (node->type) {
     case ND_NUM: {
-        printf("mvi r0,%ld\npush r0\n", node->val);
+        printf("mvi r%ld,%ld\n", push_regstack(), node->val);
         return;
     } case ND_LOCAL_VAR: {
-        printf("ldm r0,%ld\npush r0\n", node->ofs_addr);
+        printf("ldm r%ld,%ld\n", push_regstack(), node->ofs_addr);
         return;
     } case ND_GLOBAL_VAR: {
-        printf("push r15\nmvi r15,%ld\nldm r0,0\npop r15\npush r0\n", node->ofs_addr);
+        printf("push r15\nmvi r15,%ld\nldm r%ld,0\npop r15\n", node->ofs_addr, push_regstack());
         return;
     } case ND_ASSIGN: {
         generate(node->rhs);
         if (node->lhs->type == ND_LOCAL_VAR) {
-            printf("pop r0\nstm %ld,r0\n", node->lhs->ofs_addr);
+            printf("stm %ld,r%ld\n", node->lhs->ofs_addr, pop_regstack());
         } else if (node->lhs->type == ND_GLOBAL_VAR) {
-            printf("pop r0\npush r15\nmvi r15,%ld\nstm 0,r0\npop r15\n", node->lhs->ofs_addr);
+            printf("push r15\nmvi r15,%ld\nstm 0,r%ld\npop r15\n", node->lhs->ofs_addr, pop_regstack());
         } else {
             error_at(node->loc, "Left-hand side of assignment must be a variable");
         }
@@ -79,12 +118,12 @@ void generate(Node *node) {
         if (node->lhs) {
             generate(node->lhs);
         }
-        generate_epilogue();
+        generate_epilogue(cur_arg_count);
         return;
     } case ND_IF: {
         generate(node->cond); // 条件式
         char *end_label = get_unique_label(false);
-        printf("pop r0\njz %s,r0\n", end_label);
+        printf("jz %s,r%ld\n", end_label, pop_regstack());
         generate(node->lhs); // then節
         printf("%s:\n", end_label);
         free(end_label);
@@ -93,7 +132,7 @@ void generate(Node *node) {
         generate(node->cond); // 条件式
         char *else_label = get_unique_label(false);
         char *end_label = get_unique_label(false);
-        printf("pop r0\njz %s,r0\n", else_label);
+        printf("jz %s,r%ld\n", else_label, pop_regstack());
         generate(node->lhs); // then節
         printf("mvi r0,0\njz %s,r0\n", end_label);
         printf("%s:\n", else_label);
@@ -111,7 +150,7 @@ void generate(Node *node) {
         if (node->cond) {
             printf("%s:\n", begin_label);
             generate(node->cond);
-            printf("pop r0\njz %s,r0\n", end_label);
+            printf("jz %s,r%ld\n", end_label, pop_regstack());
         } else {
             printf("%s:\n", begin_label);
         }
@@ -129,7 +168,7 @@ void generate(Node *node) {
         char *end_label = get_unique_label(true);
         printf("%s:\n", begin_label);
         generate(node->cond);
-        printf("pop r0\njz %s,r0\n", end_label);
+        printf("jz %s,r%ld\n", end_label, pop_regstack());
         generate(node->lhs); // body
         printf("mvi r0,0\njz %s,r0\n", begin_label);
         printf("%s:\n", end_label);
@@ -150,18 +189,29 @@ void generate(Node *node) {
         }
         generate_prologue(node->arg_sf_size, node->lhs->arg_sf_size);
         generate(node->lhs); // function body
-        generate_epilogue();
+        generate_epilogue(cur_arg_count);
         return;
     } case ND_FUNC_CALL: {
         Node **arg = node->body;
         long arg_count = 0;
-        while (arg) {
+        while (*arg) {
             generate(*arg);
-            printf("pop r%ld\n", 2 + arg_count); // r2, r3, ... に引数をセット
             arg++;
             arg_count++;
         }
-        printf("call %s\npush r0\n", node->name);
+        printf("push r0\npush r1\n");
+        for (long i = ast_min; i < caller_max + 1; i++) {
+            printf("push r%ld\n", i);
+            if (i < ast_min + arg_count) {
+                printf("mov r%ld,r%ld\n", ast_min + arg_count, pop_regstack());
+            } // r2, r3, ... に引数をセット
+        }
+        printf("call %s\n", node->name);
+        for (long i = (caller_max > arg_count) ? caller_max : arg_count; \
+            ast_min <= i; i--) {
+            printf("pop r%ld\n", i);
+        }
+        printf("mov r%ld,r0\npop r1\npop r0\n", push_regstack());
         return;
     } case ND_BREAK: {
         printf("mvi r0,0\njz %s,r0\n", get_break_label());
@@ -174,36 +224,39 @@ void generate(Node *node) {
     generate(node->lhs);
     generate(node->rhs);
 
+    long src = pop_regstack();
+    long dst = chg_regstack();
+
     switch (node->type) {
     case ND_ADD:
-        printf("pop r1\npop r0\nadd r0,r1\npush r0\n");
+        printf("add r%ld,r%ld\n", dst, src);
         break;
     case ND_SUB:
-        printf("pop r1\npop r0\nsub r0,r1\npush r0\n");
+        printf("sub r%ld,r%ld\n", dst, src);
         break;
     case ND_MUL:
-        printf("pop r1\npop r0\nmul r0,r1\npush r0\n");
+        printf("mul r%ld,r%ld\n", dst, src);
         break;
     case ND_EQ:
-        printf("pop r1\npop r0\nsub r0,r1\nmvi r2,1\nlt r0,r2\npush r0\n");
+        printf("sub r%ld,r%ld\nmvi r0,1\nlt r%ld,r0\n", dst, src, dst);
         break;
     case ND_NEQ:
-        printf("pop r1\npop r0\nsub r0,r1\nmvi r2,0\nlt r2,r0\npush r2\n");
+        printf("sub r%ld,r%ld\nmvi r0,0\nlt r0,r%ld\nmov r%ld,r0\n", dst, src, dst, dst);
         break;
     case ND_LT:
-        printf("pop r1\npop r0\nlt r0,r1\npush r0\n");
+        printf("lt r%ld,r%ld\n", dst, src);
         break;
     case ND_GE:
-        printf("pop r1\npop r0\nlt r0,r1\nmvi r2,1\nlt r0,r2\npush r0\n");
+        printf("lt r%ld,r%ld\nmvi r0,1\nlt r%ld,r0\npush r0\n", dst, src, dst);
         break;
     case ND_BITWISE_AND:
-        printf("pop r1\npop r0\nand r0,r1\npush r0\n");
+        printf("and r%ld,r%ld\n", dst, src);
         break;
     case ND_BITWISE_OR:
-        printf("pop r1\npop r0\nor r0,r1\npush r0\n");
+        printf("or r%ld,r%ld\n", dst, src);
         break;
     case ND_BITWISE_XOR:
-        printf("pop r1\npop r0\nxor r0,r1\npush r0\n");
+        printf("xor r%ld,r%ld\n", dst, src);
         break;
     default:
         error_at(node->loc, "Unknown node type");

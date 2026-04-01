@@ -11,6 +11,13 @@
 #include "nodes.h"
 #include "errorhandle.h"
 
+/*
+呼び出し規約（現状）
+・引数は左から順にr2~に入れる
+・r0~r5は必ず呼び出した側が退避、r6~は呼び出された側が使う都度退避
+・ASTを解くときもr2をスタック底としてスタックマシンみたいに解く
+*/
+
 void generate_top(Node *code, long i);
 
 // Label generation function

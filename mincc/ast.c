@@ -7,9 +7,6 @@ extern Vars_List *head;
 extern Vars_List *current;
 extern Vars_List *tail;
 
-extern Ident_Name *func_head;
-extern Ident_Name *func_tail;
-
 // Create new node (type != ND_NUM)
 void program() {
     long i = 0;
@@ -301,13 +298,12 @@ Node *primary(char *l) {       // primary = num | ident | "(" expr ")"
             size_t argnum = 0;
             while (!consume(")", &loc)) {
                 args = nodevec_push(args, argnum++, expr(loc));
-                args++;
                 if (!consume(",", &loc)) {
                     expect(")", &loc);
                     break;
                 }
             }
-            return new_func_node(ND_FUNC_CALL, var_name, args, NULL, 0, loc);
+            return new_func_node(ND_FUNC_CALL, var_name, args, NULL, (long) argnum, loc);
         }
         if (size == -1 && name) {
             if (name->type == VAR_GLOBAL_STATIC) {
