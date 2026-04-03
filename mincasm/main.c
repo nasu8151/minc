@@ -227,13 +227,23 @@ static int process_label(char **pp, LinkState *ls, int instr_index) {
     return 0;
 }
 
+static uint16_t int2imm8(int imm) {
+    uint16_t i = imm & 0xFF;
+    return (uint16_t)(((i & 0x00F0) << 4) | (i & 0x000F));
+}
+
+static uint16_t int2j12(int imm) {
+    uint16_t i = imm & 0xFFF;
+    return (uint16_t)(int2imm8(i & 0x00FF) | ((i & 0x0F00) >> 4));
+}
+
 int main(){
     const char *insts_2ops[] = { "mov", "add", "sub", "lt", "mul", "or", "and", "xor" };
     const char *insts_1op_rs[]  = { "push", "sts" };
     const char *insts_1op_rd[]  = { "pop", "lds" };
     const char *insts_op_imm[] = { "mvi",  "ldm" };
     const char *insts_imm_op[] = { "stm" };
-    const char *insts_addr[] = { "call" };
+    const char *insts_addr[] = { "call", "jr" };
     const char *insts_op_addr[] = { "jz", "jnz" };
     const char *insts_noopr[] = { "ret", "halt" };
     const InstType inst_dict[] = {
@@ -241,7 +251,7 @@ int main(){
         {"push", 0x0800}, {"sts", 0x0900}, {"pop", 0x0A00}, {"lds", 0x0B00}, 
         {"ret",  0x0C00}, 
 
-        {"mvi",  0x1000}, {"stm", 0x2000}, {"ldm", 0x3000}, {"jz", 0x4000}, {"call", 0x5000}, {"jnz", 0x6000}, {"halt", 0x7FFF}
+        {"mvi",  0x1000}, {"stm", 0x2000}, {"ldm", 0x3000}, {"jz", 0x4000}, {"call", 0x5000}, {"jnz", 0x6000}, {"jr", 0x7000}, {"halt", 0x7FFF}
     };
 
     CodeVec code;
@@ -320,7 +330,7 @@ int main(){
             int reg = strtol(operand + 1, NULL, 10);
             int imm = strtol(immediate, NULL, 0);
             if (!check_immediate_range(imm) || !check_register_range(reg)) return EXIT_FAILURE;
-            opcode = opcode | ((imm & 0xff) << 4) | reg;
+            opcode = opcode | (reg << 4) | int2imm8(imm);
         } else if (is_in_array(instruction, insts_imm_op, sizeof(insts_imm_op)/sizeof(insts_imm_op[0]))){
             // Handle imm-op instructions
             char *comma = find_comma(first_space + 1, instruction);
@@ -330,7 +340,7 @@ int main(){
             int imm = strtol(immediate, NULL, 0);
             int reg = strtol(operand + 1, NULL, 10);
             if (!check_immediate_range(imm) || !check_register_range(reg)) return EXIT_FAILURE;
-            opcode = opcode | ((imm & 0xff) << 4) | reg;
+            opcode = opcode | (reg << 4) | int2imm8(imm);
         } else if (is_in_array(instruction, insts_noopr, sizeof(insts_noopr)/sizeof(insts_noopr[0]))){
             // nothing
         } else if (is_in_array(instruction, insts_addr, sizeof(insts_addr)/sizeof(insts_addr[0]))){
@@ -376,8 +386,7 @@ int main(){
             } else {
                 int address = strtol(address_str, NULL, 0);
                 if (!check_long_addr_range(address)) return EXIT_FAILURE;
-                if (!check_immediate_range(address) && !(opcode == find_opcode("call", inst_dict, sizeof(inst_dict)/sizeof(inst_dict[0])))) return EXIT_FAILURE;
-                opcode = opcode | (address << 4);
+                opcode = opcode | int2j12(address);
             }
         } else if (is_in_array(instruction, insts_op_addr, sizeof(insts_op_addr)/sizeof(insts_op_addr[0]))){
             // Handle addr-op (jz, jnz): first is address (label or number), second is rs
@@ -410,7 +419,7 @@ int main(){
                     return EXIT_FAILURE;
                 }
                 // emit opcode with rs set; address will be backpatched later
-                uint16_t word = (uint16_t)(opcode | (reg & 0xF));
+                uint16_t word = (uint16_t)(opcode | (reg << 4));
                 if (!codevec_push(&code, word)) {
                     fprintf(stderr, "Error: out of memory\n");
                     return EXIT_FAILURE;
@@ -421,7 +430,8 @@ int main(){
             } else {
                 int addr = strtol(address_str, NULL, 0);
                 if (!check_immediate_range(addr)) return EXIT_FAILURE;
-                opcode = opcode | ((addr & 0xFF) << 4) | (reg & 0xF);
+                if (!check_register_range(reg)) return EXIT_FAILURE;
+                opcode = opcode | (reg << 4) | int2imm8(addr);
             }
         } else {
             fprintf(stderr, "Error: Unhandled instruction type for '%s'\n\
@@ -446,13 +456,14 @@ int main(){
             return EXIT_FAILURE;
         }
         int ofs = (addr - f->index - 1);
-        if ((code.data[f->index] & 0xF000) == find_opcode("call", inst_dict, sizeof(inst_dict)/sizeof(inst_dict[0]))) {
+        if ((code.data[f->index] & 0xF000) == find_opcode("call", inst_dict, sizeof(inst_dict)/sizeof(inst_dict[0])) || 
+            (code.data[f->index] & 0xF000) == find_opcode("jr", inst_dict, sizeof(inst_dict)/sizeof(inst_dict[0]))) {
             // keep top nibble and low nibble, set middle 8 bits with (addr<<4)
             if (!check_long_addr_range(ofs)) return EXIT_FAILURE;
-            code.data[f->index] = (uint16_t)((code.data[f->index] & 0xF000) + (((ofs & 0xFF) << 4) | ((ofs & 0x0F00) >> 8)));
+            code.data[f->index] = (uint16_t)((code.data[f->index] & 0xF000) | int2j12(ofs));
         } else {
             if (!check_immediate_range(ofs)) return EXIT_FAILURE;
-            code.data[f->index] = (uint16_t)((code.data[f->index] & 0xF00F) | ((ofs & 0xFF) << 4));
+            code.data[f->index] = (uint16_t)((code.data[f->index] & 0xF0F0) | int2imm8(ofs));
         }
     }
 

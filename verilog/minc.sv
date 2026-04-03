@@ -48,13 +48,12 @@ module minc (
     wire [3:0] op4   = instr[14:11];
     wire [2:0] op3   = instr[14:12];
     wire [3:0] subop = instr[11:8];
-    wire [3:0] rd    = op3[0] == 1'b1 ? instr[3:0] : instr[7:4];
+    wire [3:0] rd    = instr[7:4];
     wire [3:0] rs    = instr[3:0];
-    wire [7:0] imm8  = instr[11:4];
+    wire [7:0] imm8  = {instr[11:8], instr[3:0]};
 
     wire [7:0] rd_val =       regs[rd];
     wire [7:0] rs_val =       regs[rs];
-    integer i;
 
     wire [7:0] alu_out =    subop == 4'b0000 ? rs_val :
                             subop == 4'b0001 ? rd_val + rs_val :
@@ -67,7 +66,7 @@ module minc (
                             8'h00; // default
 
     // Decode flags 
-    wire is_alu  = (op3 == 3'b000) && (subop[3] == 1'b0);
+    wire is_alu  = (op4 == 4'b0000);
     wire is_push = (op3 == 3'b000) && (subop == 4'b1000);
     wire is_lds  = (op3 == 3'b000) && (subop == 4'b1001);
     wire is_pop  = (op3 == 3'b000) && (subop == 4'b1010);
@@ -78,22 +77,27 @@ module minc (
     wire is_ldm  = (op3 == 3'b011);
     wire is_jz   = (op3 == 3'b100);
     wire is_call = (op3 == 3'b101);
+    wire is_jnz  = (op3 == 3'b110);
+    wire is_jr   = (op3 == 3'b111);
 
     // Determines address the processor emits
-    assign address =  is_push ? sp :
-                            is_pop  ? sp :
-                            is_ret  ? sp :
-                            (is_stm || is_ldm) ? (regs[15] + imm8) :
-                            is_call ? sp : 8'h00;
+    assign address =    is_push ? sp :
+                        is_pop  ? sp :
+                        is_ret  ? sp :
+                        (is_stm || is_ldm) ? (regs[15] + imm8) :
+                        is_call ? sp : 8'h00;
 
     // Determines written data
     // ALU out, rs_val for PUSH/STM, sp for STS, imm8 for MVI, pc for CALL
-    wire [7:0] data_out_next =  is_alu ? alu_out :
-                                (is_push || is_lds || is_stm) ? rs_val :
-                                is_sts ? sp :
-                                is_mvi ? imm8 :
+    wire [7:0] data_out_next =  (is_push) ? rs_val :
+                                (is_stm)  ? rd_val :
                                 (is_call && (state == `S_DECEXEC)) ? pc[15:8] : 
                                 (is_call && (state == `S_WB)) ? pc[7:0]  : 8'h00;
+    
+    wire [7:0] rd_next =    is_alu ? alu_out :
+                            is_sts ? sp :
+                            is_mvi ? imm8 : 
+                            (is_pop || is_ldm) ? data_in : rd_val;
 
     // Write Enable
     assign we = (state == `S_WB | state == `S_WB2) && (is_push || is_stm || is_call);
@@ -119,14 +123,11 @@ module minc (
                     data_out <= data_out_next;
 
                     // Decode and Execute - Halting if unknown instruction
-                    if (!(is_alu || is_push || is_lds || is_pop || is_sts || is_ret || 
-                          is_mvi || is_stm || is_ldm || is_jz || is_call)) begin
-                        // 110,111: unused -> HALT
+                    if (instr == 15'h7FFF) begin
                         `ifdef SIM
                         $display("HALT encountered at PC=%h", pc - 8'd1);
                         $finish;
                         `endif
-                        pc <= pc - 8'd1; // stay on HALT instruction
                     end
 
                     if (is_push || is_call) begin
@@ -141,11 +142,7 @@ module minc (
                     data_out <= data_out_next;
                     // Writeback phase
                     // Update registers
-                    if (is_alu || is_mvi || is_sts) begin
-                        regs[rd] <= data_out;
-                    end else if (is_pop || is_ldm) begin
-                        regs[rd] <= data_in;
-                    end
+                    regs[rd] <= rd_next;
 
                     // Update SP
                     if (is_pop || is_ret) begin
@@ -153,16 +150,22 @@ module minc (
                     end else if (is_call) begin
                         sp <= sp - 8'd1;
                     end else if (is_lds) begin
-                        sp <= data_out;
+                        sp <= rs_val;
                     end
 
                     // Update PC
                     if (is_ret) begin
                         pc[7:0] <= data_in;
                     end else if (is_jz) begin
-                        if (rs_val == 8'd0) begin
+                        if (rd_val == 8'd0) begin
                             pc <= pc + 16'(signed'(imm8));
                         end
+                    end else if (is_jnz) begin
+                        if (rd_val != 8'd0) begin
+                            pc <= pc + 16'(signed'(imm8));
+                        end
+                    end else if (is_jr) begin
+                        pc <= pc + 16'(signed'({rd, imm8}));
                     end
 
                     if (wait_req)
@@ -181,7 +184,7 @@ module minc (
                     if (is_ret)
                         pc[15:8] <= data_in;
                     else if (is_call)
-                        pc <= pc + 16'(signed'({rs, imm8}));
+                        pc <= pc + 16'(signed'({rd, imm8}));
                     state <= `S_FETCH;
                 end
                 // `S_WAIT: begin

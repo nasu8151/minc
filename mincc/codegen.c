@@ -76,7 +76,7 @@ void generate_prologue(long arg_count, long local_var_count) {
     printf("push r15\n");
     printf("lds r15\n");
     for (long i = 0; i < arg_count; i++) {
-        printf("push r%ld\n", i + ast_min);
+        printf("stm %ld,r%ld\n", -i - 1, i + ast_min); // 引数をメモリに展開
     }
     printf("mvi r0,%ld\n", -local_var_count);  // local_var_count includes arguments
     printf("add r0,r15\n");
@@ -86,7 +86,7 @@ void generate_prologue(long arg_count, long local_var_count) {
 void generate_epilogue(long arg_count) {
     for (long i = cur_regstack_max; i >= ((caller_max > arg_count) ? caller_max : arg_count); i--) {
         printf("pop %ld\n", i);
-    }
+    } // callee責任分（argの分は含まず）を回収する
     printf("mov r0,r%ld\n", pop_regstack());
     printf("sts r15\n");
     printf("pop r15\n");

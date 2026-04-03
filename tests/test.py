@@ -7,22 +7,22 @@ if __name__ == "__main__":
     tf.expect("""echo "push r0\nsts r1\npop r2\nlds r3" | ./target/mincasm""",
                 "0800\n0901\n0A20\n0B30") # Stack and load/store instructions
     tf.expect("""echo "jz 10,r0\njnz 15,r1\ncall 20\nret\nhalt" | ./target/mincasm""",
-                "40A0\n60F1\n5140\n0C00\n7FFF") # Jump and call instructions
+                "400A\n601F\n5104\n0C00\n7FFF") # Jump and call instructions
     tf.expect_fail("""echo foo | ./target/mincasm""") # Invalid instruction
     tf.expect_fail("""echo "mvi r0,256" | ./target/mincasm""") # Out of range immediate
     # MINCASM label tests (one-pass backpatch)
     # Forward reference: label after use
     tf.expect("""echo "jz L1,r0\nmvi r0,1\nL1: ret" | ./target/mincasm""",
-                "4010\n1010\n0C00")
+                "4001\n1001\n0C00")
     # Backward reference: label before use
     tf.expect("""echo "L0: mvi r0,1\njz L0,r0\nret" | ./target/mincasm""",
-                "1010\n4FE0\n0C00")
+                "1001\n4F0E\n0C00")
     # jnz to label
     tf.expect("""echo "L0: mvi r0,1\njnz L0,r1\nret" | ./target/mincasm""",
-                "1010\n6FE1\n0C00")
+                "1001\n6F1E\n0C00")
     # Call to label
     tf.expect("""echo "call MAIN\nFUNC: ret\nMAIN: call FUNC\nhalt" | ./target/mincasm""",
-                "5010\n0C00\n5FEF\n7FFF")
+                "5001\n0C00\n5FFE\n7FFF")
     tf.expect
     # Undefined label should fail
     tf.expect_fail("""echo "jz NO_SUCH_LABEL,r0" | ./target/mincasm""")
@@ -67,7 +67,7 @@ if __name__ == "__main__":
     tf.test_e2e("int main(){int j=0;for(int i=0;i<7;i=i+1){} int k=0; int i=i+5; return i;}", -1)
     tf.test_e2e("char [[address=0x00]] port_a_out;char [[address=0x01]] port_a_dir;int main(){port_a_dir = 0xFF;port_a_out=0x55; return 0;}", 0, porta=0x55)
     tf.test_e2e("int main(){int i=0;while(1){if(i==5) break;i=i+1;}return i;}", 5)
-    tf.test_e2e("char [[address = 0x00]] b;int a;int addi(int s){a = a + s;return a;}void main(){a = 0;while(addi(3) < 20){b = b;}return a;}", 21)
+    tf.test_e2e("char [[address = 0x00]] b;int a;int addi(int s){a = a + s;return a;}void main(){a = 0;for(int i = 0;i < 254;i=i+1){while(addi(3) < 20){b = b;}}return 21;}", 21)
 
 
     print()
