@@ -134,7 +134,7 @@ void generate(Node *node) {
         char *end_label = get_unique_label(false);
         printf("jz %s,r%ld\n", else_label, pop_regstack());
         generate(node->lhs); // then節
-        printf("mvi r0,0\njz %s,r0\n", end_label);
+        printf("jr %s\n", end_label);
         printf("%s:\n", else_label);
         generate(node->else_); // else節
         printf("%s:\n", end_label);
@@ -158,7 +158,7 @@ void generate(Node *node) {
         if (node->inc) {
             generate(node->inc);
         }
-        printf("mvi r0,0\njz %s,r0\n", begin_label);
+        printf("jr %s\n", begin_label);
         printf("%s:\n", end_label);
         free(begin_label);
         free(end_label);
@@ -170,7 +170,7 @@ void generate(Node *node) {
         generate(node->cond);
         printf("jz %s,r%ld\n", end_label, pop_regstack());
         generate(node->lhs); // body
-        printf("mvi r0,0\njz %s,r0\n", begin_label);
+        printf("jr %s\n", begin_label);
         printf("%s:\n", end_label);
         free(begin_label);
         free(end_label);
@@ -214,7 +214,7 @@ void generate(Node *node) {
         printf("mov r%ld,r0\npop r1\npop r0\n", push_regstack());
         return;
     } case ND_BREAK: {
-        printf("mvi r0,0\njz %s,r0\n", get_break_label());
+        printf("jr %s\n", get_break_label());
         return;
     }
     default:
