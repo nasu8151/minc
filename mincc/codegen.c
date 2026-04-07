@@ -216,13 +216,28 @@ void generate(Node *node) {
     } case ND_BREAK: {
         printf("jr %s\n", get_break_label());
         return;
+    } case ND_ADDR: {
+        if (node->lhs->type == ND_LOCAL_VAR) {
+            printf("mov r%ld,r15\n", push_regstack());
+            printf("mvi r%ld,%ld\n", push_regstack(), node->lhs->ofs_addr);
+            long src = pop_regstack();
+            long dst = chg_regstack();
+            printf("add r%ld,r%ld\n", dst, src);
+            return;
+        }
+        printf("mvi r%ld,%ld\n", push_regstack(), node->lhs->ofs_addr);
+        return;
+    } case ND_DEREF: {
+        generate(node->lhs);
+        printf("push r15\nmov r15,r%ld\nldm r%ld,0\npop r15\n",chg_regstack(), chg_regstack());
+        return;
     }
     default:
         break;
     }
 
     generate(node->lhs);
-    generate(node->rhs);
+    if (node->rhs) generate(node->rhs);
 
     long src = pop_regstack();
     long dst = chg_regstack();

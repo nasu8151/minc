@@ -36,22 +36,22 @@
 | add rd,rs  | 000100 00 dddd ssss | rd = rd + rs                            |
 | sub rd,rs  | 000101 00 dddd ssss | rd = rd - rs                            |
 | lt rd,rs   | 000110 00 dddd ssss | rd = 1 if rd - rs < 0, otherwise rd = 0 |
-| rr rd,rs   | 000111 00 dddd ssss |                                         |
+| rr rd,rs   | 000111 00 dddd ssss | rshift                                  |
 | mul rd,rs  | 001000 00 dddd ssss | rd = \(rd * rs\)\[7:0\]                 |
 | mulh rd,rs | 001001 00 dddd ssss | rd = \(rd * rs\)\[15:7\]                |
-| push rs    | 001010 00 0000 ssss | (--SP) = rs                             |
-| pop rd     | 001011 00 dddd 0000 | rd = (SP++)                             |
-| sts rs     | 001110 00 0000 ssss | SP = rs                                 |
-| lds rd     | 001111 00 dddd 0000 | rd = SP                                 |
-| stm X+n,rs | 0100 nnnn ssss nnnn | [{r13, r12}+n] = rs                     |
-| ldm rd,X+n | 0101 nnnn dddd nnnn | rd = [{r13, r12}+n]                     |
-| stm Y+n,rs | 0110 nnnn ssss nnnn | [{r15, r14}+n] = rs                     |
-| ldm rd,Y+n | 0111 nnnn dddd nnnn | rd = [{r15, r14}+n]                     |
-| jz n,rs    | 1000 nnnn ssss nnnn | PC = n if rd == 0                       |
-| jnz n,rs   | 1001 nnnn ssss nnnn | PC = n if rd != 0                       |
-| calr n     | 1011 nnnn rrrr nnnn | (----SP) = PC + 1;PC = PC + {r, n} + 1  |
-| jr n       | 1011 nnnn rrrr nnnn | (----SP) = PC + 1;PC = PC + {r, n} + 1  |
-| jp m       | 110100 00 0000 0000 | PC = m                                  |
-| call m     | 111010 00 0000 0000 | (----SP) = PC + 1;PC = m                |
-| ret        | 111011 00 0000 0000 | PC = (SP);SP = SP + 2;                  |
-| mvi rd,n   | 1111 nnnn dddd nnnn | rd = n                                  |
+| push rs    | 001010 00 0000 sss0 | (--SP) = rs                             |
+| call m     | 001010 00 0001 0000 | (--SP) = PC + 1;PC = m                  |
+| pop rd     | 001011 00 ddd0 0000 | rd = (SP++)                             |
+| ret        | 001011 00 0001 0000 | PC = (SP);SP = SP + 1;                  |
+| sts rs     | 001110 00 0000 sss0 | SP = rs                                 |
+| jp m       | 001110 00 0001 0000 | PC = m                                  |
+| lds rd     | 001111 00 ddd0 0000 | rd = SP                                 |
+| stm X+n,rs | 1000 nnnn ssss nnnn | [{r13, r12}+signed'n] = rs              |
+| ldm rd,X+n | 1001 nnnn dddd nnnn | rd = [{r13, r12}+signed'n]              |
+| stm Y+n,rs | 1010 nnnn ssss nnnn | [{r15, r14}+signed'n] = rs              |
+| ldm rd,Y+n | 1011 nnnn dddd nnnn | rd = [{r15, r14}+signed'n]              |
+| mvi rd,n   | 1011 nnnn dddd nnnn | rd = n                                  |
+| jz n,rs    | 1100 nnnn ssss nnnn | PC = n if rd == 0                       |
+| jnz n,rs   | 1101 nnnn ssss nnnn | PC = n if rd != 0                       |
+| calr n     | 1110 nnnn rrrr nnnn | (----SP) = PC + 1;PC = PC + {r, n} + 1  |
+| jr n       | 1111 nnnn rrrr nnnn | (----SP) = PC + 1;PC = PC + {r, n} + 1  |

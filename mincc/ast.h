@@ -34,19 +34,20 @@ stmt        = expr ";"
             | "for" "(" expr? ";" expr? ";" expr? ")" stmt
             | "while" "(" expr ")" stmt
             | "break" ";"
-expr       = assign
-assign     = equality ("=" assign)?
+expr        = assign
+assign      = equality ("=" assign)?
 bitwise_or     = bitwise_xor ("|" bitwise_xor)*
 bitwise_xor    = bitwise_and ("^" bitwise_and)*
 bitwise_and    = equality ("&" equality)*
-equality   = relational ("==" relational | "!=" relational)*
-relational = add ("<" add | "<=" add | ">" add | ">=" add)*
-add        = mul ("+" mul | "-" mul)*
-mul        = unary ("*" unary)*
-unary      = ("+" | "-" | "~")? primary
-primary    = num | type? ("[[" attr "]]")? ident | ident "(" ((expr ",")* expr)? ")" | "(" expr ")"
-type       = "uint8_t" | "void" | "int" | "char"  // Currently uint8_t, int and char mean the same (1 byte int) type.
-attr       = ("address") "=" num
+equality    = relational ("==" relational | "!=" relational)*
+relational  = add ("<" add | "<=" add | ">" add | ">=" add)*
+add         = mul ("+" mul | "-" mul)*
+mul         = unary ("*" unary)*
+unary       = ("+" | "-" | "~")? primary
+            | ("*" | "&") unary
+primary     = num | type? ("[[" attr "]]")? ident | ident "(" ((expr ",")* expr)? ")" | "(" expr ")"
+type        = "uint8_t" | "void" | "int" | "char"  // Currently uint8_t, int and char mean the same (1 byte int) type.
+attr        = ("address") "=" num
 ****************************************************************/
 
 // Syntax tree parsing functions

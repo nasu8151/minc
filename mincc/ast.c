@@ -325,11 +325,15 @@ Node *primary(char *l) {       // primary = num | ident | "(" expr ")"
 Node *unary(char *l) {
     char *loc = l;
     if (consume_la("+", &loc)) {
-        return new_node(ND_ADD, new_num_node(0, loc), unary(loc), loc);
+        return primary(loc);
     } else if (consume_la("-", &loc)) {
-        return new_node(ND_SUB, new_num_node(0, loc), unary(loc), loc);
+        return new_node(ND_SUB, new_num_node(0, loc), primary(loc), loc);
     } else if (consume_la("~", &loc)){
-        return new_node(ND_BITWISE_XOR, new_num_node(0xFF, loc), unary(loc), loc);
+        return new_node(ND_BITWISE_XOR, new_num_node(0xFF, loc), primary(loc), loc);
+    } else if (consume_la("&", &loc)){
+        return new_node(ND_ADDR, unary(loc), NULL, loc);
+    } else if (consume_la("*", &loc)){
+        return new_node(ND_DEREF, unary(loc), NULL, loc);
     } else {
         return primary(loc);
     }
