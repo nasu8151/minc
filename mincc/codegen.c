@@ -94,6 +94,7 @@ void generate_epilogue(long arg_count) {
 }
 
 void generate(Node *node) {
+    if (!node) return;
     switch (node->type) {
     case ND_NUM: {
         printf("mvi r%ld,%ld\n", push_regstack(), node->val);
@@ -110,6 +111,11 @@ void generate(Node *node) {
             printf("stm %ld,r%ld\n", node->lhs->ofs_addr, pop_regstack());
         } else if (node->lhs->type == ND_GLOBAL_VAR) {
             printf("push r15\nmvi r15,%ld\nstm 0,r%ld\npop r15\n", node->lhs->ofs_addr, pop_regstack());
+        } else if (node->lhs->type == ND_DEREF) {
+            generate(node->lhs->lhs);
+            long addr = pop_regstack();
+            long value = pop_regstack();
+            printf("push r15\nmov r15,r%ld\nstm 0,r%ld\npop r15\n", addr, value);
         } else {
             error_at(node->loc, "Left-hand side of assignment must be a variable");
         }

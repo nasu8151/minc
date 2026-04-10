@@ -27,10 +27,13 @@ void program() {
 
 Node *toplevel(char *l) {
     char *loc = l;
+    Type_t *type = calloc(1, sizeof(Type_t));
+    type->size = -1;
+    type->type = TY_INT;
     if (consume_la("uint8_t", &loc) || consume_la("int", &loc) || consume_la("char", &loc)) {
-        // Currently only uint8_t and int types are supported for global variables
+        type->size = 1;
     } else if (consume_la("void", &loc)) {
-        // void type is supported for function return type
+        type->size = 0;
     } else {
         error_at(loc, "Type specifier expected for global variable and function: %.*s", token->len, token->str);
     }
@@ -46,6 +49,14 @@ Node *toplevel(char *l) {
         } else {
             error_at(loc, "Unknown attribute for global variable: %s", attr);
         }
+    }
+
+    Type_t *cur = type;
+    while (consume_la("*", &loc)) {
+        cur->type = TY_PTR;
+        cur->size = PTR_SIZE;
+        cur->ptr_to = calloc(1, sizeof(Type_t));
+        cur = cur->ptr_to;
     }
 
     Token *tok = token;
@@ -64,7 +75,7 @@ Node *toplevel(char *l) {
             }
         }
         add_function(tok);
-        Node *node = new_func_node(ND_FUNC_DEF, name, nv, stmt(loc), arg_count, loc);
+        Node *node = new_func_node(ND_FUNC_DEF, name, nv, stmt(loc), arg_count, type, loc);
         end_scope();
         return node;
     } else {
@@ -76,10 +87,10 @@ Node *toplevel(char *l) {
         if (consume_la("=", &loc)) {
             Node *rhs = assign(loc);
             expect(";", &loc);
-            return new_node(ND_ASSIGN, new_ident_node(ND_GLOBAL_VAR, name, head->var_tail->address, loc), rhs, loc);
+            return new_node(ND_ASSIGN, new_ident_node(ND_GLOBAL_VAR, name, head->var_tail->address, type, loc), rhs, loc);
         }
         expect(";", &loc);
-        return new_ident_node(ND_GLOBAL_VAR, name, head->var_tail->address, loc);
+        return new_ident_node(ND_GLOBAL_VAR, name, head->var_tail->address, type, loc);
     }
 }
 
@@ -278,48 +289,66 @@ Node *primary(char *l) {       // primary = num | ident | "(" expr ")"
         return node;
     } else if (is_number_token()) {         // numの部分
         return new_num_node(expect_number(&loc), loc);
-    } else {                               // identの部分
-        long size = -1;
-        if (consume_la("uint8_t", &loc) || consume_la("int", &loc) || consume_la("char", &loc)) {
-            size = 1; // Currently uint8_t, int and char mean the same (1 byte int) type.
-        } else if (consume_la("void", &loc)) {
-            size = 0; // void type has size 0
-        } else {
-            // Considers reference to variable or function if there is no type specifier
-        }
-        Ident_Name *name = find_name(token);
-        Token *tok = token;
-        char *var_name = expect_ident(&loc);
-        if (name && name->type == FUNCTION && consume_la("(", &loc)) { // ident "(" ((expr ",")* expr)? ")" の部分（関数呼び出し）
-            Node **args = calloc(1, sizeof(Node**));
-            if (!args) {
-                error("Memory allocation failed");
-            }
-            size_t argnum = 0;
-            while (!consume(")", &loc)) {
-                args = nodevec_push(args, argnum++, expr(loc));
-                if (!consume(",", &loc)) {
-                    expect(")", &loc);
-                    break;
-                }
-            }
-            return new_func_node(ND_FUNC_CALL, var_name, args, NULL, (long) argnum, loc);
-        }
-        if (size == -1 && name) {
-            if (name->type == VAR_GLOBAL_STATIC) {
-                fprintf(stderr, "Found global variable: %.*s at address %ld\n", (int)tok->len, tok->str, name->address);
-                return new_ident_node(ND_GLOBAL_VAR, var_name, name->address, loc);
-            } else if (name->type == VAR_LOCAL) {
-                fprintf(stderr, "Found variable: %.*s at offset %ld\n", (int)tok->len, tok->str, name->offset);
-                return new_ident_node(ND_LOCAL_VAR, var_name, name->offset, loc);
-            }
-        } else if (size > 0) {
-            add_local_var(tok);
-            fprintf(stderr, "Added local variable: %.*s at offset %ld\n", (int)tok->len, tok->str, current->var_tail->offset);
-            return new_ident_node(ND_LOCAL_VAR, var_name, current->var_tail->offset, loc);
-        }
-        error_at(loc, "Undefined or invalid variable: %.*s", (int)tok->len, tok->str);
+    } else {                                // identの部分
+        return ident(loc);
     }
+}
+
+Node *ident(char *l) {
+    char *loc = l;
+    Type_t *type = calloc(1, sizeof(Type_t));
+    type->size = -1;
+    type->type = TY_INT;
+    if (consume_la("uint8_t", &loc) || consume_la("int", &loc) || consume_la("char", &loc)) {
+        type->size = 1; // Currently uint8_t, int and char mean the same (1 byte int) type.
+    } else if (consume_la("void", &loc)) {
+        type->size = 0; // void type has size 0
+    } else {
+        // Considers reference to variable or function if there is no type specifier
+    }
+    Type_t *cur = type;
+    while (consume_la("*", &loc)) {
+        cur = calloc(1, sizeof(Type_t));
+        if (!cur) {
+            error("Memory allocation failed");
+        }
+        cur->type = TY_PTR;
+        cur->size = PTR_SIZE;
+        cur->ptr_to = type;
+    }
+    type = cur;
+    Ident_Name *name = find_name(token);
+    Token *tok = token;
+    char *var_name = expect_ident(&loc);
+    if (name && name->type == FUNCTION && consume_la("(", &loc)) { // ident "(" ((expr ",")* expr)? ")" の部分（関数呼び出し）
+        Node **args = calloc(1, sizeof(Node**));
+        if (!args) {
+            error("Memory allocation failed");
+        }
+        size_t argnum = 0;
+        while (!consume(")", &loc)) {
+            args = nodevec_push(args, argnum++, expr(loc));
+            if (!consume(",", &loc)) {
+                expect(")", &loc);
+                break;
+            }
+        }
+        return new_func_node(ND_FUNC_CALL, var_name, args, NULL, (long) argnum, type, loc);
+    }
+    if (type->size == -1 && name) {
+        if (name->type == VAR_GLOBAL_STATIC) {
+            fprintf(stderr, "Found global variable: %.*s at address %ld\n", (int)tok->len, tok->str, name->address);
+            return new_ident_node(ND_GLOBAL_VAR, var_name, name->address, type, loc);
+        } else if (name->type == VAR_LOCAL) {
+            fprintf(stderr, "Found variable: %.*s at offset %ld\n", (int)tok->len, tok->str, name->offset);
+            return new_ident_node(ND_LOCAL_VAR, var_name, name->offset, type, loc);
+        }
+    } else if (type->size > 0) {
+        add_local_var(tok);
+        fprintf(stderr, "Added local variable: %.*s at offset %ld\n", (int)tok->len, tok->str, current->var_tail->offset);
+        return new_ident_node(ND_LOCAL_VAR, var_name, current->var_tail->offset, type, loc);
+    }
+    error_at(loc, "Undefined or invalid variable: %.*s", (int)tok->len, tok->str);
 }
 
 Node *unary(char *l) {

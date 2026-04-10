@@ -67,7 +67,7 @@ Node *new_num_node(long val, char *loc) {
     return node;
 }
 
-Node *new_ident_node(NodeType type, char *name, long ofs_addr, char *loc) {
+Node *new_ident_node(NodeType type, char *name, long ofs_addr, Type_t *valtype, char *loc) {
     Node *node = calloc(1, sizeof(Node));
     if (!node) {
         error("Memory allocation failed");
@@ -77,10 +77,11 @@ Node *new_ident_node(NodeType type, char *name, long ofs_addr, char *loc) {
     node->name = mystrndup(name, strlen(name));
     node->name_len = strlen(name);
     node->loc = loc;
+    node->valtype = valtype;
     return node;
 }
 
-Node *new_func_node(NodeType type, char *name, Node **args, Node *body, long arg_sf_size, char *loc) {
+Node *new_func_node(NodeType type, char *name, Node **args, Node *body, long arg_sf_size, Type_t *rettype, char *loc) {
     Node *node = calloc(1, sizeof(Node));
     if (!node) {
         error("Memory allocation failed");
@@ -92,6 +93,7 @@ Node *new_func_node(NodeType type, char *name, Node **args, Node *body, long arg
     node->lhs = body;
     node->arg_sf_size = arg_sf_size;
     node->loc = loc;
+    node->valtype = rettype;
     return node;
 }
 

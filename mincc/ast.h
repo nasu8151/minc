@@ -45,8 +45,9 @@ add         = mul ("+" mul | "-" mul)*
 mul         = unary ("*" unary)*
 unary       = ("+" | "-" | "~")? primary
             | ("*" | "&") unary
-primary     = num | type? ("[[" attr "]]")? ident | ident "(" ((expr ",")* expr)? ")" | "(" expr ")"
-type        = "uint8_t" | "void" | "int" | "char"  // Currently uint8_t, int and char mean the same (1 byte int) type.
+primary     = num | "(" expr ")" | ident
+type        = "uint8_t" | "void" | "int" | "char" "*"*  // Currently uint8_t, int and char mean the same (1 byte int) type.
+ident       = type? ("[[" attr "]]")? ident_name | ident_name "(" ((expr ",")* expr)? ")"
 attr        = ("address") "=" num
 ****************************************************************/
 
@@ -65,6 +66,7 @@ Node *add(char *l);
 Node *mul(char *l);
 Node *primary(char *l);
 Node *unary(char *l);
+Node *ident(char *l);
 
 void new_scope();
 long end_scope();

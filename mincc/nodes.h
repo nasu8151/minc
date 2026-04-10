@@ -4,6 +4,8 @@
 #include <stdio.h>
 #include "errorhandle.h"
 
+#define PTR_SIZE 1
+
 typedef enum {
     ND_ADD,
     ND_SUB,
@@ -36,8 +38,13 @@ typedef enum {
     ND_EOF
 } NodeType;
 
-
 struct NodeList_Member;
+
+typedef struct Type_t{
+    enum {TY_INT, TY_PTR} type;
+    size_t size;
+    struct Type_t *ptr_to;
+} Type_t;
 
 typedef struct Node {
     NodeType type;      // Node type
@@ -48,7 +55,8 @@ typedef struct Node {
     struct Node *inc;   // Increment (for FOR statement)
     struct Node *init;  // Initialization (for FOR statement)
     struct Node **body; // Block body (for BLOCK, FUNC_DEF statements)
-    long val;           // Value (only for ND_NUM) or size of type (only for ND_GLOBAL_VAR and ND_LOCAL_VAR)
+    long val;           // Value (only for ND_NUM)
+    struct Type_t *valtype;        // Type (only for ND_GLOBAL_VALUE and ND_LOCAL_VALUE)
     long ofs_addr;        // Offset from BP or Absolute address (only for ND_LOCAL_VAR, ND_GLOBAL_VAR)
     long arg_sf_size; // Stack frame size (only for ND_BLOCK used in FUNC_DEF) or number of arguments (only for ND_FUNC_DEF)
     unsigned long name_len; // Length of identifier name
@@ -100,11 +108,11 @@ typedef struct Vars_List {
 // Generate node
 Node *new_node(NodeType type, Node *lhs, Node *rhs, char *loc);
 Node *new_num_node(long val, char *loc);
-Node *new_ident_node(NodeType type, char *name, long offset, char *loc);
+Node *new_ident_node(NodeType type, char *name, long ofs_addr, Type_t *valtype, char *loc);
 Node *new_if_else_node(NodeType type, Node *cond, Node *then, Node *else_, char *loc);
 Node *new_for_node(Node *cond, Node *inc, Node *init, Node *body, char *loc);
 Node *new_while_node(Node *cond, Node *body, char *loc);
-Node *new_func_node(NodeType type, char *name, Node **args, Node *body, long arg_sf_size, char *loc);
+Node *new_func_node(NodeType type, char *name, Node **args, Node *body, long arg_sf_size, Type_t *rettype, char *loc);
 Node *new_block_node();
 
 Node **nodevec_push(Node **old_vec, size_t old_len, Node *node);
