@@ -3,27 +3,23 @@ import testfuncs as tf
 if __name__ == "__main__":
     # MINCASM tests
     tf.expect("""echo "mov r0,r1\nadd r2,r3\nsub r4,r5\nlt r6,r7\nmul r7,r8\nor r8,r9\nand r9,r10\nxor r10,r11" | ./target/mincasm""", 
-                "0001\n0123\n0245\n0367\n0478\n0589\n069A\n07AB") # Arithmetic instructions
+                "0001\n1023\n1845\n2067\n3878\n0489\n089A\n0CAB") # Arithmetic instructions
     tf.expect("""echo "push r0\nsts r1\npop r2\nlds r3" | ./target/mincasm""",
-                "0800\n0901\n0A20\n0B30") # Stack and load/store instructions
-    tf.expect("""echo "jz 10,r0\njnz 15,r1\ncall 20\nret\nhalt" | ./target/mincasm""",
-                "400A\n601F\n5104\n0C00\n7FFF") # Jump and call instructions
+                "7000\n7801\n7420\n7C30") # Stack and load/store instructions
+    tf.expect("""echo "jz 10,r0\ncalr 20\njr -2\nret\nhalt" | ./target/mincasm""",
+                "D00A\nE104\nFFFE\n7410\nFFFF") # Jump and calr instructions
     tf.expect_fail("""echo foo | ./target/mincasm""") # Invalid instruction
     tf.expect_fail("""echo "mvi r0,256" | ./target/mincasm""") # Out of range immediate
     # MINCASM label tests (one-pass backpatch)
     # Forward reference: label after use
     tf.expect("""echo "jz L1,r0\nmvi r0,1\nL1: ret" | ./target/mincasm""",
-                "4001\n1001\n0C00")
+                "D001\nC001\n7410")
     # Backward reference: label before use
     tf.expect("""echo "L0: mvi r0,1\njz L0,r0\nret" | ./target/mincasm""",
-                "1001\n4F0E\n0C00")
-    # jnz to label
-    tf.expect("""echo "L0: mvi r0,1\njnz L0,r1\nret" | ./target/mincasm""",
-                "1001\n6F1E\n0C00")
-    # Call to label
-    tf.expect("""echo "call MAIN\nFUNC: ret\nMAIN: call FUNC\nhalt" | ./target/mincasm""",
-                "5001\n0C00\n5FFE\n7FFF")
-    tf.expect
+                "C001\nDF0E\n7410")
+    # calr to label
+    tf.expect("""echo "calr MAIN\nFUNC: ret\nMAIN: calr FUNC\nhalt" | ./target/mincasm""",
+                "E001\n7410\nEFFE\nFFFF")
     # Undefined label should fail
     tf.expect_fail("""echo "jz NO_SUCH_LABEL,r0" | ./target/mincasm""")
     # MINCC tests

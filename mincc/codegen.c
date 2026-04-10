@@ -50,7 +50,9 @@ long push_regstack() {
     if (cur_regstack_max < nxt_regstack_top) {
         cur_regstack_max = nxt_regstack_top;
         if (caller_max < nxt_regstack_top) { // callee責任のレジスタは自分で退避
-            printf("push r%ld\n", nxt_regstack_top);
+            if ((nxt_regstack_top & 1) == 0) {
+                printf("push r%ld\n", nxt_regstack_top);
+            }
         }
     }
     return nxt_regstack_top++;
@@ -73,7 +75,7 @@ void generate_prologue(long arg_count, long local_var_count) {
     cur_arg_count = arg_count;
     cur_regstack_max = ast_min;
     nxt_regstack_top = ast_min;
-    printf("push r15\n");
+    printf("push r14\n");
     printf("lds r15\n");
     for (long i = 0; i < arg_count; i++) {
         printf("stm %ld,r%ld\n", -i - 1, i + ast_min); // 引数をメモリに展開
@@ -85,11 +87,13 @@ void generate_prologue(long arg_count, long local_var_count) {
 
 void generate_epilogue(long arg_count) {
     for (long i = cur_regstack_max; i >= ((caller_max > arg_count) ? caller_max : arg_count); i--) {
-        printf("pop %ld\n", i);
+        if ((i & 1) == 0) {
+            printf("pop r%ld\n", i);
+        }
     } // callee責任分（argの分は含まず）を回収する
     printf("mov r0,r%ld\n", pop_regstack());
     printf("sts r15\n");
-    printf("pop r15\n");
+    printf("pop r14\n");
     printf("ret\n");
 }
 
@@ -103,19 +107,19 @@ void generate(Node *node) {
         printf("ldm r%ld,%ld\n", push_regstack(), node->ofs_addr);
         return;
     } case ND_GLOBAL_VAR: {
-        printf("push r15\nmvi r15,%ld\nldm r%ld,0\npop r15\n", node->ofs_addr, push_regstack());
+        printf("mov r14,r15\nmvi r15,%ld\nldm r%ld,0\nmov r15,r14\n", node->ofs_addr, push_regstack());
         return;
     } case ND_ASSIGN: {
         generate(node->rhs);
         if (node->lhs->type == ND_LOCAL_VAR) {
             printf("stm %ld,r%ld\n", node->lhs->ofs_addr, pop_regstack());
         } else if (node->lhs->type == ND_GLOBAL_VAR) {
-            printf("push r15\nmvi r15,%ld\nstm 0,r%ld\npop r15\n", node->lhs->ofs_addr, pop_regstack());
+            printf("mov r14,r15\nmvi r15,%ld\nstm 0,r%ld\nmov r15,r14\n", node->lhs->ofs_addr, pop_regstack());
         } else if (node->lhs->type == ND_DEREF) {
             generate(node->lhs->lhs);
             long addr = pop_regstack();
             long value = pop_regstack();
-            printf("push r15\nmov r15,r%ld\nstm 0,r%ld\npop r15\n", addr, value);
+            printf("mov r14,r15\nmov r15,r%ld\nstm 0,r%ld\nmov r15,r14\n", addr, value);
         } else {
             error_at(node->loc, "Left-hand side of assignment must be a variable");
         }
@@ -205,19 +209,23 @@ void generate(Node *node) {
             arg++;
             arg_count++;
         }
-        printf("push r0\npush r1\n");
+        printf("push r0\n");
         for (long i = ast_min; i < caller_max + 1; i++) {
-            printf("push r%ld\n", i);
+            if ((i & 1) == 0) {
+                printf("push r%ld\n", i);
+            }
             if (i < ast_min + arg_count) {
                 printf("mov r%ld,r%ld\n", ast_min + arg_count, pop_regstack());
             } // r2, r3, ... に引数をセット
         }
-        printf("call %s\n", node->name);
+        printf("calr %s\n", node->name);
         for (long i = (caller_max > arg_count) ? caller_max : arg_count; \
             ast_min <= i; i--) {
-            printf("pop r%ld\n", i);
+            if ((i & 1) == 0) {
+                printf("pop r%ld\n", i);
+            }
         }
-        printf("mov r%ld,r0\npop r1\npop r0\n", push_regstack());
+        printf("mov r%ld,r0\npop r0\n", push_regstack());
         return;
     } case ND_BREAK: {
         printf("jr %s\n", get_break_label());
@@ -235,7 +243,7 @@ void generate(Node *node) {
         return;
     } case ND_DEREF: {
         generate(node->lhs);
-        printf("push r15\nmov r15,r%ld\nldm r%ld,0\npop r15\n",chg_regstack(), chg_regstack());
+        printf("mov r14,r15\nmov r15,r%ld\nldm r%ld,0\nmov r15,r14\n",chg_regstack(), chg_regstack());
         return;
     }
     default:

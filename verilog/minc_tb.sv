@@ -10,8 +10,8 @@ module minc_tb;
     logic reset_n;
     logic [15:0] pc_out;
     logic [7:0] top_out;
-    logic [7:0] sp_out;
-    logic [7:0] address;
+    logic [15:0] sp_out;
+    logic [15:0] address;
     logic [7:0] data_out;
     logic [7:0] data_in;
     logic [7:0] data_in_ram;
@@ -20,7 +20,7 @@ module minc_tb;
     logic        wait_rel;
     integer i;
 
-    wire ram_ce = address > 8'h0F ? 1'b1 : 1'b0; // RAM is enabled for addresses > 0x0F
+    wire ram_ce = address > 16'h000F ? 1'b1 : 1'b0; // RAM is enabled for addresses > 0x000F
 
     logic [7:0] port_a_out;
     logic [7:0] port_a_in = 8'h00; // Initialize port A input to 0
@@ -46,12 +46,12 @@ module minc_tb;
     ) data_ram (
         .clk(clk),
         .rst_n(reset_n),
-        .addr(address),
+        .addr(address[7:0]),
         .din(data_out),
         .we(we),
         .ce(ram_ce),
         .dout(data_in_ram),
-        .dbg_addr(sp_out),
+        .dbg_addr(sp_out[7:0]),
         .dbg_dout(top_out)
     );
 
@@ -62,13 +62,13 @@ module minc_tb;
             port_a_in <= 8'h00;
         end else begin
             // port_a_in <= port_a_out; // Loopback for testing
-            if (address == 8'h00) begin 
+            if (address == 16'h0000) begin
                 // data_in <= port_a_out; // Read from port A
                 if (we) port_a_out <= data_out & port_a_dir; // Output only on bits set as output
-            end else if (address == 8'h01) begin
+            end else if (address == 16'h0001) begin
                 // data_in <= port_a_dir; // Read direction register
                 if (we) port_a_dir <= data_out; // Set direction on address 0x01
-            end else if (address == 8'h02) begin
+            end else if (address == 16'h0002) begin
                 // data_in <= port_a_in & ~port_a_dir; // Read input values on bits set as input
             end
         end
@@ -98,13 +98,13 @@ module minc_tb;
         if (!reset_n) begin
             wait_sr <= 'b1;
         end else begin
-            if (address[7:3] == 5'b00001) begin
+            if (address[15:3] == 13'b00001) begin
                 {wait_sr[0], wait_sr[WAITp3:1]} <= wait_sr;
             end else
                 wait_sr <= 'b1;
         end
     end
-    assign data_in = (address == 8'h0D) ? 8'h01 : data_in_ram;
+    assign data_in = (address == 16'h000D) ? 8'h01 : data_in_ram;
     `else
     assign wait_req = 1'b0;
     assign wait_rel = 1'b0;
@@ -125,7 +125,7 @@ module minc_tb;
         @(posedge reset_n);
         // wait a little after reset release
         #1;
-        for (i = 0; i < 524287; i = i + 1) begin
+        for (i = 0; i < 131071; i = i + 1) begin
             @(posedge clk);
         end
         #10;
