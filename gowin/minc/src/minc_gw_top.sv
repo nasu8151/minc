@@ -1,10 +1,10 @@
 module minc_gw_top (
     input  logic        sys_clk,
     input  logic        sys_nrst,
-    output logic [7:0]  pc_out,
+    output logic [15:0]  pc_out,
     output logic [7:0]  port_a,
     output logic [7:0]  address_out,
-    output logic [7:0]  address_out2,
+    output logic [5:0]  address_out2,
     output logic        uart_tx,
     input  logic        uart_rx,
     output logic        wait_req_out,
@@ -15,7 +15,7 @@ module minc_gw_top (
 //    logic [23:0] presc_cnt;
 //    logic        int_clk;
 
-    logic [7:0] sp_out;
+    logic [15:0] sp_out;
     logic [7:0] data_in;
 
     logic [7:0] ram_data_out;
@@ -25,10 +25,10 @@ module minc_gw_top (
     logic       we;
     logic       wait_req;
     logic       wait_rel;
-    logic [7:0] address;
+    logic [15:0] address;
     // logic       int_clk;
     assign address_out = we ? data_out : data_in;
-    assign address_out2= ~address;
+    assign address_out2= ~address[5:0]; // For debugging: show address bits in reverse order
     wire        ram_ce = address > 8'h0F ? 1'b1 : 1'b0; // RAM is enabled for addresses > 0x0F
     assign wait_req_out = wait_req;
     assign wait_rel_out = wait_rel;
@@ -67,28 +67,28 @@ module minc_gw_top (
         .din(data_out) //input [7:0] din
     );
 
-    UART_MASTER_Top uartc(
-		.I_CLK(sys_clk), //input I_CLK
-		.I_RESETN(sys_nrst), //input I_RESETN
-		.I_TX_EN(we && address[7:3] == 5'b00001 && wait_req), //input I_TX_EN
-		.I_WADDR(address[2:0]), //input [2:0] I_WADDR
-		.I_WDATA(data_out), //input [7:0] I_WDATA
-		.I_RX_EN(address[7:3] == 5'b00001 && wait_req), //input I_RX_EN
-		.I_RADDR(address[2:0]), //input [2:0] I_RADDR
-		.O_RDATA(uartc_data_out), //output [7:0] O_RDATA
-		.SIN(uart_rx), //input SIN
-		.RxRDYn(), //output RxRDYn
-		.SOUT(uart_tx), //output SOUT
-		.TxRDYn(), //output TxRDYn
-		.DDIS(), //output DDIS
-		.INTR(), //output INTR
-		.DCDn(1'b1), //input DCDn
-		.CTSn(1'b1), //input CTSn
-		.DSRn(1'b1), //input DSRn
-		.RIn(1'b1), //input RIn
-		.DTRn(), //output DTRn
-		.RTSn() //output RTSn
-	);
+    // UART_MASTER_Top uartc(
+	// 	.I_CLK(sys_clk), //input I_CLK
+	// 	.I_RESETN(sys_nrst), //input I_RESETN
+	// 	.I_TX_EN(we && address[7:3] == 5'b00001 && wait_req), //input I_TX_EN
+	// 	.I_WADDR(address[2:0]), //input [2:0] I_WADDR
+	// 	.I_WDATA(data_out), //input [7:0] I_WDATA
+	// 	.I_RX_EN(address[7:3] == 5'b00001 && wait_req), //input I_RX_EN
+	// 	.I_RADDR(address[2:0]), //input [2:0] I_RADDR
+	// 	.O_RDATA(uartc_data_out), //output [7:0] O_RDATA
+	// 	.SIN(uart_rx), //input SIN
+	// 	.RxRDYn(), //output RxRDYn
+	// 	.SOUT(uart_tx), //output SOUT
+	// 	.TxRDYn(), //output TxRDYn
+	// 	.DDIS(), //output DDIS
+	// 	.INTR(), //output INTR
+	// 	.DCDn(1'b1), //input DCDn
+	// 	.CTSn(1'b1), //input CTSn
+	// 	.DSRn(1'b1), //input DSRn
+	// 	.RIn(1'b1), //input RIn
+	// 	.DTRn(), //output DTRn
+	// 	.RTSn() //output RTSn
+	// );
 
     always_ff @(posedge sys_clk or negedge sys_nrst) begin
         if (!sys_nrst) begin

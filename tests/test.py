@@ -4,8 +4,8 @@ if __name__ == "__main__":
     # MINCASM tests
     tf.expect("""echo "mov r0,r1\nadd r2,r3\nsub r4,r5\nlt r6,r7\nmul r7,r8\nor r8,r9\nand r9,r10\nxor r10,r11" | ./target/mincasm""", 
                 "0001\n1023\n1845\n2067\n3878\n0489\n089A\n0CAB") # Arithmetic instructions
-    tf.expect("""echo "push r0\nsts r1\npop r2\nlds r3" | ./target/mincasm""",
-                "7000\n7801\n7420\n7C30") # Stack and load/store instructions
+    tf.expect("""echo "push r0\nsts r0\npop r2\nlds r2" | ./target/mincasm""",
+                "7000\n7800\n7420\n7C20") # Stack and load/store instructions
     tf.expect("""echo "jz 10,r0\ncalr 20\njr -2\nret\nhalt" | ./target/mincasm""",
                 "D00A\nE104\nFFFE\n7410\nFFFF") # Jump and calr instructions
     tf.expect_fail("""echo foo | ./target/mincasm""") # Invalid instruction
@@ -46,8 +46,8 @@ if __name__ == "__main__":
     tf.test_e2e("int main(){return (2+2>=4)+(2+2>=5);}", 1)
     tf.test_e2e("int main(){return ~(((0b11111111 & 0b11000011) | 0b00001111) ^ 0b00111100);}", 0b00001100, verbose=True)
     tf.test_e2e("int main(){int a=3;return a+2;}", 5)
-    tf.test_e2e("int main(){int a=2;int b=3;return a*b;}", 6)
-    tf.test_e2e("int main(){int a=1;int b=2;int c=3;return a + b* c;}", 7)
+    tf.test_e2e("int main(){int a=2;int b=3;return a * b;}", 6)
+    tf.test_e2e("int main(){int a=1;int b=2;int c=3;return a + b * c;}", 7)
     tf.test_e2e("int main(){int hoge =3;int fuga= hoge +2;if (fuga==5) return 42;return 0;}", 42)
     tf.test_e2e("int main(){int hoge=2; int fuga = 3;if (hoge != 0) if (hoge+fuga > 3) return 2;else return 0;}", 2)
     tf.test_e2e("int main(){int sum=0;\nfor(int i=1;i<5;i=i+1) sum=sum+i;\nreturn sum;}", 10)

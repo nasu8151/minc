@@ -41,7 +41,7 @@ module minc_tb;
     );
 
     ssram #(
-        .ADDR_WIDTH(8),
+        .ADDR_WIDTH(16),
         .DATA_WIDTH(8)
     ) data_ram (
         .clk(clk),

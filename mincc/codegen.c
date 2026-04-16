@@ -76,12 +76,14 @@ void generate_prologue(long arg_count, long local_var_count) {
     cur_regstack_max = ast_min;
     nxt_regstack_top = ast_min;
     printf("push r14\n");
-    printf("lds r15\n");
+    printf("lds r14\n");
     for (long i = 0; i < arg_count; i++) {
         printf("stm %ld,r%ld\n", -i - 1, i + ast_min); // 引数をメモリに展開
     }
-    printf("mvi r0,%ld\n", -local_var_count);  // local_var_count includes arguments
-    printf("add r0,r15\n");
+    printf("mvi r1,%ld\n", ((-local_var_count) & 0xFF));  // local_var_count includes arguments
+    printf("mvi r0,%ld\n", ((-local_var_count) >> 8) & 0xFF);
+    printf("add r1,r15\n");
+    printf("adc r0,r14\n");
     printf("sts r0\n");
 }
 
@@ -92,7 +94,7 @@ void generate_epilogue(long arg_count) {
         }
     } // callee責任分（argの分は含まず）を回収する
     printf("mov r0,r%ld\n", pop_regstack());
-    printf("sts r15\n");
+    printf("sts r14\n");
     printf("pop r14\n");
     printf("ret\n");
 }
@@ -107,19 +109,19 @@ void generate(Node *node) {
         printf("ldm r%ld,%ld\n", push_regstack(), node->ofs_addr);
         return;
     } case ND_GLOBAL_VAR: {
-        printf("mov r14,r15\nmvi r15,%ld\nldm r%ld,0\nmov r15,r14\n", node->ofs_addr, push_regstack());
+        printf("mvi r12,%ld\nmvi r13,%ld\nldm r%ld,X+0\n", ((node->ofs_addr >> 8) & 0xFF), (node->ofs_addr & 0xFF), push_regstack());
         return;
     } case ND_ASSIGN: {
         generate(node->rhs);
         if (node->lhs->type == ND_LOCAL_VAR) {
             printf("stm %ld,r%ld\n", node->lhs->ofs_addr, pop_regstack());
         } else if (node->lhs->type == ND_GLOBAL_VAR) {
-            printf("mov r14,r15\nmvi r15,%ld\nstm 0,r%ld\nmov r15,r14\n", node->lhs->ofs_addr, pop_regstack());
+            printf("mvi r12,%ld\nmvi r13,%ld\nstm X+0,r%ld\n", ((node->lhs->ofs_addr >> 8) & 0xFF), (node->lhs->ofs_addr & 0xFF), pop_regstack());
         } else if (node->lhs->type == ND_DEREF) {
             generate(node->lhs->lhs);
             long addr = pop_regstack();
             long value = pop_regstack();
-            printf("mov r14,r15\nmov r15,r%ld\nstm 0,r%ld\nmov r15,r14\n", addr, value);
+            printf("mvi r12,%ld\nmvi r13,%ld\nstm X+0,r%ld\n", ((addr >> 8) & 0xFF), (addr & 0xFF), value);
         } else {
             error_at(node->loc, "Left-hand side of assignment must be a variable");
         }
@@ -243,7 +245,7 @@ void generate(Node *node) {
         return;
     } case ND_DEREF: {
         generate(node->lhs);
-        printf("mov r14,r15\nmov r15,r%ld\nldm r%ld,0\nmov r15,r14\n",chg_regstack(), chg_regstack());
+        printf("push r14\nmov r15,r%ld\nldm r%ld,0\npop r14\n",chg_regstack(), chg_regstack());
         return;
     }
     default:

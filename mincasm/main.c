@@ -214,9 +214,9 @@ static uint16_t enc_op4_rel12(uint8_t op4, uint16_t rel12) {
 }
 
 static int parse_memref(char *tok, int *is_x, int *imm8) {
-    if ((tok[0] == 'X' || tok[0] == 'x' || tok[0] == 'Y' || tok[0] == 'y') && tok[1] == '+') {
+    if ((tok[0] == 'X' || tok[0] == 'x' || tok[0] == 'Y' || tok[0] == 'y') && (tok[1] == '+' || tok[1] == '-')) {
         *is_x = (tok[0] == 'X' || tok[0] == 'x');
-        *imm8 = parse_int(tok + 2, -128, 127);
+        *imm8 = parse_int(tok + 1, -128, 127);
         return 1;
     }
     *is_x = 0;
@@ -392,7 +392,7 @@ int main(void) {
                 int iv = parse_int(off, -128, 127);
                 word = enc_op4_reg_imm8(0xD, (uint8_t)rs, (uint8_t)iv);
             }
-        } else if (!strcmp(inst, "calr") || !strcmp(inst, "call") || !strcmp(inst, "jr")) {
+        } else if (!strcmp(inst, "calr") || !strcmp(inst, "jr")) {
             uint8_t op4 = (!strcmp(inst, "jr")) ? 0xF : 0xE;
             char *off = next_token(&ctx);
             if (!off) die("Missing offset");

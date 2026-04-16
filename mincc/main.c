@@ -35,10 +35,11 @@ int main() {
     token = tokenize(user_input);
 
     // crt0
+    printf("mvi r14,0\n");
     printf("mvi r15,0\n");
     printf("calr __on_entry\n");
     printf("calr main\n");
-    printf("mov r1,r0\n");
+    printf("mvi r1,0\n");
     printf("push r0\n");
     printf("halt\n");
     program();
