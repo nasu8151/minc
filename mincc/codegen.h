@@ -25,8 +25,10 @@ char *get_unique_label(bool isloopend);
 char *get_break_label();
 
 // node genelator function
-void generate(Node *node);
+int generate(Node *node);
+int gen_i8(Node *node);
+int gen_i16(Node *node);
 void generate_prologue(long arg_count, long local_var_count);
-void generate_epilogue();
+void generate_epilogue(long arg_count);
 
 #endif // MINCC_CODEGEN_H

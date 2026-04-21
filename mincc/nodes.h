@@ -4,7 +4,7 @@
 #include <stdio.h>
 #include "errorhandle.h"
 
-#define PTR_SIZE 1
+#define PTR_SIZE 2
 
 typedef enum {
     ND_ADD,
@@ -42,7 +42,7 @@ struct NodeList_Member;
 
 typedef struct Type_t{
     enum {TY_INT, TY_PTR} type;
-    size_t size;
+    long size;
     struct Type_t *ptr_to;
 } Type_t;
 
@@ -77,6 +77,7 @@ typedef struct Ident_Name {
     IdentType type;     // Variable type
     long address;     // Address for global variables
     long offset;      // Offset from BP or base address
+    Type_t *valtype;  // Variable type
 } Ident_Name;
 
 typedef enum {
@@ -113,17 +114,17 @@ Node *new_if_else_node(NodeType type, Node *cond, Node *then, Node *else_, char 
 Node *new_for_node(Node *cond, Node *inc, Node *init, Node *body, char *loc);
 Node *new_while_node(Node *cond, Node *body, char *loc);
 Node *new_func_node(NodeType type, char *name, Node **args, Node *body, long arg_sf_size, Type_t *rettype, char *loc);
-Node *new_block_node();
+Node *new_block_node(char *loc);
 
 Node **nodevec_push(Node **old_vec, size_t old_len, Node *node);
 
 void print_node(Node *node);
 
-void add_local_var(Token *tok);
+void add_local_var(Token *tok, Type_t *type);
 // Add global variable to global scope
-void add_global_var(Token *tok, long address);
+void add_global_var(Token *tok, long address, Type_t *type);
 // Add function to function list
-void add_function(Token *tok);
+void add_function(Token *tok, Type_t *type);
 // Count local variables from current funciton scope
 long count_local_vars();
 

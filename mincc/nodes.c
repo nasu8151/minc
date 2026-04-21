@@ -63,6 +63,21 @@ Node *new_num_node(long val, char *loc) {
     }
     node->type = ND_NUM;
     node->val = val;
+    if (val > 0xFF) {
+        node->valtype = calloc(1, sizeof(Type_t));
+        if (!node->valtype) {
+            error("Memory allocation failed");
+        }
+        node->valtype->type = TY_INT;
+        node->valtype->size = 2;
+    } else {
+        node->valtype = calloc(1, sizeof(Type_t));
+        if (!node->valtype) {
+            error("Memory allocation failed");
+        }
+        node->valtype->type = TY_INT;
+        node->valtype->size = 1;
+    }
     node->loc = loc;
     return node;
 }
@@ -97,12 +112,13 @@ Node *new_func_node(NodeType type, char *name, Node **args, Node *body, long arg
     return node;
 }
 
-Node *new_block_node() {
+Node *new_block_node(char *loc) {
     Node *node = calloc(1, sizeof(Node));
     if (!node) {
         error("Memory allocation failed");
     }
     node->type = ND_BLOCK;
+    node->loc = loc;
     node->body = NULL;
     return node;
 }
@@ -198,7 +214,7 @@ Ident_Name *find_name(Token *tok) {
     return NULL;
 }
 
-void add_local_var(Token *tok) {
+void add_local_var(Token *tok, Type_t *type) {
     Ident_Name *var = calloc(1, sizeof(Ident_Name));
     if (!var) {
         error("Memory allocation failed");
@@ -207,6 +223,7 @@ void add_local_var(Token *tok) {
     var->name_len = tok->len;
     var->name = mystrndup(tok->str, tok->len);
     var->type = VAR_LOCAL;
+    var->valtype = type;
     var->address = 0; // ローカル変数のアドレスは0に設定
     var->next = NULL;
     Vars_List *cur = tail;
@@ -225,7 +242,7 @@ void add_local_var(Token *tok) {
     var->offset = 0 - count_local_vars(); // スタック上のオフセットを設定
 }
 
-void add_global_var(Token *tok, long address) {
+void add_global_var(Token *tok, long address, Type_t *type) {
     Ident_Name *var = calloc(1, sizeof(Ident_Name));
     if (!var) {
         error("Memory allocation failed");
@@ -245,10 +262,11 @@ void add_global_var(Token *tok, long address) {
     var->offset = 0;  // グローバル変数のオフセットは0に設定
     head->max_var_count++;
     var->address = address; // グローバル変数のアドレスを設定
+    var->valtype = type;    // グローバル変数の型を設定
     fprintf(stderr, "Adding global variable: %.*s at address %ld\n", (int)tok->len, tok->str, var->address);
 }
 
-void add_function(Token *tok) {
+void add_function(Token *tok, Type_t *type) {
     Ident_Name *var = calloc(1, sizeof(Ident_Name));
     if (!var) {
         error("Memory allocation failed");
@@ -257,6 +275,7 @@ void add_function(Token *tok) {
     var->name = mystrndup(tok->str, tok->len);
     var->type = FUNCTION;
     var->next = NULL;
+    var->valtype = type;
     Ident_Name *gvar = head->var_head;
     if (!gvar) {
         head->var_head = var;

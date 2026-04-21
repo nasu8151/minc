@@ -74,15 +74,15 @@ Node *toplevel(char *l) {
                 break;
             }
         }
-        add_function(tok);
+        add_function(tok, type);
         Node *node = new_func_node(ND_FUNC_DEF, name, nv, stmt(loc), arg_count, type, loc);
         end_scope();
         return node;
     } else {
         if (address != -1) {
-            add_global_var(tok, address);
+            add_global_var(tok, address, type);
         } else {
-            add_global_var(tok, head->var_alloc_ptr++);
+            add_global_var(tok, head->var_alloc_ptr++, type);
         }
         if (consume_la("=", &loc)) {
             Node *rhs = assign(loc);
@@ -150,7 +150,7 @@ Node *stmt(char *l) {
         node = new_node(ND_BREAK, NULL, NULL, loc);
     } else if (consume_la("{", &loc)) {
         new_scope();
-        node = new_block_node();
+        node = new_block_node(loc);
         Node **nv = calloc(1, sizeof(Node**));
         if (!nv) error("Memory allocation failed");
         size_t len = 0;
@@ -299,8 +299,10 @@ Node *ident(char *l) {
     Type_t *type = calloc(1, sizeof(Type_t));
     type->size = -1;
     type->type = TY_INT;
-    if (consume_la("uint8_t", &loc) || consume_la("int", &loc) || consume_la("char", &loc)) {
+    if (consume_la("uint8_t", &loc) || consume_la("char", &loc)) {
         type->size = 1; // Currently uint8_t, int and char mean the same (1 byte int) type.
+    } else if (consume_la("int", &loc)) {
+        type->size = 2;
     } else if (consume_la("void", &loc)) {
         type->size = 0; // void type has size 0
     } else {
@@ -333,7 +335,7 @@ Node *ident(char *l) {
                 break;
             }
         }
-        return new_func_node(ND_FUNC_CALL, var_name, args, NULL, (long) argnum, type, loc);
+        return new_func_node(ND_FUNC_CALL, var_name, args, NULL, (long) argnum, name->valtype, loc);
     }
     if (type->size == -1 && name) {
         if (name->type == VAR_GLOBAL_STATIC) {
@@ -344,7 +346,7 @@ Node *ident(char *l) {
             return new_ident_node(ND_LOCAL_VAR, var_name, name->offset, type, loc);
         }
     } else if (type->size > 0) {
-        add_local_var(tok);
+        add_local_var(tok, type);
         fprintf(stderr, "Added local variable: %.*s at offset %ld\n", (int)tok->len, tok->str, current->var_tail->offset);
         return new_ident_node(ND_LOCAL_VAR, var_name, current->var_tail->offset, type, loc);
     }

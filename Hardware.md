@@ -19,10 +19,10 @@
 | mulh rd,rs | 001111 00 dddd ssss | rd = \(rd * rs\)\[15:8\]                    | x       |
 | stf #c     | 010000 00 0000 000c | sets c flag                                 | c       |
 | clf #c     | 010001 00 0000 000c | clears c flag                               | c       |
-| push rs    | 011100 00 0000 sss0 | (--SP) = rs;(--SP) = rs+1                   |         |
+| push rs    | 011100 00 sss0 0000 | (--SP) = rs;(--SP) = rs+1                   |         |
 | pop rd     | 011101 00 ddd0 0000 | rd = (SP++); rd+1 = (SP++)                  |         |
 | ret        | 011101 00 0001 0000 | PC = (SP);SP = SP + 1;                      |         |
-| sts rs     | 011110 00 0000 sss0 | SP = {rs, rs+1}                             |         |
+| sts rs     | 011110 00 sss0 0000 | SP = {rs, rs+1}                             |         |
 | lds rd     | 011111 00 ddd0 0000 | {rd, rd+1} = SP                             |         |
 | stm X+n,rs | 1000 nnnn ssss nnnn | ({r13, r12} + signed'n) = rs                |         |
 | ldm rd,X+n | 1001 nnnn dddd nnnn | rd = ({r13, r12} + signed'n)                |         |

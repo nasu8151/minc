@@ -228,10 +228,10 @@ Token *tokenize(const char *p){
             } else {
                 val = strtol(p, &q, 0);
             }
-            if (val < 0 || val > 0xFF) {
+            if (val < -0x10000 || val > 0xFFFF) {
                 warn_at((char *)p, "Number out of range");
             }
-            cur = new_token(TOKEN_NUMBER, cur, NULL, 0, val & 0xff, (char *)p);
+            cur = new_token(TOKEN_NUMBER, cur, NULL, 0, val & 0xFFFF, (char *)p);
             p = q;
             continue;
         }
