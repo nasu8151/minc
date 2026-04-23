@@ -9,7 +9,7 @@ module minc_tb;
     logic clk;
     logic reset_n;
     logic [15:0] pc_out;
-    logic [7:0] top_out;
+    logic [15:0] top_out;
     logic [15:0] sp_out;
     logic [15:0] address;
     logic [7:0] data_out;
@@ -46,13 +46,15 @@ module minc_tb;
     ) data_ram (
         .clk(clk),
         .rst_n(reset_n),
-        .addr(address[7:0]),
+        .addr(address),
         .din(data_out),
         .we(we),
         .ce(ram_ce),
         .dout(data_in_ram),
-        .dbg_addr(sp_out[7:0]),
-        .dbg_dout(top_out)
+        .dbg_addr0(sp_out),
+        .dbg_dout0(top_out[7:0]),
+        .dbg_addr1(sp_out + 16'h0001),
+        .dbg_dout1(top_out[15:8])
     );
 
     always_ff @(posedge clk or negedge reset_n) begin

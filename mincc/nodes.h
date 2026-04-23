@@ -102,7 +102,7 @@ typedef struct Vars_List {
     Ident_Name *var_head;
     Ident_Name *var_tail;
     long var_alloc_ptr;
-    long max_var_count;
+    long max_var_bytes;
 } Vars_List;
 
 
@@ -126,7 +126,7 @@ void add_global_var(Token *tok, long address, Type_t *type);
 // Add function to function list
 void add_function(Token *tok, Type_t *type);
 // Count local variables from current funciton scope
-long count_local_vars();
+long sizeof_local_vars();
 
 Ident_Name *find_name(Token *tok);
 

@@ -3,7 +3,7 @@
 static int        nxt_regstack_top;
 static int        cur_regstack_max;
 static long       cur_arg_count;
-static int        current_return_size;
+static int        cur_return_size;
 static const int  ast_min = 2;
 static const int  caller_max = 5;
 
@@ -12,7 +12,7 @@ void generate_top(Node *code, long i) {
     printf("__on_entry:\n");
     for (long j = 0; j < i; j++) {
         if (code[j].type == ND_ASSIGN) { // Global variable assignment
-            generate(&code[j]);
+            generate(&code[j], -1);
         }
     }
     printf("ret\n");
@@ -21,7 +21,7 @@ void generate_top(Node *code, long i) {
         if (code[j].type == ND_ASSIGN) {// Global variable assignment
             continue;
         }
-        generate(&code[j]);
+        generate(&code[j], -1);
     }
 
 }
@@ -51,7 +51,7 @@ int push_regstack(int size) {
     if (cur_regstack_max < nxt_regstack_top) {
         cur_regstack_max = nxt_regstack_top;
         if (caller_max < nxt_regstack_top) { // callee責任のレジスタは自分で退避
-            if ((nxt_regstack_top & 1) == 0) {
+            if ((nxt_regstack_top % 2) == 0) {
                 printf("push r%d\n", nxt_regstack_top);
             }
         }
@@ -74,6 +74,12 @@ int chg_regstack(int size) {
     return nxt_regstack_top - size;
 }
 
+int set_regstack(int value) {
+    int before = nxt_regstack_top;
+    nxt_regstack_top = value;
+    return before;
+}
+
 void generate_prologue(long arg_count, long local_var_count) {
     cur_arg_count = arg_count;
     cur_regstack_max = ast_min;
@@ -81,29 +87,35 @@ void generate_prologue(long arg_count, long local_var_count) {
     printf("push r14\n");
     printf("lds r14\n");
     for (long i = 0; i < arg_count; i++) {
-        printf("stm %ld,r%d\n", -i - 1, i + ast_min); // 引数をメモリに展開
+        printf("stm %ld,r%ld\n", -i - 1, i + ast_min); // 引数をメモリに展開
     }
-    printf("mvi r1,%ld\n", ((-local_var_count) & 0xFF));  // local_var_count includes arguments
-    printf("mvi r0,%ld\n", ((-local_var_count) >> 8) & 0xFF);
-    printf("add r1,r15\n");
-    printf("adc r0,r14\n");
+    printf("mvi r0,%ld\n", ((-local_var_count) & 0xFF));  // local_var_count includes arguments
+    printf("mvi r1,%ld\n", ((-local_var_count) >> 8) & 0xFF);
+    printf("add r0,r14\n");
+    printf("adc r1,r15\n");
     printf("sts r0\n");
 }
 
-void generate_epilogue(long arg_count) {
+void generate_epilogue(long arg_count, long size, char *loc) {
     for (long i = cur_regstack_max; i >= ((caller_max > arg_count) ? caller_max : arg_count); i--) {
-        if ((i & 1) == 0) {
-            printf("pop r%d\n", i);
+        if ((i % 2) == 0) {
+            printf("pop r%ld\n", i);
         }
     } // callee責任分（argの分は含まず）を回収する
-    printf("mov r0,r%d\n", pop_regstack(current_return_size));
+    int dst = pop_regstack(size);
+    if (size == 1) {
+        printf("mov r0,r%d\nmvi r1,0\n", dst);            // 戻り値をr0にセット(Little Endian)
+    } else if (size == 2) {
+        printf("mov r0,r%d\nmov r1,r%d\n", dst, dst + 1); // 戻り値をr0:r1にセット
+    } else {
+        error_at(loc, "Invalid size for return value: %d", size);
+    }
     printf("sts r14\n");
     printf("pop r14\n");
     printf("ret\n");
 }
 
-int generate(Node *node) {
-    int size = 1;
+int generate(Node *node, int size) {
     if (!node) return size;
     switch (node->type) {
     case ND_NUM: {
@@ -124,18 +136,34 @@ int generate(Node *node) {
         }
         return size;
     } case ND_LOCAL_VAR: {
-        printf("ldm r%d,%ld\n", push_regstack(size), node->ofs_addr);
+        if (node->valtype->size == 1) {
+            printf("ldm r%d,%ld\n", push_regstack(size), node->ofs_addr);
+        } else if (node->valtype->size == 2) {
+            int dst = push_regstack(2);
+            printf("ldm r%d,%ld\n", dst, node->ofs_addr);
+            printf("ldm r%d,%ld\n", dst + 1, node->ofs_addr + 1);
+        } else {
+            error_at(node->loc, "Invalid size for local variable: %ld", node->valtype->size);
+        }
         return size;
     } case ND_GLOBAL_VAR: {
-        printf("mvi r12,%ld\nmvi r13,%ld\nldm r%d,X+0\n", ((node->ofs_addr >> 8) & 0xFF), (node->ofs_addr & 0xFF), push_regstack(1));
+        printf("mvi r13,%ld\nmvi r12,%ld\nldm r%d,X+0\n", ((node->ofs_addr >> 8) & 0xFF), (node->ofs_addr & 0xFF), push_regstack(size));
         return size;
     } case ND_ASSIGN: {
-        generate(node->rhs);
-        // generate(node->rhs, node->lhs->valtype->size);
+        // generate(node->rhs);
+        generate(node->rhs, node->lhs->valtype->size);
         if (node->lhs->type == ND_LOCAL_VAR) {
-            printf("stm %ld,r%d\n", node->lhs->ofs_addr, pop_regstack(size));
+            if (node->lhs->valtype->size == 1) {
+                printf("stm %ld,r%d\n", node->lhs->ofs_addr, pop_regstack(size));
+            } else if (node->lhs->valtype->size == 2) {
+                int src = pop_regstack(2);
+                printf("stm %ld,r%d\n", node->lhs->ofs_addr, src);
+                printf("stm %ld,r%d\n", node->lhs->ofs_addr + 1, src + 1);
+            } else {
+                error_at(node->loc, "Invalid size for local variable: %ld", node->lhs->valtype->size);
+            }
         } else if (node->lhs->type == ND_GLOBAL_VAR) {
-            printf("mvi r12,%ld\nmvi r13,%ld\nstm X+0,r%d\n", ((node->lhs->ofs_addr >> 8) & 0xFF), (node->lhs->ofs_addr & 0xFF), pop_regstack(size));
+            printf("mvi r13,%ld\nmvi r12,%ld\nstm X+0,r%d\n", ((node->lhs->ofs_addr >> 8) & 0xFF), (node->lhs->ofs_addr & 0xFF), pop_regstack(size));
         } else if (node->lhs->type == ND_DEREF) {
             error_at(node->loc, "Under construction: assignment to dereferenced pointer");
             // generate(node->lhs->lhs, PTR_SIZE);
@@ -148,66 +176,66 @@ int generate(Node *node) {
         return size;
     } case ND_RETURN: {
         if (node->lhs) {
-            // generate(node->lhs, current_return_size);
-            generate(node->lhs);
+            generate(node->lhs, cur_return_size);
+            // generate(node->lhs);
         }
-        generate_epilogue(cur_arg_count);
+        generate_epilogue(cur_arg_count, cur_return_size, node->loc);
         return size;
     } case ND_IF: {
-        generate(node->cond);
-        // generate(node->cond, 2); // 条件式
-        // int src = pop_regstack(2);
-        // int dst = push_regstack(1);
-        // printf("or r%d,r%d\n", dst, src);
+        // generate(node->cond);
+        generate(node->cond, 2); // 条件式
+        int src = pop_regstack(2);
+        int dst = push_regstack(1);
+        printf("or r%d,r%d\n", dst, src);
         char *end_label = get_unique_label(false);
         printf("jz %s,r%d\n", end_label, pop_regstack(1));
-        // generate(node->lhs, -1); // then節
-        generate(node->lhs);
+        generate(node->lhs, -1); // then節
+        // generate(node->lhs);
         printf("%s:\n", end_label);
         free(end_label);
         return size;
     } case ND_IF_ELSE: {
-        generate(node->cond);
-        // generate(node->cond, 2); // 条件式
-        // int src = pop_regstack(2);
-        // int dst = push_regstack(1);
-        // printf("or r%d,r%d\n", dst, src);
+        // generate(node->cond);
+        generate(node->cond, 2); // 条件式
+        int src = pop_regstack(2);
+        int dst = push_regstack(1);
+        printf("or r%d,r%d\n", dst, src);
         char *else_label = get_unique_label(false);
         char *end_label = get_unique_label(false);
         printf("jz %s,r%d\n", else_label, pop_regstack(1));
-        generate(node->lhs);
-        // generate(node->lhs, -1); // then節
+        // generate(node->lhs);
+        generate(node->lhs, -1); // then節
         printf("jr %s\n", end_label);
         printf("%s:\n", else_label);
-        // generate(node->else_, -1); // else節
-        generate(node->else_);
+        generate(node->else_, -1); // else節
+        // generate(node->else_);
         printf("%s:\n", end_label);
         free(else_label);
         free(end_label);
         return size;
     } case ND_FOR: {
         if (node->init) {
-            // generate(node->init, -1);
-            generate(node->init);
+            generate(node->init, -1);
+            // generate(node->init);
         }
         char *begin_label = get_unique_label(false);
         char *end_label = get_unique_label(true);
         if (node->cond) {
             printf("%s:\n", begin_label);
-            generate(node->cond);
-            // generate(node->cond, 2); // 条件式
-            // int src = pop_regstack(2);
-            // int dst = push_regstack(1);
-            // printf("or r%d,r%d\n", dst, src);
+            // generate(node->cond);
+            generate(node->cond, 2); // 条件式
+            int src = pop_regstack(2);
+            int dst = push_regstack(1);
+            printf("or r%d,r%d\n", dst, src);
             printf("jz %s,r%d\n", end_label, pop_regstack(1));
         } else {
             printf("%s:\n", begin_label);
         }
-        // generate(node->lhs, 2); // body
-        generate(node->lhs);
+        generate(node->lhs, 2); // body
+        // generate(node->lhs);
         if (node->inc) {
-            // generate(node->inc, 2);
-            generate(node->inc);
+            generate(node->inc, 2);
+            // generate(node->inc);
         }
         printf("jr %s\n", begin_label);
         printf("%s:\n", end_label);
@@ -218,14 +246,14 @@ int generate(Node *node) {
         char *begin_label = get_unique_label(false);
         char *end_label = get_unique_label(true);
         printf("%s:\n", begin_label);
-        generate(node->cond);
-        // generate(node->cond, 2);
-        // int src = pop_regstack(2);
-        // int dst = push_regstack(1);
-        // printf("or r%d,r%d\n", dst, src);
+        // generate(node->cond);
+        generate(node->cond, 2);
+        int src = pop_regstack(2);
+        int dst = push_regstack(1);
+        printf("or r%d,r%d\n", dst, src);
         printf("jz %s,r%d\n", end_label, pop_regstack(1));
-        generate(node->lhs);
-        // generate(node->lhs, -1); // body
+        // generate(node->lhs);
+        generate(node->lhs, -1); // body
         printf("jr %s\n", begin_label);
         printf("%s:\n", end_label);
         free(begin_label);
@@ -234,48 +262,50 @@ int generate(Node *node) {
     } case ND_BLOCK: {
         Node **member = node->body;
         while (*member) {
-            // generate(*member, -1);
-            generate(*member);
+            generate(*member, -1);
+            // generate(*member);
             member++;
         }
         return size;
     } case ND_FUNC_DEF: {
-        current_return_size = 1;
+        cur_return_size = node->valtype->size;
         printf("%s:\n", node->name);
         if (node->lhs->type != ND_BLOCK) {
             error_at(node->loc, "Function body must be a block");
         }
         generate_prologue(node->arg_sf_size, node->lhs->arg_sf_size);
-        generate(node->lhs); // function body
-        // generate(node->lhs, -1); // function body
-        generate_epilogue(cur_arg_count);
+        // generate(node->lhs); // function body
+        generate(node->lhs, -1); // function body
+        generate_epilogue(cur_arg_count, cur_return_size, node->loc);
         return size;
     } case ND_FUNC_CALL: {
         Node **arg = node->body;
         long arg_count = 0;
         printf("push r0\n");
+        int before = set_regstack(ast_min);
         while (*arg) {
             Node *a = *arg;
-            generate(a);
-            // generate(a, a->valtype->size); // 引数を評価してregstackに積む
+            if (nxt_regstack_top % 2 == 0) {
+                printf("push r%d\n", nxt_regstack_top);
+            }
+            // generate(a);
+            generate(a, a->valtype->size); // 引数を評価してregstackに積む
             arg++;
             arg_count++;
         }
-        for (long i = ast_min; i < caller_max + 1; i++) {
-            if ((i & 1) == 0) {
+        for (int i = arg_count + ast_min; i < caller_max + 1; i++) {
+            if ((i % 2) == 0) {
                 printf("push r%d\n", i);
             }
-            if (i < ast_min + arg_count) {
-                printf("mov r%d,r%d\n", ast_min + arg_count, pop_regstack(1));
-            } // r2, r3, ... に引数をセット
         }
         printf("calr %s\n", node->name);
-        for (long i = (caller_max > arg_count) ? caller_max : arg_count; \
+        for (int i = (caller_max > arg_count) ? caller_max : arg_count; \
             ast_min <= i; i--) {
-            if ((i & 1) == 0) {
+            if ((i % 2) == 0) {
                 printf("pop r%d\n", i);
             }
         }
+        set_regstack(before);
         printf("mov r%d,r0\npop r0\n", push_regstack(1));
         return size;
     } case ND_BREAK: {
@@ -285,15 +315,15 @@ int generate(Node *node) {
         if (node->lhs->type == ND_LOCAL_VAR) {
             printf("mov r%d,r15\n", push_regstack(1));
             printf("mvi r%d,%ld\n", push_regstack(1), node->lhs->ofs_addr);
-            long src = pop_regstack(1);
-            long dst = chg_regstack(1);
+            int src = pop_regstack(1);
+            int dst = chg_regstack(1);
             printf("add r%d,r%d\n", dst, src);
             return size;
         }
         printf("mvi r%d,%ld\n", push_regstack(1), node->lhs->ofs_addr);
         return size;
     } case ND_DEREF: {
-        generate(node->lhs);
+        generate(node->lhs, PTR_SIZE);
         printf("push r14\nmov r15,r%d\nldm r%d,0\npop r14\n",chg_regstack(1), chg_regstack(1));
         return size;
     }
@@ -301,11 +331,17 @@ int generate(Node *node) {
         break;
     }
 
-    generate(node->lhs);
-    if (node->rhs) generate(node->rhs);
+    generate(node->lhs, size);
+    if (node->rhs) generate(node->rhs, size);
 
-    gen_i8(node);
-
+    if (size == 1) {
+        return gen_i8(node);
+    } else if (size == 2) {
+        return gen_i16(node);
+    } else {
+        error_at(node->loc, "Invalid size for code generation: %d", size);
+        return size;
+    }
 }
 
 int gen_i8(Node *node) {
@@ -348,8 +384,24 @@ int gen_i8(Node *node) {
         error_at(node->loc, "Unknown node type");
         break;
     }
+    return 1;
 }
 
 int gen_i16(Node *node) {
+    int src = pop_regstack(2);
+    int dst = chg_regstack(2);
+
+    switch (node->type) {
+    case ND_ADD:
+        printf("add r%d,r%d\nadc r%d,r%d\n", dst, src, dst + 1, src + 1);
+        break;
+    case ND_SUB:
+        printf("sub r%d,r%d\nsbc r%d,r%d\n", dst, src, dst + 1, src + 1);
+        break;
+    default:
+        error_at(node->loc, "Unknown node type");
+        break;
+    }
+    return 2;
 
 }

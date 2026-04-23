@@ -13,8 +13,10 @@ module ssram #(
     input  logic        ce,
     input  logic        we,
     output logic [DATA_WIDTH-1:0]  dout,
-    input  logic [ADDR_WIDTH-1:0]  dbg_addr,
-    output logic [DATA_WIDTH-1:0]  dbg_dout
+    input  logic [ADDR_WIDTH-1:0]  dbg_addr0,
+    output logic [DATA_WIDTH-1:0]  dbg_dout0,
+    input  logic [ADDR_WIDTH-1:0]  dbg_addr1,
+    output logic [DATA_WIDTH-1:0]  dbg_dout1
 );
 
     // Data RAM: 256 x 8-bit
@@ -32,7 +34,8 @@ module ssram #(
         end
     end
 
-    assign dbg_dout = ram[dbg_addr];
+    assign dbg_dout0 = ram[dbg_addr0];
+    assign dbg_dout1 = ram[dbg_addr1];
 endmodule
 
 `endif // __SSRAM_SV__

@@ -345,17 +345,21 @@ int main(void) {
             }
             int c = parse_int(imm, 0, 1);
             word = (uint16_t)(((uint16_t)op6 << 10) | (uint16_t)c);
-        } else if (!strcmp(inst, "push") || !strcmp(inst, "sts")) {
-            uint8_t op6 = !strcmp(inst, "push") ? 0x1C : 0x1E;
-            char *r = next_token(&ctx);
-            if (!r) die("Missing operand");
-            int rs = parse_reg(r);
-            if (!strcmp(inst, "push") && ((rs & 1) != 0)) {
-                die_fmt("push requires even register", r);
-            }
-            word = enc_op6_rs(op6, (uint8_t)rs);
-        } else if (!strcmp(inst, "pop") || !strcmp(inst, "lds")) {
-            uint8_t op6 = !strcmp(inst, "pop") ? 0x1D : 0x1F;
+        // } else if (!strcmp(inst, "push") || !strcmp(inst, "sts")) {
+        //     uint8_t op6 = !strcmp(inst, "push") ? 0x1C : 0x1E;
+        //     char *r = next_token(&ctx);
+        //     if (!r) die("Missing operand");
+        //     int rs = parse_reg(r);
+        //     if (!strcmp(inst, "push") && ((rs & 1) != 0)) {
+        //         die_fmt("push requires even register", r);
+        //     }
+        //     word = enc_op6_rs(op6, (uint8_t)rs);
+        } else if (!strcmp(inst, "pop") || !strcmp(inst, "lds") || !strcmp(inst, "push") || !strcmp(inst, "sts")) {
+            uint8_t op6;
+            if (!strcmp(inst, "pop")) op6 = 0x1D;
+            else if (!strcmp(inst, "lds")) op6 = 0x1F;
+            else if (!strcmp(inst, "push")) op6 = 0x1C;
+            else op6 = 0x1E;
             char *r = next_token(&ctx);
             if (!r) die("Missing operand");
             int rd = parse_reg(r);

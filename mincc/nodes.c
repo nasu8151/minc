@@ -238,8 +238,8 @@ void add_local_var(Token *tok, Type_t *type) {
         cur->var_tail->next = var;
         cur->var_tail = var;
     }
-    cur->max_var_count++;
-    var->offset = 0 - count_local_vars(); // スタック上のオフセットを設定
+    cur->max_var_bytes += type->size; // 変数のサイズを現在のスコープの最大変数バイト数に加算
+    var->offset = 0 - sizeof_local_vars(); // スタック上のオフセットを設定
 }
 
 void add_global_var(Token *tok, long address, Type_t *type) {
@@ -260,7 +260,7 @@ void add_global_var(Token *tok, long address, Type_t *type) {
         head->var_tail = var;
     }
     var->offset = 0;  // グローバル変数のオフセットは0に設定
-    head->max_var_count++;
+    head->max_var_bytes += type->size; // 変数のサイズをグローバルスコープの最大変数バイト数に加算
     var->address = address; // グローバル変数のアドレスを設定
     var->valtype = type;    // グローバル変数の型を設定
     fprintf(stderr, "Adding global variable: %.*s at address %ld\n", (int)tok->len, tok->str, var->address);
@@ -301,18 +301,18 @@ Ident_Name *find_function(Token *tok) {
     return NULL;
 }
 
-long count_local_vars() {
-    long count = 0;
+long sizeof_local_vars() {
+    long byte = 0;
     Vars_List *cur = head->child;
     while (cur) {
         Ident_Name *var = cur->var_head;
         while (var) {
-            count++;
+            byte += var->valtype->size; // 変数のサイズを加算
             var = var->next;
         }
         cur = cur->child;
     }
-    return count;
+    return byte;
 }
 
 

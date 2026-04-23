@@ -34,7 +34,7 @@ if __name__ == "__main__":
     tf.test_e2e("char main(){return 2*3;}", 6)
     tf.test_e2e("char main(){return (1+2)*3;}", 9)
     tf.test_e2e("char main(){return -3+5;}", 2)
-    tf.test_e2e("char main(){return -(2+3)*4;}", -20)
+    tf.test_e2e("char main(){return -(2+3)*4;}", (-20 & 0xFF)) # currently char is unsigned
     tf.test_e2e("char main(){return +5+(+3);}", 8)
     tf.test_e2e("char main(){return 1+1==2;}", 1)
     tf.test_e2e("char main(){return 1+1==3;}", 0)
@@ -45,6 +45,8 @@ if __name__ == "__main__":
     tf.test_e2e("char main(){return (5>2+2)+(4>2+2);}", 1)
     tf.test_e2e("char main(){return (2+2>=4)+(2+2>=5);}", 1)
     tf.test_e2e("char main(){return ~(((0b11111111 & 0b11000011) | 0b00001111) ^ 0b00111100);}", 0b00001100, verbose=True)
+    tf.test_e2e("int main(){return 1919 + 4545;}", 6464) # 数値に特に深い意味はない
+    tf.test_e2e("int main(){int a = 1234; int b = 5678; return b - a;}", 4444) # 16-bit integer subtraction
     tf.test_e2e("char main(){char a=3;return a+2;}", 5)
     tf.test_e2e("char main(){char a=2;char b=3;return a * b;}", 6)
     tf.test_e2e("char main(){char a=1;char b=2;char c=3;return a + b * c;}", 7)

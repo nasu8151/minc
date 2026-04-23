@@ -30,12 +30,24 @@ Node *toplevel(char *l) {
     Type_t *type = calloc(1, sizeof(Type_t));
     type->size = -1;
     type->type = TY_INT;
-    if (consume_la("uint8_t", &loc) || consume_la("int", &loc) || consume_la("char", &loc)) {
-        type->size = 1;
+    if (consume_la("uint8_t", &loc) || consume_la("char", &loc)) {
+        type->size = 1; // Currently uint8_t, int and char mean the same (1 byte int) type.
+    } else if (consume_la("int", &loc)) {
+        type->size = 2;
     } else if (consume_la("void", &loc)) {
-        type->size = 0;
+        type->size = 0; // void type has size 0
     } else {
-        error_at(loc, "Type specifier expected for global variable and function: %.*s", token->len, token->str);
+        // Considers reference to variable or function if there is no type specifier
+    }
+    Type_t *cur = type;
+    while (consume_la("*", &loc)) {
+        cur = calloc(1, sizeof(Type_t));
+        if (!cur) {
+            error("Memory allocation failed");
+        }
+        cur->type = TY_PTR;
+        cur->size = PTR_SIZE;
+        cur->ptr_to = type;
     }
     long address = -1;
     if (consume_la("[", &loc)) {
@@ -49,14 +61,6 @@ Node *toplevel(char *l) {
         } else {
             error_at(loc, "Unknown attribute for global variable: %s", attr);
         }
-    }
-
-    Type_t *cur = type;
-    while (consume_la("*", &loc)) {
-        cur->type = TY_PTR;
-        cur->size = PTR_SIZE;
-        cur->ptr_to = calloc(1, sizeof(Type_t));
-        cur = cur->ptr_to;
     }
 
     Token *tok = token;
@@ -340,10 +344,10 @@ Node *ident(char *l) {
     if (type->size == -1 && name) {
         if (name->type == VAR_GLOBAL_STATIC) {
             fprintf(stderr, "Found global variable: %.*s at address %ld\n", (int)tok->len, tok->str, name->address);
-            return new_ident_node(ND_GLOBAL_VAR, var_name, name->address, type, loc);
+            return new_ident_node(ND_GLOBAL_VAR, var_name, name->address, name->valtype, loc);
         } else if (name->type == VAR_LOCAL) {
             fprintf(stderr, "Found variable: %.*s at offset %ld\n", (int)tok->len, tok->str, name->offset);
-            return new_ident_node(ND_LOCAL_VAR, var_name, name->offset, type, loc);
+            return new_ident_node(ND_LOCAL_VAR, var_name, name->offset, name->valtype, loc);
         }
     } else if (type->size > 0) {
         add_local_var(tok, type);
@@ -391,12 +395,12 @@ long end_scope() {
         if (!tail->parent) {
             error("Cannot end global scope");
         }
-        long cur_max_vars_count = count_local_vars();
-        if (tail->max_var_count < cur_max_vars_count) {
-            tail->max_var_count = cur_max_vars_count;
+        long cur_max_vars_bytes = sizeof_local_vars();
+        if (tail->max_var_bytes < cur_max_vars_bytes) {
+            tail->max_var_bytes = cur_max_vars_bytes;
         }
-        if (tail->parent->max_var_count < tail->max_var_count) {
-            tail->parent->max_var_count = tail->max_var_count;
+        if (tail->parent->max_var_bytes < tail->max_var_bytes) {
+            tail->parent->max_var_bytes = tail->max_var_bytes;
         }
         Vars_List *old_tail = tail;
         tail = tail->parent;
@@ -406,5 +410,5 @@ long end_scope() {
     } else {
         error("No scope to end");
     }
-    return tail->max_var_count;
+    return tail->max_var_bytes;
 }

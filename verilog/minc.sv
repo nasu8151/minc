@@ -18,7 +18,8 @@ module minc (
 
     // PC, SP
     logic [15:0] pc;
-    logic [15:0] sp;
+    logic [14:0] sp;
+    logic        sp0;
 
     logic [2:0] state;
 
@@ -38,7 +39,7 @@ module minc (
     `endif
 
     assign pc_out = pc;
-    assign sp_out = sp;
+    assign sp_out = {sp, 1'b0};
 
     logic [15:0] instr;
 
@@ -55,14 +56,14 @@ module minc (
     wire signed [15:0] simm8  = 16'($signed(imm8));
     wire signed [15:0] simm12 = 16'($signed(rel12));
 
-    wire [3:0] rd_pair_lo = rd | 4'b0001;
-    wire [3:0] rs_pair_lo = rs | 4'b0001;
+    wire [3:0] rd_pair_hi = rd | 4'b0001;
+    wire [3:0] rs_pair_hi = rs | 4'b0001;
     wire [7:0] rd_val = regs[rd];
     wire [7:0] rs_val = regs[rs];
-    wire [7:0] rs_val_lo = regs[rs_pair_lo];
-    wire [7:0] rd_val_lo = regs[rd_pair_lo];
-    wire [15:0] x_base = {regs[12], regs[13]};
-    wire [15:0] y_base = {regs[14], regs[15]};
+    wire [7:0] rs_val_hi = regs[rs_pair_hi];
+    wire [7:0] rd_val_hi = regs[rd_pair_hi];
+    wire [15:0] x_base = {regs[13], regs[12]};
+    wire [15:0] y_base = {regs[15], regs[14]};
 
     wire is_alu    = (op6[5:4] == 2'b00);
     wire is_stf    = (op6 == 6'b010000);
@@ -90,8 +91,13 @@ module minc (
 
     logic [7:0]  alu_out;
     logic [15:0] pc_next;
-    logic [15:0] sp_next;
+    logic [14:0] sp_next;
     logic        wait_reg_next;
+
+    assign sp0 =    ((is_push || is_calr) && (state == `S_WB)) ? 1'b1 :
+                    ((is_pop || is_ret) && (state == `S_WB)) ? 1'b1 : 1'b0;
+    wire [15:0] sp_val = {sp, sp0};
+    wire [15:0] sp_in = {rd_val_hi, rd_val};
 
     always_comb begin : ALU
         case (subop)
@@ -101,8 +107,8 @@ module minc (
             4'b0011: begin alu_out = rd_val ^ rs_val; carry_flag_next = 1'bx; end // XOR
             4'b0100: {carry_flag_next, alu_out} = rd_val + rs_val;
             4'b0101: {carry_flag_next, alu_out} = rd_val + rs_val + carry_flag;
-            4'b0110: {carry_flag_next, alu_out} = rd_val - rs_val;
-            4'b0111: {carry_flag_next, alu_out} = rd_val - rs_val + carry_flag;
+            4'b0110: {carry_flag_next, alu_out} = rd_val + {1'b0, ~rs_val} + 1'b1; // SUB
+            4'b0111: {carry_flag_next, alu_out} = rd_val + {1'b0, ~rs_val} + carry_flag;
             4'b1000: {carry_flag_next, alu_out} = (rd_val < rs_val) ? 8'b1 : 8'b0; // LT
             4'b1001: {carry_flag_next, alu_out} = (rd_val < rs_val - carry_flag) ? 8'b1 : 8'b0; // LTC
             4'b1010: {alu_out, carry_flag_next} = rs_val >> 1 | (carry_flag << 7); // ROR
@@ -113,24 +119,24 @@ module minc (
     end
 
     // Determines address the processor emits
-    assign address =    is_push ? sp :
-                        is_pop  ? sp :
-                        is_ret  ? sp :
+    assign address =    is_push ? sp_val :
+                        is_pop  ? sp_val :
+                        is_ret  ? sp_val :
                         (is_stm_x || is_ldm_x) ? x_base + simm8 :
                         (is_stm_y || is_ldm_y) ? y_base + simm8 :
-                        is_calr ? sp : 16'h0000;
+                        is_calr ? sp_val : 16'h0000;
 
     // Determines written data
     // ALU out, rs_val for PUSH/STM, sp for STS, imm8 for MVI, pc for CALL
-    wire [7:0] data_out_next =  (is_push && (state == `S_WB)) ? rs_val :
-                                (is_push && (state == `S_DECEXEC)) ? rs_val_lo :
+    wire [7:0] data_out_next =  (is_push && (state == `S_WB)) ? rd_val :
+                                (is_push && (state == `S_DECEXEC)) ? rd_val_hi :
                                 (is_stm)  ? rd_val :
-                                (is_calr && (state == `S_WB)) ? pc[15:8] : 
-                                (is_calr && (state == `S_DECEXEC)) ? pc[7:0]  : 8'h00;
+                                (is_calr && (state == `S_WB)) ? pc[7:0] : 
+                                (is_calr && (state == `S_DECEXEC)) ? pc[15:8]  : 8'h00;
     
     wire [7:0] rd_next =    is_alu ? alu_out :
-                            (is_lds && (state == `S_WB))  ? sp[15:8]  :
-                            (is_lds && (state == `S_WB2)) ? sp[7:0] :
+                            (is_lds && (state == `S_WB))  ? {sp[6:0], 1'b0}  :
+                            (is_lds && (state == `S_WB2)) ? sp[14:7] :
                             is_mvi ? imm8 : 
                             (is_pop || is_ldm) ? data_in : rd_val;
 
@@ -141,7 +147,7 @@ module minc (
     always_ff @(posedge clk) begin
         if (!reset_n) begin
             pc <= 16'h0000;
-            sp <= 16'h0000;
+            sp <= 15'h0000;
             state <= `S_FETCH;
             wait_reg <= 1'b0;
             instr <= 16'h0000;
@@ -164,11 +170,8 @@ module minc (
                         $finish;
                         `endif
                     end
-
                     if (is_push || is_calr) begin
-                        sp <= sp - 8'd1;
-                    end else if (is_ret || is_pop) begin
-                        sp <= sp + 8'd1;
+                        sp <= sp - 15'd1;
                     end
 
                     state <= `S_WB;
@@ -182,18 +185,9 @@ module minc (
                         carry_flag <= carry_flag_next;
                     end
 
-                    // Update SP
-                    if (is_pop || is_ret) begin
-                        sp <= sp + 8'd1;
-                    end else if (is_push || is_calr) begin
-                        sp <= sp - 8'd1;
-                    end else if (is_sts) begin
-                        sp <= {rs_val, rs_val_lo};
-                    end
-
                     // Update PC
                     if (is_ret) begin
-                        pc[15:8] <= data_in;
+                        pc[7:0] <= data_in;
                     end else if (is_jz) begin
                         if (rd_val == 8'd0) begin
                             pc <= pc + simm8;
@@ -217,12 +211,19 @@ module minc (
                 end
                 `S_WB2: begin
                     if (is_pop || is_lds) begin
-                        regs[rd_pair_lo] <= rd_next;
+                        regs[rd_pair_hi] <= rd_next;
+                    end
+
+                    // Update SP
+                    if (is_pop || is_ret) begin
+                        sp <= sp + 15'd1;
+                    end else if (is_sts) begin
+                        sp <= sp_in[15:1];
                     end
 
                     // Update PC
                     if (is_ret)
-                        pc[7:0] <= data_in;
+                        pc[15:8] <= data_in;
                     else if (is_calr)
                         pc <= pc + simm12;
 

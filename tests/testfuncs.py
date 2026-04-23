@@ -62,7 +62,7 @@ def test_e2e(code:str, expected_top:int, verbose:bool=False, porta = None):
             port_a_value = int(porta_str[0].split(": ")[1], 16)
             assert port_a_value == (porta & 0xff), f"""[FAIL] Expected PORTA: {porta}, but got: {port_a_value} """
             print(f"""[OK] E2E test for code "{code}" => PORTA: {port_a_value} """)
-        assert top_value == (expected_top & 0xff), f"""[FAIL] Expected TOP: {expected_top}, but got: {top_value} """
+        assert top_value == (expected_top), f"""[FAIL] Expected TOP: {expected_top}, but got: {top_value} """
         assert sp_value == 65534, f"[FAIL] The stack's symmetry is broken. SP: {sp_value}"
         print(f"""[OK] E2E test for code "{code}" => TOP: {top_value}, SP: {sp_value}""")
     except AssertionError as e:
