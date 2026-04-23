@@ -42,7 +42,7 @@ struct NodeList_Member;
 
 typedef struct Type_t{
     enum {TY_INT, TY_PTR} type;
-    long size;
+    int size;
     struct Type_t *ptr_to;
 } Type_t;
 

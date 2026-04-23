@@ -11,6 +11,8 @@
 #include "nodes.h"
 #include "errorhandle.h"
 
+#define NO_EXPECTED_SIZE -1
+
 /*
 呼び出し規約（現状）
 ・引数は左から順にr2~に入れる
@@ -41,6 +43,6 @@ int generate(Node *node, int expected_size);
 int gen_i8(Node *node);
 int gen_i16(Node *node);
 void generate_prologue(long arg_count, long local_var_count);
-void generate_epilogue(long arg_count, long size, char *loc);
+void generate_epilogue(long arg_count, int size, char *loc);
 
 #endif // MINCC_CODEGEN_H
