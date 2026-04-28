@@ -55,6 +55,7 @@ def test_e2e(code:str, expected_top:int, verbose:bool=False, porta = None):
         sp_value  = int(sp_str.split(":")[1].strip(), 16)
     except ValueError as e:
         print(f"[FAIL] Verilog simulation failed: TOP:{top_str.split(":")[1].strip()}")
+        print(f"Assembly output:\n{asm_code}")
         print(f"Verilog output:\n{output}")
         raise e
     try:
@@ -66,6 +67,7 @@ def test_e2e(code:str, expected_top:int, verbose:bool=False, porta = None):
         assert sp_value == 65534, f"[FAIL] The stack's symmetry is broken. SP: {sp_value}"
         print(f"""[OK] E2E test for code "{code}" => TOP: {top_value}, SP: {sp_value}""")
     except AssertionError as e:
+        print(f"Assembly output:\n{asm_code}")
         # subprocess.run("gtkwave minc_tb.vcd --rcvar 'fontname_signals Monospace 17' --rcvar 'fontname_waves Monospace 16'", cwd="./verilog", shell=True)
         raise e
 

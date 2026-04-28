@@ -326,19 +326,19 @@ int generate(Node *node, int size) {
         return 0;
     } case ND_ADDR: {
         if (node->lhs->type == ND_LOCAL_VAR) {
-            printf("mov r%d,r15\n", push_regstack(1));
-            printf("mvi r%d,%ld\n", push_regstack(1), node->lhs->ofs_addr);
-            int src = pop_regstack(1);
-            int dst = chg_regstack(1);
-            printf("add r%d,r%d\n", dst, src);
+            int dst = push_regstack(PTR_SIZE);
+            printf("mov r%d,r13\nmov r%d,r12\n", dst + 1, dst);
+            int ofs = push_regstack(PTR_SIZE);
+            printf("mvi r%d,%ld\nmvi r%d,%ld\n", ofs + 1, ofs, ((node->lhs->ofs_addr >> 8) & 0xFF), (node->lhs->ofs_addr & 0xFF));
+            int src = pop_regstack(PTR_SIZE);
+            printf("add r%d,%d\nadc r%d,%d", dst + 1, ofs + 1, dst, ofs);
             return PTR_SIZE;
         }
-        printf("mvi r%d,%ld\n", push_regstack(1), node->lhs->ofs_addr);
+        int dst = push_regstack(PTR_SIZE);
+        printf("mvi r%d,%ld\nmvi r%d, %ld", dst + 1, dst, ((node->lhs->ofs_addr >> 8) & 0xFF), (node->lhs->ofs_addr & 0xFF));
         return PTR_SIZE;
     } case ND_DEREF: {
-        generate(node->lhs, PTR_SIZE);
-        printf("push r14\nmov r15,r%d\nldm r%d,0\npop r14\n",chg_regstack(1), chg_regstack(1));
-        return PTR_SIZE;
+        gen_deref(node, node->valtype, 0);
     }
     default:
         break;
@@ -433,7 +433,22 @@ int gen_i16(Node *node) {
         break;
     }
     return 2;
+}
 
+Type_t *gen_deref(Node *node, Type_t *valtype, int recurce) {
+    if (!valtype) {
+        error_at(node->loc, "Dereferencing the value which is not a pointer nor an array.");
+    }
+    int src = chg_regstack(PTR_SIZE);
+    if (node->type != ND_DEREF) {
+        int dst = chg_regstack(valtype->size);
+        printf("mov r13,%d\nmov r12,r%d", src, src + 1);
+        if (valtype->size == 1) {
+
+        }
+        return node->valtype;
+    }
+    Type_t *valtype = gen_deref(node->lhs, node->valtype->ptr_to, recurce + 1);
 }
 
 int cast_i8_to_i16() {
