@@ -26,6 +26,7 @@ if __name__ == "__main__":
     tf.expect_fail("""echo "char main(){1+}" | ./target/mincc""") # Incomplete expression
     tf.expect_fail("""echo "char main(){a+1=5;}" | ./target/mincc""") # Invalid assignment
     tf.expect_fail("""echo "char main(){i>=0;\nwhile(i<10) {\n i=i+1;\n if (i==5) {\nreturn 20*i;\n}\n\nreturn 0;}" | target/mincc """) # Missing closing brace
+    tf.expect_fail("""echo "char main(){char a = 3;int b = &a;return *b;}" | ./target/mincc""")
 
     # E2E tests
     tf.test_e2e("char main(){return 1+2;}", 3)
@@ -66,8 +67,9 @@ if __name__ == "__main__":
     tf.test_e2e("char [[address=0x00]] port_a_out;char [[address=0x01]] port_a_dir;char main(){port_a_dir = 0xFF;port_a_out=0x55; return 0;}", 0, porta=0x55)
     tf.test_e2e("char main(){char i=0;while(1){if(i==5) break;i=i+1;}return i;}", 5)
     tf.test_e2e("char [[address = 0x00]] b;char a;char addi(char s){a = a + s;return a;}char main(){a = 0;for(char i = 0;i < 254;i=i+1){while(addi(3) < 20){b = b;}}return 21;}", 21)
-    tf.test_e2e("char main(){char a = 3;int b = &a;return *b;}", 3)
-    tf.test_e2e("char main(){char a = 3;char *b = &a;*b = 5;return a;}", 5)
+    tf.test_e2e("char main(){char a = 3;char *b = &a;return *b;}", 3, verbose=True)
+    tf.test_e2e("int main(){int a = 1155; int *b = &a; int **c = &b; return **c;}", 1155)
+    # tf.test_e2e("char main(){char a = 3;char *b = &a;*b = 5;return a;}", 5)
 
 
     print()

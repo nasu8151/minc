@@ -327,18 +327,37 @@ int generate(Node *node, int size) {
     } case ND_ADDR: {
         if (node->lhs->type == ND_LOCAL_VAR) {
             int dst = push_regstack(PTR_SIZE);
-            printf("mov r%d,r13\nmov r%d,r12\n", dst + 1, dst);
+            printf("mov r%d,r15\nmov r%d,r14\n", dst + 1, dst); //ベースポインタをロード
             int ofs = push_regstack(PTR_SIZE);
-            printf("mvi r%d,%ld\nmvi r%d,%ld\n", ofs + 1, ofs, ((node->lhs->ofs_addr >> 8) & 0xFF), (node->lhs->ofs_addr & 0xFF));
+            // オフセットを引く
+            printf("mvi r%d,%ld\nmvi r%d,%ld\n", ofs + 1, (((node->lhs->ofs_addr >> 8) + 1) & 0xFF), ofs, (node->lhs->ofs_addr & 0xFF));
             int src = pop_regstack(PTR_SIZE);
-            printf("add r%d,%d\nadc r%d,%d", dst + 1, ofs + 1, dst, ofs);
+            printf("add r%d,r%d\nadc r%d,r%d\n", dst + 1, ofs + 1, dst, ofs);
             return PTR_SIZE;
         }
         int dst = push_regstack(PTR_SIZE);
-        printf("mvi r%d,%ld\nmvi r%d, %ld", dst + 1, dst, ((node->lhs->ofs_addr >> 8) & 0xFF), (node->lhs->ofs_addr & 0xFF));
+        printf("mvi r%d,%ld\nmvi r%d, %ld", dst + 1, ((node->lhs->ofs_addr >> 8) & 0xFF), dst, (node->lhs->ofs_addr & 0xFF));
         return PTR_SIZE;
     } case ND_DEREF: {
-        gen_deref(node, node->valtype, 0);
+        // オペランドを評価してポインタを得る
+        generate(node->lhs, PTR_SIZE);
+        int ptr_reg = pop_regstack(PTR_SIZE);
+
+        // ポインタが指す先の値をロード
+        int dst = push_regstack(node->valtype->size);
+
+        // r13:r12 にアドレスをセット
+        printf("mov r13,r%d\nmov r12,r%d\n", ptr_reg + 1, ptr_reg);
+
+        // デリファレンス結果の型サイズに応じてロード
+        if (node->valtype->size == 1) {
+            printf("ldm r%d,X+0\n", dst);
+        } else if (node->valtype->size == 2) {
+            printf("ldm r%d,X+0\nldm r%d,X+1\n", dst, dst + 1);
+        } else {
+            error_at(node->loc, "Invalid size for dereferenced value: %d", node->valtype->size);
+        }
+        return node->valtype->size;
     }
     default:
         break;
@@ -433,22 +452,6 @@ int gen_i16(Node *node) {
         break;
     }
     return 2;
-}
-
-Type_t *gen_deref(Node *node, Type_t *valtype, int recurce) {
-    if (!valtype) {
-        error_at(node->loc, "Dereferencing the value which is not a pointer nor an array.");
-    }
-    int src = chg_regstack(PTR_SIZE);
-    if (node->type != ND_DEREF) {
-        int dst = chg_regstack(valtype->size);
-        printf("mov r13,%d\nmov r12,r%d", src, src + 1);
-        if (valtype->size == 1) {
-
-        }
-        return node->valtype;
-    }
-    Type_t *valtype = gen_deref(node->lhs, node->valtype->ptr_to, recurce + 1);
 }
 
 int cast_i8_to_i16() {

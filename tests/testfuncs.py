@@ -25,10 +25,14 @@ def test_e2e(code:str, expected_top:int, verbose:bool=False, porta = None):
     
     asm = subprocess.run("./target/mincc", input=code, shell=True, capture_output=True, text=True)
     if asm.returncode != 0:
+        if verbose:
+            print(f"Compiler output:\n{asm.stdout}")
         raise Exception(f"mincc failed with return code {asm.returncode}:\nStderr:\n{asm.stderr}")
     asm_code = asm.stdout
     inst = subprocess.run("./target/mincasm", input=asm_code, shell=True, capture_output=True, text=True)
     if inst.returncode != 0:
+        if verbose:
+            print(f"Assembly:\n{asm.stdout}")
         raise Exception(f"mincasm failed with return code {inst.returncode}:\nStderr:\n{inst.stderr}")
     with open("verilog/test.hex", "w") as f:
         f.write(inst.stdout)

@@ -41,14 +41,16 @@ Node *toplevel(char *l) {
     }
     Type_t *cur = type;
     while (consume_la("*", &loc)) {
-        cur = calloc(1, sizeof(Type_t));
-        if (!cur) {
+        Type_t *new_ptr = calloc(1, sizeof(Type_t));
+        if (!new_ptr) {
             error("Memory allocation failed");
         }
-        cur->type = TY_PTR;
-        cur->size = PTR_SIZE;
-        cur->ptr_to = type;
+        new_ptr->type = TY_PTR;
+        new_ptr->size = PTR_SIZE;
+        new_ptr->ptr_to = cur;
+        cur = new_ptr;
     }
+    type = cur;
     long address = -1;
     if (consume_la("[", &loc)) {
         expect("[", &loc);
@@ -314,13 +316,14 @@ Node *ident(char *l) {
     }
     Type_t *cur = type;
     while (consume_la("*", &loc)) {
-        cur = calloc(1, sizeof(Type_t));
-        if (!cur) {
+        Type_t *new_ptr = calloc(1, sizeof(Type_t));
+        if (!new_ptr) {
             error("Memory allocation failed");
         }
-        cur->type = TY_PTR;
-        cur->size = PTR_SIZE;
-        cur->ptr_to = type;
+        new_ptr->type = TY_PTR;
+        new_ptr->size = PTR_SIZE;
+        new_ptr->ptr_to = cur;
+        cur = new_ptr;
     }
     type = cur;
     Ident_Name *name = find_name(token);
@@ -368,7 +371,15 @@ Node *unary(char *l) {
     } else if (consume_la("&", &loc)){
         return new_node(ND_ADDR, unary(loc), NULL, loc);
     } else if (consume_la("*", &loc)){
-        return new_node(ND_DEREF, unary(loc), NULL, loc);
+        Node *operand = unary(loc);
+
+        if (!operand || !operand->valtype || operand->valtype->type != TY_PTR) {
+            error_at(loc, "Cannot dereference non-pointer type");
+        }
+
+        Node *node = new_node(ND_DEREF, operand, NULL, loc);
+        node->valtype = operand->valtype->ptr_to;
+        return node;
     } else {
         return primary(loc);
     }
