@@ -80,15 +80,48 @@ int set_regstack(int value) {
     return before;
 }
 
-void generate_prologue(long arg_count, long local_var_count) {
-    cur_arg_count = arg_count;
+void generate_prologue(Node **args, long arg_reg_count, long local_var_count) {
+    cur_arg_count = arg_reg_count;
     cur_regstack_max = ast_min;
-    nxt_regstack_top = ast_min;
+    set_regstack(ast_min);
     printf("push r14\n");
     printf("lds r14\n");
-    for (long i = 0; i < arg_count; i++) {
-        printf("stm %ld,r%ld\n", -i - 1, i + ast_min); // 引数をメモリに展開
+
+    long reg_index = ast_min;
+    long mem_off = 0;
+
+    if (args) {
+        Node **arg = args;
+        while (*arg) {
+            Node *a = *arg;
+            int arg_size = (a && a->valtype) ? a->valtype->size : 2;
+            if (arg_size != 1 && arg_size != 2) {
+                error_at(a ? a->loc : NULL, "Invalid argument size: %d", arg_size);
+            }
+            // 16bit は偶数境界に揃える（パディングはコピーしない）
+            if (arg_size == 2 && (reg_index % 2) != 0) {
+                reg_index += 1;
+            }
+            if (arg_size == 1) {
+                printf("stm %ld,r%ld\n", -(mem_off + 1), reg_index);
+                mem_off += 1;
+                reg_index += 1;
+            } else {
+                // little-endian: low byte at lower address (more negative)
+                printf("stm %ld,r%ld\n", -(mem_off + 2), reg_index);
+                printf("stm %ld,r%ld\n", -(mem_off + 1), reg_index + 1);
+                mem_off += 2;
+                reg_index += 2;
+            }
+            arg++;
+        }
+    } else {
+        // フォールバック（args が無い場合は従来通り）
+        for (long i = 0; i < arg_reg_count; i++) {
+            printf("stm %ld,r%ld\n", -i - 1, i + ast_min);
+        }
     }
+
     printf("mvi r0,%ld\n", ((-local_var_count) & 0xFF));  // local_var_count includes arguments
     printf("mvi r1,%ld\n", ((-local_var_count) >> 8) & 0xFF);
     printf("add r0,r14\n");
@@ -140,19 +173,54 @@ int generate(Node *node, int size) {
         }
         return result_size;
     } case ND_LOCAL_VAR: {
-        if (node->valtype->size == 1) {
+        int actual = node->valtype->size;
+        int expected = (size == NO_EXPECTED_SIZE) ? actual : size;
+
+        if (actual == 1) {
             printf("ldm r%d,%ld\n", push_regstack(1), node->ofs_addr);
-        } else if (node->valtype->size == 2) {
+        } else if (actual == 2) {
             int dst = push_regstack(2);
             printf("ldm r%d,%ld\n", dst, node->ofs_addr);
             printf("ldm r%d,%ld\n", dst + 1, node->ofs_addr + 1);
         } else {
             error_at(node->loc, "Invalid size for local variable: %ld", node->valtype->size);
         }
-        return node->valtype->size;
+
+        if (actual == 1 && expected == 2) {
+            cast_i8_to_i16();
+            return 2;
+        }
+        if (actual == 2 && expected == 1) {
+            cast_i16_to_i8();
+            return 1;
+        }
+        return actual;
     } case ND_GLOBAL_VAR: {
-        printf("mvi r13,%ld\nmvi r12,%ld\nldm r%d,X+0\n", ((node->ofs_addr >> 8) & 0xFF), (node->ofs_addr & 0xFF), push_regstack(1));
-        return node->valtype->size;
+        int actual = node->valtype->size;
+        int expected = (size == NO_EXPECTED_SIZE) ? actual : size;
+
+        printf("mvi r13,%ld\nmvi r12,%ld\n",
+            ((node->ofs_addr >> 8) & 0xFF), (node->ofs_addr & 0xFF));
+
+        if (actual == 1) {
+            int dst = push_regstack(1);
+            printf("ldm r%d,X+0\n", dst);
+        } else if (actual == 2) {
+            int dst = push_regstack(2);
+            printf("ldm r%d,X+0\nldm r%d,X+1\n", dst, dst + 1);
+        } else {
+            error_at(node->loc, "Invalid size for global variable: %ld", node->valtype->size);
+        }
+
+        if (actual == 1 && expected == 2) {
+            cast_i8_to_i16();
+            return 2;
+        }
+        if (actual == 2 && expected == 1) {
+            cast_i16_to_i8();
+            return 1;
+        }
+        return actual;
     } case ND_ASSIGN: {
         // generate(node->rhs);
         generate(node->rhs, node->lhs->valtype->size);
@@ -178,11 +246,21 @@ int generate(Node *node, int size) {
                 error_at(node->loc, "Invalid size for global variable: %ld", node->lhs->valtype->size);
             }
         } else if (node->lhs->type == ND_DEREF) {
-            error_at(node->loc, "Under construction: assignment to dereferenced pointer");
-            // generate(node->lhs->lhs, PTR_SIZE);
-            // long addr = pop_regstack(PTR_SIZE);
-            // long value = pop_regstack(node->lhs->valtype->size);
-            // printf("mvi r12,%ld\nmvi r13,%ld\nstm X+0,r%d\n", ((addr >> 8) & 0xFF), (addr & 0xFF), value);
+            generate(node->lhs->lhs, PTR_SIZE); // 左辺値（デリファレンスして得たアドレス）
+            int val_size = node->lhs->valtype->size;
+            generate(node->rhs, val_size);      // 右辺値（代入すべき値）
+            int val = pop_regstack(val_size);
+            int addr = pop_regstack(PTR_SIZE);
+            printf("mov r13,r%d\nmov r12,r%d\n", addr + 1, addr);
+
+            if (val_size == 1) {
+                printf("stm X+0,r%d\n", val);
+            } else if (val_size == 2) {
+                printf("stm X+0,r%d\n", val);
+                printf("stm X+1,r%d\n", val + 1);
+            } else {
+                error_at(node->loc, "Invalid size for dereferenced assignment: %d", val_size);
+            }
         } else {
             error_at(node->loc, "Left-hand side of assignment must be a variable");
         }
@@ -286,42 +364,58 @@ int generate(Node *node, int size) {
         if (node->lhs->type != ND_BLOCK) {
             error_at(node->loc, "Function body must be a block");
         }
-        generate_prologue(node->arg_sf_size, node->lhs->arg_sf_size);
+        generate_prologue(node->body, node->arg_sf_size, node->lhs->arg_sf_size);
         // generate(node->lhs); // function body
         generate(node->lhs, NO_EXPECTED_SIZE); // function body
         generate_epilogue(cur_arg_count, cur_return_size, node->loc);
         return cur_return_size;
     } case ND_FUNC_CALL: {
         Node **arg = node->body;
-        long arg_count = 0;
+        long arg_reg_count = 0;
         printf("push r0\n");
         int before = set_regstack(ast_min);
         while (*arg) {
             Node *a = *arg;
+            int arg_size = (a && a->valtype) ? a->valtype->size : 2;
+            if (arg_size != 1 && arg_size != 2) {
+                error_at(a ? a->loc : node->loc, "Invalid argument size: %d", arg_size);
+            }
+            // Align 16-bit args to even register boundary
+            if (arg_size == 2 && (nxt_regstack_top % 2) != 0) {
+                push_regstack(1); // padding register
+                arg_reg_count += 1;
+            }
             if (nxt_regstack_top % 2 == 0) {
                 printf("push r%d\n", nxt_regstack_top);
             }
-            // generate(a);
-            generate(a, 1/*絶対に直せ！！！！！！！！*/); // 引数を評価してregstackに積む
+            generate(a, arg_size); // 引数を評価してregstackに積む
             arg++;
-            arg_count++;
+            arg_reg_count += arg_size;
         }
-        for (int i = arg_count + ast_min; i < caller_max + 1; i++) {
+        for (int i = arg_reg_count + ast_min; i < caller_max + 1; i++) {
             if ((i % 2) == 0) {
                 printf("push r%d\n", i);
             }
         }
         printf("calr %s\n", node->name);
-        for (int i = (caller_max > arg_count) ? caller_max : arg_count; \
+        for (int i = (caller_max > arg_reg_count) ? caller_max : arg_reg_count; \
             ast_min <= i; i--) {
             if ((i % 2) == 0) {
                 printf("pop r%d\n", i);
             }
         }
         set_regstack(before);
-        printf("mov r%d,r0\npop r0\n", push_regstack(1));
-        return node->valtype->size;
-    } case ND_BREAK: {
+
+        int ret_size = (node->valtype) ? node->valtype->size : 2;
+        if (ret_size == 1) {
+            printf("mov r%d,r0\npop r0\n", push_regstack(1));
+        } else if (ret_size == 2) {
+            int dst = push_regstack(2);
+            printf("mov r%d,r0\nmov r%d,r1\npop r0\n", dst, dst + 1);
+        } else {
+            error_at(node->loc, "Invalid return size: %d", ret_size);
+        }
+        return ret_size;    } case ND_BREAK: {
         printf("jr %s\n", get_break_label());
         return 0;
     } case ND_ADDR: {

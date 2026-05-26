@@ -71,9 +71,19 @@ Node *toplevel(char *l) {
     if (consume_la("(", &loc)) {
         Node **nv = calloc(1, sizeof(Node**));
         long arg_count = 0;
+        long arg_reg_count = 0;
         new_scope();
         while (!consume(")", &loc)) {
             Node *arg = expr(loc);
+            int arg_size = (arg && arg->valtype) ? arg->valtype->size : 2;
+            if (arg_size != 1 && arg_size != 2) {
+                error_at(loc, "Invalid argument size: %d", arg_size);
+            }
+            // r2 is even, so odd reg count means odd register index
+            if (arg_size == 2 && (arg_reg_count % 2) != 0) {
+                arg_reg_count += 1; // padding to even register boundary
+            }
+            arg_reg_count += arg_size;
             nv = nodevec_push(nv, arg_count++, arg);
             if (!consume(",", &loc)) {
                 expect(")", &loc);
@@ -81,7 +91,7 @@ Node *toplevel(char *l) {
             }
         }
         add_function(tok, type);
-        Node *node = new_func_node(ND_FUNC_DEF, name, nv, stmt(loc), arg_count, type, loc);
+        Node *node = new_func_node(ND_FUNC_DEF, name, nv, stmt(loc), arg_reg_count, type, loc);
         end_scope();
         return node;
     } else {

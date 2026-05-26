@@ -48,6 +48,7 @@ if __name__ == "__main__":
     tf.test_e2e("char main(){return ~(((0b11111111 & 0b11000011) | 0b00001111) ^ 0b00111100);}", 0b00001100, verbose=True)
     tf.test_e2e("int main(){return 1919 + 4545;}", 6464) # 数値に特に深い意味はない
     tf.test_e2e("int main(){int a = 1234; int b = 5678; return b - a;}", 4444) # 16-bit integer subtraction
+    tf.test_e2e("int add(char a, int b){int aa = a;return aa + b;}int main(){char a = 107; int b = 1032; return add(a, b);}", 1139, verbose=True)
     tf.test_e2e("char main(){char a=3;return a+2;}", 5)
     tf.test_e2e("char main(){char a=2;char b=3;return a * b;}", 6)
     tf.test_e2e("char main(){char a=1;char b=2;char c=3;return a + b * c;}", 7)
@@ -69,7 +70,7 @@ if __name__ == "__main__":
     tf.test_e2e("char [[address = 0x00]] b;char a;char addi(char s){a = a + s;return a;}char main(){a = 0;for(char i = 0;i < 254;i=i+1){while(addi(3) < 20){b = b;}}return 21;}", 21)
     tf.test_e2e("char main(){char a = 3;char *b = &a;return *b;}", 3, verbose=True)
     tf.test_e2e("int main(){int a = 1155; int *b = &a; int **c = &b; return **c;}", 1155)
-    # tf.test_e2e("char main(){char a = 3;char *b = &a;*b = 5;return a;}", 5)
+    tf.test_e2e("char main(){char a = 3;char *b = &a;*b = 5;return a;}", 5)
 
 
     print()

@@ -44,7 +44,7 @@ int gen_i8(Node *node);
 int gen_i16(Node *node);
 int cast_i8_to_i16();
 int cast_i16_to_i8();
-void generate_prologue(long arg_count, long local_var_count);
+void generate_prologue(Node **args, long arg_reg_count, long local_var_count);
 void generate_epilogue(long arg_count, int size, char *loc);
 
 #endif // MINCC_CODEGEN_H
