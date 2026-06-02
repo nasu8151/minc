@@ -35,9 +35,10 @@ int main() {
     token = tokenize(user_input);
 
     // crt0
+    printf("mvi r14,0\n");
     printf("mvi r15,0\n");
-    printf("call __on_entry\n");
-    printf("call main\n");
+    printf("calr __on_entry\n");
+    printf("calr main\n");
     printf("push r0\n");
     printf("halt\n");
     program();

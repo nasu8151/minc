@@ -30,13 +30,27 @@ Node *toplevel(char *l) {
     Type_t *type = calloc(1, sizeof(Type_t));
     type->size = -1;
     type->type = TY_INT;
-    if (consume_la("uint8_t", &loc) || consume_la("int", &loc) || consume_la("char", &loc)) {
-        type->size = 1;
+    if (consume_la("uint8_t", &loc) || consume_la("char", &loc)) {
+        type->size = 1; // Currently uint8_t, int and char mean the same (1 byte int) type.
+    } else if (consume_la("int", &loc)) {
+        type->size = 2;
     } else if (consume_la("void", &loc)) {
-        type->size = 0;
+        type->size = 0; // void type has size 0
     } else {
-        error_at(loc, "Type specifier expected for global variable and function: %.*s", token->len, token->str);
+        // Considers reference to variable or function if there is no type specifier
     }
+    Type_t *cur = type;
+    while (consume_la("*", &loc)) {
+        Type_t *new_ptr = calloc(1, sizeof(Type_t));
+        if (!new_ptr) {
+            error("Memory allocation failed");
+        }
+        new_ptr->type = TY_PTR;
+        new_ptr->size = PTR_SIZE;
+        new_ptr->ptr_to = cur;
+        cur = new_ptr;
+    }
+    type = cur;
     long address = -1;
     if (consume_la("[", &loc)) {
         expect("[", &loc);
@@ -51,38 +65,40 @@ Node *toplevel(char *l) {
         }
     }
 
-    Type_t *cur = type;
-    while (consume_la("*", &loc)) {
-        cur->type = TY_PTR;
-        cur->size = PTR_SIZE;
-        cur->ptr_to = calloc(1, sizeof(Type_t));
-        cur = cur->ptr_to;
-    }
-
     Token *tok = token;
     char *name = expect_ident(&loc);
 
     if (consume_la("(", &loc)) {
         Node **nv = calloc(1, sizeof(Node**));
         long arg_count = 0;
+        long arg_reg_count = 0;
         new_scope();
         while (!consume(")", &loc)) {
             Node *arg = expr(loc);
+            int arg_size = (arg && arg->valtype) ? arg->valtype->size : 2;
+            if (arg_size != 1 && arg_size != 2) {
+                error_at(loc, "Invalid argument size: %d", arg_size);
+            }
+            // r2 is even, so odd reg count means odd register index
+            if (arg_size == 2 && (arg_reg_count % 2) != 0) {
+                arg_reg_count += 1; // padding to even register boundary
+            }
+            arg_reg_count += arg_size;
             nv = nodevec_push(nv, arg_count++, arg);
             if (!consume(",", &loc)) {
                 expect(")", &loc);
                 break;
             }
         }
-        add_function(tok);
-        Node *node = new_func_node(ND_FUNC_DEF, name, nv, stmt(loc), arg_count, type, loc);
+        add_function(tok, type);
+        Node *node = new_func_node(ND_FUNC_DEF, name, nv, stmt(loc), arg_reg_count, type, loc);
         end_scope();
         return node;
     } else {
         if (address != -1) {
-            add_global_var(tok, address);
+            add_global_var(tok, address, type);
         } else {
-            add_global_var(tok, head->var_alloc_ptr++);
+            add_global_var(tok, head->var_alloc_ptr++, type);
         }
         if (consume_la("=", &loc)) {
             Node *rhs = assign(loc);
@@ -150,7 +166,7 @@ Node *stmt(char *l) {
         node = new_node(ND_BREAK, NULL, NULL, loc);
     } else if (consume_la("{", &loc)) {
         new_scope();
-        node = new_block_node();
+        node = new_block_node(loc);
         Node **nv = calloc(1, sizeof(Node**));
         if (!nv) error("Memory allocation failed");
         size_t len = 0;
@@ -299,8 +315,10 @@ Node *ident(char *l) {
     Type_t *type = calloc(1, sizeof(Type_t));
     type->size = -1;
     type->type = TY_INT;
-    if (consume_la("uint8_t", &loc) || consume_la("int", &loc) || consume_la("char", &loc)) {
+    if (consume_la("uint8_t", &loc) || consume_la("char", &loc)) {
         type->size = 1; // Currently uint8_t, int and char mean the same (1 byte int) type.
+    } else if (consume_la("int", &loc)) {
+        type->size = 2;
     } else if (consume_la("void", &loc)) {
         type->size = 0; // void type has size 0
     } else {
@@ -308,13 +326,14 @@ Node *ident(char *l) {
     }
     Type_t *cur = type;
     while (consume_la("*", &loc)) {
-        cur = calloc(1, sizeof(Type_t));
-        if (!cur) {
+        Type_t *new_ptr = calloc(1, sizeof(Type_t));
+        if (!new_ptr) {
             error("Memory allocation failed");
         }
-        cur->type = TY_PTR;
-        cur->size = PTR_SIZE;
-        cur->ptr_to = type;
+        new_ptr->type = TY_PTR;
+        new_ptr->size = PTR_SIZE;
+        new_ptr->ptr_to = cur;
+        cur = new_ptr;
     }
     type = cur;
     Ident_Name *name = find_name(token);
@@ -333,18 +352,18 @@ Node *ident(char *l) {
                 break;
             }
         }
-        return new_func_node(ND_FUNC_CALL, var_name, args, NULL, (long) argnum, type, loc);
+        return new_func_node(ND_FUNC_CALL, var_name, args, NULL, (long) argnum, name->valtype, loc);
     }
     if (type->size == -1 && name) {
         if (name->type == VAR_GLOBAL_STATIC) {
             fprintf(stderr, "Found global variable: %.*s at address %ld\n", (int)tok->len, tok->str, name->address);
-            return new_ident_node(ND_GLOBAL_VAR, var_name, name->address, type, loc);
+            return new_ident_node(ND_GLOBAL_VAR, var_name, name->address, name->valtype, loc);
         } else if (name->type == VAR_LOCAL) {
             fprintf(stderr, "Found variable: %.*s at offset %ld\n", (int)tok->len, tok->str, name->offset);
-            return new_ident_node(ND_LOCAL_VAR, var_name, name->offset, type, loc);
+            return new_ident_node(ND_LOCAL_VAR, var_name, name->offset, name->valtype, loc);
         }
     } else if (type->size > 0) {
-        add_local_var(tok);
+        add_local_var(tok, type);
         fprintf(stderr, "Added local variable: %.*s at offset %ld\n", (int)tok->len, tok->str, current->var_tail->offset);
         return new_ident_node(ND_LOCAL_VAR, var_name, current->var_tail->offset, type, loc);
     }
@@ -362,7 +381,15 @@ Node *unary(char *l) {
     } else if (consume_la("&", &loc)){
         return new_node(ND_ADDR, unary(loc), NULL, loc);
     } else if (consume_la("*", &loc)){
-        return new_node(ND_DEREF, unary(loc), NULL, loc);
+        Node *operand = unary(loc);
+
+        if (!operand || !operand->valtype || operand->valtype->type != TY_PTR) {
+            error_at(loc, "Cannot dereference non-pointer type");
+        }
+
+        Node *node = new_node(ND_DEREF, operand, NULL, loc);
+        node->valtype = operand->valtype->ptr_to;
+        return node;
     } else {
         return primary(loc);
     }
@@ -389,12 +416,12 @@ long end_scope() {
         if (!tail->parent) {
             error("Cannot end global scope");
         }
-        long cur_max_vars_count = count_local_vars();
-        if (tail->max_var_count < cur_max_vars_count) {
-            tail->max_var_count = cur_max_vars_count;
+        long cur_max_vars_bytes = sizeof_local_vars();
+        if (tail->max_var_bytes < cur_max_vars_bytes) {
+            tail->max_var_bytes = cur_max_vars_bytes;
         }
-        if (tail->parent->max_var_count < tail->max_var_count) {
-            tail->parent->max_var_count = tail->max_var_count;
+        if (tail->parent->max_var_bytes < tail->max_var_bytes) {
+            tail->parent->max_var_bytes = tail->max_var_bytes;
         }
         Vars_List *old_tail = tail;
         tail = tail->parent;
@@ -404,5 +431,5 @@ long end_scope() {
     } else {
         error("No scope to end");
     }
-    return tail->max_var_count;
+    return tail->max_var_bytes;
 }

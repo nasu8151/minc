@@ -25,10 +25,14 @@ def test_e2e(code:str, expected_top:int, verbose:bool=False, porta = None):
     
     asm = subprocess.run("./target/mincc", input=code, shell=True, capture_output=True, text=True)
     if asm.returncode != 0:
+        if verbose:
+            print(f"Compiler output:\n{asm.stdout}")
         raise Exception(f"mincc failed with return code {asm.returncode}:\nStderr:\n{asm.stderr}")
     asm_code = asm.stdout
     inst = subprocess.run("./target/mincasm", input=asm_code, shell=True, capture_output=True, text=True)
     if inst.returncode != 0:
+        if verbose:
+            print(f"Assembly:\n{asm.stdout}")
         raise Exception(f"mincasm failed with return code {inst.returncode}:\nStderr:\n{inst.stderr}")
     with open("verilog/test.hex", "w") as f:
         f.write(inst.stdout)
@@ -55,15 +59,21 @@ def test_e2e(code:str, expected_top:int, verbose:bool=False, porta = None):
         sp_value  = int(sp_str.split(":")[1].strip(), 16)
     except ValueError as e:
         print(f"[FAIL] Verilog simulation failed: TOP:{top_str.split(":")[1].strip()}")
+        print(f"Assembly output:\n{asm_code}")
         print(f"Verilog output:\n{output}")
         raise e
-    if porta is not None:
-        port_a_value = int(porta_str[0].split(": ")[1], 16)
-        assert port_a_value == (porta & 0xff), f"""[FAIL] Expected PORTA: {porta}, but got: {port_a_value} """
-        print(f"""[OK] E2E test for code "{code}" => PORTA: {port_a_value} """)
-    assert top_value == (expected_top & 0xff), f"""[FAIL] Expected TOP: {expected_top}, but got: {top_value} """
-    print(f"""[OK] E2E test for code "{code}" => TOP: {top_value}, SP: {sp_value}""")
-    assert sp_value == 255, f"[FAIL] The stack's symmetry is broken. SP: {sp_value}"
+    try:
+        if porta is not None:
+            port_a_value = int(porta_str[0].split(": ")[1], 16)
+            assert port_a_value == (porta & 0xff), f"""[FAIL] Expected PORTA: {porta}, but got: {port_a_value} """
+            print(f"""[OK] E2E test for code "{code}" => PORTA: {port_a_value} """)
+        assert top_value == (expected_top), f"""[FAIL] Expected TOP: {expected_top}, but got: {top_value} """
+        assert sp_value == 65534, f"[FAIL] The stack's symmetry is broken. SP: {sp_value}"
+        print(f"""[OK] E2E test for code "{code}" => TOP: {top_value}, SP: {sp_value}""")
+    except AssertionError as e:
+        print(f"Assembly output:\n{asm_code}")
+        # subprocess.run("gtkwave minc_tb.vcd --rcvar 'fontname_signals Monospace 17' --rcvar 'fontname_waves Monospace 16'", cwd="./verilog", shell=True)
+        raise e
 
 if __name__ == "__main__":
     expect("""echo "Hello World!" """, "Hello World!")

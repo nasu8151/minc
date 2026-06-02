@@ -1,78 +1,61 @@
+#include <ctype.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <ctype.h>
-#include <stdint.h>
 
-int line_num;
-char line_to_assemble[256];
+#define MAX_LINE 512
 
-typedef struct insttype {
-    const char *name;
-    int opcode;
-} InstType;
+typedef enum {
+    FIX_IMM8,
+    FIX_REL12
+} FixKind;
 
-int find_opcode(const char *inst_name, const InstType *inst_dict, size_t dict_size) {
-    for (size_t i = 0; i < dict_size; i++) {
-        if (strcmp(inst_name, inst_dict[i].name) == 0) {
-            return inst_dict[i].opcode;
-        }
-    }
-    return -1; // Not found
+typedef struct {
+    char *name;
+    int address;
+} Symbol;
+
+typedef struct {
+    int index;
+    char *name;
+    int line_num;
+    FixKind kind;
+    uint8_t reg_nibble;
+    uint8_t op_nibble;
+} Fixup;
+
+typedef struct {
+    uint16_t *data;
+    size_t size;
+    size_t cap;
+} CodeVec;
+
+typedef struct {
+    Symbol *data;
+    size_t size;
+    size_t cap;
+} SymbolVec;
+
+typedef struct {
+    Fixup *data;
+    size_t size;
+    size_t cap;
+} FixupVec;
+
+static int g_line_num;
+static char g_line[MAX_LINE];
+
+static void die(const char *msg) {
+    fprintf(stderr, "Error: %s\nin line %d\n\"%s\"\n", msg, g_line_num, g_line);
+    exit(EXIT_FAILURE);
 }
 
-int is_in_array(const char *inst, const char **inst_array, size_t array_size) {
-    for (size_t i = 0; i < array_size; i++) {
-        if (strcmp(inst, inst_array[i]) == 0) {
-            return 1; // Found
-        }
-    }
-    return 0; // Not found
+static void die_fmt(const char *prefix, const char *arg) {
+    fprintf(stderr, "Error: %s '%s'\nin line %d\n\"%s\"\n", prefix, arg, g_line_num, g_line);
+    exit(EXIT_FAILURE);
 }
 
-int check_register_range(int reg) {
-    if (reg < 0 || reg > 15) {
-        fprintf(stderr, "Error: Register out of range: r%d\n\
-                         in line %d\n\
-                         \"%s\"", reg, line_num, line_to_assemble);
-        return 0; // Out of range
-    }
-    return 1; // In range
-}
-
-int check_immediate_range(int imm) {
-    if (imm < -128 || imm > 255) {
-        fprintf(stderr, "Error: Immediate value out of range: %d\n\
-                         in line %d\n\
-                         \"%s\"", imm, line_num, line_to_assemble);
-        return 0; // Out of range
-    }
-    return 1; // In range
-}
-
-int check_long_addr_range(int addr) {
-    if (addr < -2048 || addr > 2047) {
-        fprintf(stderr, "Error: Long address value out of range: %d\n\
-                         in line %d\n\
-                         \"%s\"", addr, line_num, line_to_assemble);
-        return 0; // Out of range
-    }
-    return 1; // In range
-}
-
-
-char *find_comma(char *str, char *inst) {
-    char *comma = strchr(str, ',');
-    if (comma == NULL) {
-        fprintf(stderr, "Error: Expected two arguments in instruction '%s'\n\
-                         in line %d\n\
-                         \"%s\"", inst, line_num, line_to_assemble);
-        return NULL;
-    }
-    return comma;
-}
-
-// simple strdup fallback for strict C environments
 static char *dupstr(const char *s) {
     size_t n = strlen(s) + 1;
     char *p = (char *)malloc(n);
@@ -84,95 +67,68 @@ static char *dupstr(const char *s) {
     return p;
 }
 
-typedef struct {
-    char *name;
-    int address; // instruction index
-} Symbol;
-
-typedef struct {
-    int index;    // opcode index to patch
-    char *name;   // label to resolve
-    int line_num;
-} Fixup;
-
-typedef struct {
-    uint16_t *data;
-    size_t size;
-    size_t cap;
-} CodeVec;
-
-static void codevec_init(CodeVec *v) {
-    v->data = NULL; v->size = 0; v->cap = 0;
-}
-static int codevec_push(CodeVec *v, uint16_t word) {
+static void codevec_push(CodeVec *v, uint16_t x) {
     if (v->size == v->cap) {
-        size_t ncap = v->cap ? v->cap * 2 : 64;
+        size_t ncap = v->cap ? v->cap * 2 : 128;
         uint16_t *nd = (uint16_t *)realloc(v->data, ncap * sizeof(uint16_t));
-        if (!nd) return 0;
-        v->data = nd; v->cap = ncap;
+        if (!nd) {
+            fprintf(stderr, "Error: out of memory\n");
+            exit(EXIT_FAILURE);
+        }
+        v->data = nd;
+        v->cap = ncap;
     }
-    v->data[v->size++] = word;
-    return 1;
+    v->data[v->size++] = x;
 }
 
-typedef struct {
-    Symbol *syms; size_t syms_size; size_t syms_cap;
-    Fixup  *fix;  size_t fix_size;  size_t fix_cap;
-} LinkState;
-
-static void ls_init(LinkState *ls) {
-    ls->syms = NULL; ls->syms_size = ls->syms_cap = 0;
-    ls->fix  = NULL; ls->fix_size  = ls->fix_cap  = 0;
-}
-
-static int add_symbol(LinkState *ls, const char *name, int addr) {
-    // check duplicate
-    for (size_t i = 0; i < ls->syms_size; i++) {
-        if (strcmp(ls->syms[i].name, name) == 0) {
-            fprintf(stderr, "Error: Duplicate label '%s'\n\
-                         in line %d\n\
-                         \"%s\"", name, line_num, line_to_assemble);
-            return 0;
+static void symbolvec_push(SymbolVec *v, const char *name, int address) {
+    for (size_t i = 0; i < v->size; i++) {
+        if (strcmp(v->data[i].name, name) == 0) {
+            die_fmt("Duplicate label", name);
         }
     }
-    if (ls->syms_size == ls->syms_cap) {
-        size_t ncap = ls->syms_cap ? ls->syms_cap * 2 : 64;
-        Symbol *ns = (Symbol *)realloc(ls->syms, ncap * sizeof(Symbol));
-        if (!ns) return 0;
-        ls->syms = ns; ls->syms_cap = ncap;
+    if (v->size == v->cap) {
+        size_t ncap = v->cap ? v->cap * 2 : 64;
+        Symbol *nd = (Symbol *)realloc(v->data, ncap * sizeof(Symbol));
+        if (!nd) {
+            fprintf(stderr, "Error: out of memory\n");
+            exit(EXIT_FAILURE);
+        }
+        v->data = nd;
+        v->cap = ncap;
     }
-    ls->syms[ls->syms_size].name = dupstr(name);
-    ls->syms[ls->syms_size].address = addr;
-    ls->syms_size++;
-    return 1;
+    v->data[v->size].name = dupstr(name);
+    v->data[v->size].address = address;
+    v->size++;
 }
 
-static int find_symbol(LinkState *ls, const char *name) {
-    for (size_t i = 0; i < ls->syms_size; i++) {
-        if (strcmp(ls->syms[i].name, name) == 0) return ls->syms[i].address;
+static int symbol_find(const SymbolVec *v, const char *name) {
+    for (size_t i = 0; i < v->size; i++) {
+        if (strcmp(v->data[i].name, name) == 0) {
+            return v->data[i].address;
+        }
     }
     return -1;
 }
 
-static int add_fixup(LinkState *ls, int index, const char *name, int line_num) {
-    if (ls->fix_size == ls->fix_cap) {
-        size_t ncap = ls->fix_cap ? ls->fix_cap * 2 : 64;
-        Fixup *nf = (Fixup *)realloc(ls->fix, ncap * sizeof(Fixup));
-        if (!nf) return 0;
-        ls->fix = nf; ls->fix_cap = ncap;
+static void fixupvec_push(FixupVec *v, int index, const char *name, int line_num, FixKind kind, uint8_t reg_nibble, uint8_t op_nibble) {
+    if (v->size == v->cap) {
+        size_t ncap = v->cap ? v->cap * 2 : 64;
+        Fixup *nd = (Fixup *)realloc(v->data, ncap * sizeof(Fixup));
+        if (!nd) {
+            fprintf(stderr, "Error: out of memory\n");
+            exit(EXIT_FAILURE);
+        }
+        v->data = nd;
+        v->cap = ncap;
     }
-    ls->fix[ls->fix_size].index = index;
-    ls->fix[ls->fix_size].name = dupstr(name);
-    ls->fix[ls->fix_size].line_num = line_num;
-    ls->fix_size++;
-    return 1;
-}
-
-static void rtrim(char *s) {
-    size_t n = strlen(s);
-    while (n > 0 && (s[n-1] == ' ' || s[n-1] == '\t')) {
-        s[--n] = '\0';
-    }
+    v->data[v->size].index = index;
+    v->data[v->size].name = dupstr(name);
+    v->data[v->size].line_num = line_num;
+    v->data[v->size].kind = kind;
+    v->data[v->size].reg_nibble = reg_nibble;
+    v->data[v->size].op_nibble = op_nibble;
+    v->size++;
 }
 
 static char *lskip(char *s) {
@@ -180,294 +136,338 @@ static char *lskip(char *s) {
     return s;
 }
 
+static void rtrim(char *s) {
+    size_t n = strlen(s);
+    while (n > 0 && (s[n - 1] == ' ' || s[n - 1] == '\t')) {
+        s[--n] = '\0';
+    }
+}
+
+static void strip_comment(char *s) {
+    for (size_t i = 0; s[i]; i++) {
+        if (s[i] == ';') {
+            s[i] = '\0';
+            return;
+        }
+    }
+}
+
 static int is_valid_label_name(const char *s) {
-    if (!(*s == '_' || isalpha((unsigned char)*s))) return 0;
+    if (!(isalpha((unsigned char)s[0]) || s[0] == '_')) {
+        return 0;
+    }
     s++;
     while (*s) {
-        if (!(*s == '_' || isalnum((unsigned char)*s))) return 0;
+        if (!(isalnum((unsigned char)*s) || *s == '_')) {
+            return 0;
+        }
         s++;
     }
     return 1;
 }
 
-// Process optional leading label: updates *pp to start of instruction part.
-// Returns 1 if the line is only a label (should skip instruction parsing),
-// 0 if instruction follows (continue parsing), and -1 on error.
-static int process_label(char **pp, LinkState *ls, int instr_index) {
-    char *p = *pp;
-    char *colon = strchr(p, ':');
-    if (colon) {
-        char *ws = p;
-        while (*ws && *ws != ' ' && *ws != '\t') ws++;
-        if (colon < ws) {
-            char labbuf[128];
-            size_t len = (size_t)(colon - p);
-            if (len >= sizeof(labbuf)) {
-                fprintf(stderr, "Error: Label too long\n\
-                         in line %d\n\
-                         \"%s\"", line_num, line_to_assemble);
-                return -1;
-            }
-            memcpy(labbuf, p, len);
-            labbuf[len] = '\0';
-            if (!is_valid_label_name(labbuf)) {
-                fprintf(stderr, "Error: Invalid label name '%s'\n\
-                         in line %d\n\
-                         \"%s\"", labbuf, line_num, line_to_assemble);
-                return -1;
-            }
-            if (!add_symbol(ls, labbuf, instr_index)) {
-                return -1;
-            }
-            p = lskip(colon + 1);
-            *pp = p;
-            if (*p == '\0') return 1; // label-only line
-        }
+static int parse_reg(const char *tok) {
+    if (!(tok[0] == 'r' || tok[0] == 'R')) {
+        die_fmt("Expected register", tok);
     }
-    return 0;
+    char *end = NULL;
+    long v = strtol(tok + 1, &end, 10);
+    if (*end != '\0' || v < 0 || v > 15) {
+        die_fmt("Register out of range", tok);
+    }
+    return (int)v;
 }
 
-static uint16_t int2imm8(int imm) {
-    uint16_t i = imm & 0xFF;
-    return (uint16_t)(((i & 0x00F0) << 4) | (i & 0x000F));
+static int parse_int(const char *tok, int min_v, int max_v) {
+    char *end = NULL;
+    long v = strtol(tok, &end, 0);
+    if (*end != '\0') {
+        die_fmt("Expected integer", tok);
+    }
+    if (v < min_v || v > max_v) {
+        die_fmt("Immediate out of range", tok);
+    }
+    return (int)v;
 }
 
-static uint16_t int2j12(int imm) {
-    uint16_t i = imm & 0xFFF;
-    return (uint16_t)(int2imm8(i & 0x00FF) | ((i & 0x0F00) >> 4));
+static uint16_t enc_op6_rr(uint8_t op6, uint8_t rd, uint8_t rs) {
+    return (uint16_t)(((uint16_t)op6 << 10) | ((uint16_t)rd << 4) | rs);
 }
 
-int main(){
-    const char *insts_2ops[] = { "mov", "add", "sub", "lt", "mul", "or", "and", "xor" };
-    const char *insts_1op_rs[]  = { "push", "sts" };
-    const char *insts_1op_rd[]  = { "pop", "lds" };
-    const char *insts_op_imm[] = { "mvi",  "ldm" };
-    const char *insts_imm_op[] = { "stm" };
-    const char *insts_addr[] = { "call", "jr" };
-    const char *insts_op_addr[] = { "jz", "jnz" };
-    const char *insts_noopr[] = { "ret", "halt" };
-    const InstType inst_dict[] = {
-        {"mov",  0x0000}, {"add", 0x0100}, {"sub", 0x0200}, {"lt", 0x0300}, {"mul", 0x0400}, {"or", 0x0500}, {"and", 0x0600}, {"xor", 0x0700},
-        {"push", 0x0800}, {"sts", 0x0900}, {"pop", 0x0A00}, {"lds", 0x0B00}, 
-        {"ret",  0x0C00}, 
+static uint16_t enc_op6_rs(uint8_t op6, uint8_t rs) {
+    return (uint16_t)(((uint16_t)op6 << 10) | rs);
+}
 
-        {"mvi",  0x1000}, {"stm", 0x2000}, {"ldm", 0x3000}, {"jz", 0x4000}, {"call", 0x5000}, {"jnz", 0x6000}, {"jr", 0x7000}, {"halt", 0x7FFF}
-    };
+static uint16_t enc_op6_rd(uint8_t op6, uint8_t rd) {
+    return (uint16_t)(((uint16_t)op6 << 10) | ((uint16_t)rd << 4));
+}
 
-    CodeVec code;
-    LinkState ls;
-    codevec_init(&code);
-    ls_init(&ls);
-    int instr_index = 0; // counts only real instructions
-    line_num = 0;
+static uint16_t enc_op4_reg_imm8(uint8_t op4, uint8_t reg, uint8_t imm8) {
+    return (uint16_t)(((uint16_t)op4 << 12) | ((uint16_t)(imm8 >> 4) << 8) | ((uint16_t)reg << 4) | (imm8 & 0x0F));
+}
 
-    while (fgets(line_to_assemble, sizeof(line_to_assemble), stdin)) {
-        line_num++;
-        char *cr_lf = strpbrk(line_to_assemble, "\r\n"); //改行コードを排除
-        if (cr_lf) {
-            *cr_lf = '\0';
+static uint16_t enc_op4_rel12(uint8_t op4, uint16_t rel12) {
+    uint8_t n_low = (uint8_t)(rel12 & 0x0F);
+    uint8_t n_mid = (uint8_t)((rel12 >> 4) & 0x0F);
+    uint8_t n_hi = (uint8_t)((rel12 >> 8) & 0x0F);
+    return (uint16_t)(((uint16_t)op4 << 12) | ((uint16_t)n_mid << 8) | ((uint16_t)n_hi << 4) | n_low);
+}
+
+static int parse_memref(char *tok, int *is_x, int *imm8) {
+    if ((tok[0] == 'X' || tok[0] == 'x' || tok[0] == 'Y' || tok[0] == 'y') && (tok[1] == '+' || tok[1] == '-')) {
+        *is_x = (tok[0] == 'X' || tok[0] == 'x');
+        *imm8 = parse_int(tok + 1, -128, 127);
+        return 1;
+    }
+    *is_x = 0;
+    *imm8 = parse_int(tok, -128, 127);
+    return 1;
+}
+
+static void to_lower_str(char *s) {
+    while (*s) {
+        *s = (char)tolower((unsigned char)*s);
+        s++;
+    }
+}
+
+static char *next_token(char **pctx) {
+    char *p = lskip(*pctx);
+    if (*p == '\0') {
+        *pctx = p;
+        return NULL;
+    }
+    char *start = p;
+    while (*p && *p != ' ' && *p != '\t' && *p != ',') {
+        p++;
+    }
+    if (*p == ',') {
+        *p = '\0';
+        p++;
+        while (*p == ' ' || *p == '\t') {
+            p++;
         }
-        // Skip leading whitespace and ignore empty/comment lines
-        char *p = lskip(line_to_assemble);
-        if (*p == '\0') continue;
-        if (*p == ';' || *p == '#') continue;
+    } else if (*p) {
+        *p = '\0';
+        p++;
+    }
+    *pctx = p;
+    return start;
+}
 
-        // handle label via helper
-        {
-            int lr = process_label(&p, &ls, instr_index);
-            if (lr < 0) return EXIT_FAILURE;
-            if (lr > 0) continue; // label-only line
+int main(void) {
+    CodeVec code = {0};
+    SymbolVec symbols = {0};
+    FixupVec fixups = {0};
+
+    int instr_index = 0;
+    g_line_num = 0;
+
+    while (fgets(g_line, sizeof(g_line), stdin)) {
+        g_line_num++;
+        char *crlf = strpbrk(g_line, "\r\n");
+        if (crlf) {
+            *crlf = '\0';
         }
 
-        // parse instruction from p
-        rtrim(p);
-        char *first_space = strchr(p, ' ');
-        char instruction[32] = {'\0'};
-        if (first_space == NULL) {
-            strncpy(instruction, p, sizeof(instruction) - 1);
-            instruction[sizeof(instruction) - 1] = '\0';
-        } else {
-            size_t n = (size_t)(first_space - p);
-            if (n >= sizeof(instruction)) n = sizeof(instruction) - 1;
-            memcpy(instruction, p, n);
-            instruction[n] = '\0';
+        strip_comment(g_line);
+        rtrim(g_line);
+
+        char *p = lskip(g_line);
+        if (*p == '\0') {
+            continue;
         }
 
-        int opcode = find_opcode(instruction, inst_dict, sizeof(inst_dict)/sizeof(inst_dict[0]));
-        if (opcode == -1) {
-            fprintf(stderr, "Error: Unknown instruction '%s'\n\
-                         in line %d\n\
-                         \"%s\"", instruction, line_num, line_to_assemble);
-            return EXIT_FAILURE;
-        }
-
-        if (is_in_array(instruction, insts_2ops, sizeof(insts_2ops)/sizeof(insts_2ops[0]))) {
-            // Handle 2-operand instructions
-            char *comma = find_comma(first_space + 1, instruction);
-            if (comma == NULL) return EXIT_FAILURE;
-            char* operand1 = first_space + 1;
-            char* operand2 = comma + 1;
-            int reg1 = strtol(operand1 + 1, NULL, 10);
-            int reg2 = strtol(operand2 + 1, NULL, 10);
-            if (!check_register_range(reg1) || !check_register_range(reg2)) return EXIT_FAILURE;
-            opcode = opcode | (reg1 << 4) | reg2;
-        } else if (is_in_array(instruction, insts_1op_rd, sizeof(insts_1op_rd)/sizeof(insts_1op_rd[0]))){
-            // Handle 1-operand instructions
-            char* operand = first_space + 1;
-            int reg = strtol(operand + 1, NULL, 10);
-            opcode = opcode | (reg << 4);
-        } else if (is_in_array(instruction, insts_1op_rs, sizeof(insts_1op_rs)/sizeof(insts_1op_rs[0]))){
-            // Handle 1-operand instructions
-            char* operand = first_space + 1;
-            int reg = strtol(operand + 1, NULL, 10);
-            opcode = opcode | reg;
-        } else if (is_in_array(instruction, insts_op_imm, sizeof(insts_op_imm)/sizeof(insts_op_imm[0]))){
-            // Handle op-imm instructions
-            char *comma = find_comma(first_space + 1, instruction);
-            if (comma == NULL) return EXIT_FAILURE;
-            char* operand = first_space + 1;
-            char* immediate = comma + 1;
-            int reg = strtol(operand + 1, NULL, 10);
-            int imm = strtol(immediate, NULL, 0);
-            if (!check_immediate_range(imm) || !check_register_range(reg)) return EXIT_FAILURE;
-            opcode = opcode | (reg << 4) | int2imm8(imm);
-        } else if (is_in_array(instruction, insts_imm_op, sizeof(insts_imm_op)/sizeof(insts_imm_op[0]))){
-            // Handle imm-op instructions
-            char *comma = find_comma(first_space + 1, instruction);
-            if (comma == NULL) return EXIT_FAILURE;
-            char* immediate = first_space + 1;
-            char* operand = comma + 1;
-            int imm = strtol(immediate, NULL, 0);
-            int reg = strtol(operand + 1, NULL, 10);
-            if (!check_immediate_range(imm) || !check_register_range(reg)) return EXIT_FAILURE;
-            opcode = opcode | (reg << 4) | int2imm8(imm);
-        } else if (is_in_array(instruction, insts_noopr, sizeof(insts_noopr)/sizeof(insts_noopr[0]))){
-            // nothing
-        } else if (is_in_array(instruction, insts_addr, sizeof(insts_addr)/sizeof(insts_addr[0]))){
-            // If operand is label, create fixup; otherwise immediate numeric
-            char* address_str = first_space + 1;
-            address_str = lskip(address_str);
-            if (*address_str == '\0') {
-                fprintf(stderr, "Error: Missing address operand for '%s'\n\
-                         in line %d\n\
-                         \"%s\"", instruction, line_num, line_to_assemble);
-                return EXIT_FAILURE;
+        char *colon = strchr(p, ':');
+        if (colon) {
+            int token_has_space = 0;
+            for (char *q = p; q < colon; q++) {
+                if (*q == ' ' || *q == '\t') {
+                    token_has_space = 1;
+                    break;
+                }
             }
-            // decide label or number
-            if (*address_str == '_' || isalpha((unsigned char)*address_str)) {
-                // token until whitespace or end
-                char tok[128];
-                size_t ti = 0;
-                while (address_str[ti] && address_str[ti] != ' ' && address_str[ti] != '\t') {
-                    if (ti + 1 >= sizeof(tok)) {
-                        fprintf(stderr, "Error: Label too long\n\
-                         in line %d\n\
-                         \"%s\"", line_num, line_to_assemble);
-                        return EXIT_FAILURE;
-                    }
-                    tok[ti] = address_str[ti];
-                    ti++;
+            if (!token_has_space) {
+                *colon = '\0';
+                if (!is_valid_label_name(p)) {
+                    die_fmt("Invalid label", p);
                 }
-                tok[ti] = '\0';
-                if (!is_valid_label_name(tok)) {
-                    fprintf(stderr, "Error: Invalid label name '%s'\n\
-                         in line %d\n\
-                         \"%s\"", tok, line_num, line_to_assemble);
-                    return EXIT_FAILURE;
+                symbolvec_push(&symbols, p, instr_index);
+                p = lskip(colon + 1);
+                if (*p == '\0') {
+                    continue;
                 }
-                // emit placeholder; patch later
-                if (!codevec_push(&code, (uint16_t)opcode)) {
-                    fprintf(stderr, "Error: out of memory\n");
-                    return EXIT_FAILURE;
-                }
-                if (!add_fixup(&ls, (int)(code.size - 1), tok, line_num)) return EXIT_FAILURE;
+            }
+        }
+
+        char *ctx = p;
+        char *inst = next_token(&ctx);
+        if (!inst) {
+            continue;
+        }
+        to_lower_str(inst);
+
+        uint16_t word = 0;
+        int emit = 1;
+
+        if (!strcmp(inst, "mov") || !strcmp(inst, "or") || !strcmp(inst, "and") || !strcmp(inst, "xor") ||
+            !strcmp(inst, "add") || !strcmp(inst, "adc") || !strcmp(inst, "sub") || !strcmp(inst, "sbc") ||
+            !strcmp(inst, "lt") || !strcmp(inst, "ltc") || !strcmp(inst, "rr") || !strcmp(inst, "mul") || !strcmp(inst, "mulh")) {
+            uint8_t op6;
+            if (!strcmp(inst, "mov")) op6 = 0x00;
+            else if (!strcmp(inst, "or")) op6 = 0x01;
+            else if (!strcmp(inst, "and")) op6 = 0x02;
+            else if (!strcmp(inst, "xor")) op6 = 0x03;
+            else if (!strcmp(inst, "add")) op6 = 0x04;
+            else if (!strcmp(inst, "adc")) op6 = 0x05;
+            else if (!strcmp(inst, "sub")) op6 = 0x06;
+            else if (!strcmp(inst, "sbc")) op6 = 0x07;
+            else if (!strcmp(inst, "lt")) op6 = 0x08;
+            else if (!strcmp(inst, "ltc")) op6 = 0x09;
+            else if (!strcmp(inst, "rr")) op6 = 0x0A;
+            else if (!strcmp(inst, "mul")) op6 = 0x0E;
+            else op6 = 0x0F;
+
+            char *r0 = next_token(&ctx);
+            if (!r0) die("Missing first operand");
+            char *r1 = next_token(&ctx);
+            if (!r1) die("Missing second operand");
+
+            int rd = parse_reg(r0);
+            int rs = parse_reg(r1);
+            word = enc_op6_rr(op6, (uint8_t)rd, (uint8_t)rs);
+        } else if (!strcmp(inst, "stf") || !strcmp(inst, "clf")) {
+            uint8_t op6 = !strcmp(inst, "stf") ? 0x10 : 0x11;
+            char *imm = next_token(&ctx);
+            if (!imm) die("Missing immediate for stf/clf");
+            if (imm[0] == '#') {
+                imm++;
+            }
+            int c = parse_int(imm, 0, 1);
+            word = (uint16_t)(((uint16_t)op6 << 10) | (uint16_t)c);
+        // } else if (!strcmp(inst, "push") || !strcmp(inst, "sts")) {
+        //     uint8_t op6 = !strcmp(inst, "push") ? 0x1C : 0x1E;
+        //     char *r = next_token(&ctx);
+        //     if (!r) die("Missing operand");
+        //     int rs = parse_reg(r);
+        //     if (!strcmp(inst, "push") && ((rs & 1) != 0)) {
+        //         die_fmt("push requires even register", r);
+        //     }
+        //     word = enc_op6_rs(op6, (uint8_t)rs);
+        } else if (!strcmp(inst, "pop") || !strcmp(inst, "lds") || !strcmp(inst, "push") || !strcmp(inst, "sts")) {
+            uint8_t op6;
+            if (!strcmp(inst, "pop")) op6 = 0x1D;
+            else if (!strcmp(inst, "lds")) op6 = 0x1F;
+            else if (!strcmp(inst, "push")) op6 = 0x1C;
+            else op6 = 0x1E;
+            char *r = next_token(&ctx);
+            if (!r) die("Missing operand");
+            int rd = parse_reg(r);
+            if (!strcmp(inst, "pop") && ((rd & 1) != 0)) {
+                die_fmt("pop requires even register", r);
+            }
+            word = enc_op6_rd(op6, (uint8_t)rd);
+        } else if (!strcmp(inst, "ret")) {
+            word = 0x7410;
+        } else if (!strcmp(inst, "halt")) {
+            word = 0xFFFF;
+        } else if (!strcmp(inst, "mvi")) {
+            char *r = next_token(&ctx);
+            if (!r) die("Missing register");
+            char *imm = next_token(&ctx);
+            if (!imm) die("Missing immediate");
+            int rd = parse_reg(r);
+            int iv = parse_int(imm, -128, 255);
+            word = enc_op4_reg_imm8(0xC, (uint8_t)rd, (uint8_t)iv);
+        } else if (!strcmp(inst, "jz")) {
+            char *off = next_token(&ctx);
+            if (!off) die("Missing offset");
+            char *r = next_token(&ctx);
+            if (!r) die("Missing register");
+            int rs = parse_reg(r);
+
+            if (is_valid_label_name(off)) {
+                word = enc_op4_reg_imm8(0xD, (uint8_t)rs, 0);
+                codevec_push(&code, word);
+                fixupvec_push(&fixups, (int)(code.size - 1), off, g_line_num, FIX_IMM8, (uint8_t)rs, 0xD);
                 instr_index++;
-                continue; // next line
+                emit = 0;
             } else {
-                int address = strtol(address_str, NULL, 0);
-                if (!check_long_addr_range(address)) return EXIT_FAILURE;
-                opcode = opcode | int2j12(address);
+                int iv = parse_int(off, -128, 127);
+                word = enc_op4_reg_imm8(0xD, (uint8_t)rs, (uint8_t)iv);
             }
-        } else if (is_in_array(instruction, insts_op_addr, sizeof(insts_op_addr)/sizeof(insts_op_addr[0]))){
-            // Handle addr-op (jz, jnz): first is address (label or number), second is rs
-            char *comma = find_comma(first_space + 1, instruction);
-            if (comma == NULL) return EXIT_FAILURE;
-            char* immediate = first_space + 1;
-            char* operand = comma + 1;
-            int reg = strtol(operand + 1, NULL, 10);
-            if (!check_register_range(reg)) return EXIT_FAILURE;
-            char *address_str = lskip(immediate);
-            if (*address_str == '_' || isalpha((unsigned char)*address_str)) {
-                // parse label token
-                char tok[128];
-                size_t ti = 0;
-                while (address_str[ti] && address_str[ti] != ' ' && address_str[ti] != '\t' && address_str[ti] != ',') {
-                    if (ti + 1 >= sizeof(tok)) {
-                        fprintf(stderr, "Error: Label too long\n\
-                         in line %d\n\
-                         \"%s\"", line_num, line_to_assemble);
-                        return EXIT_FAILURE;
-                    }
-                    tok[ti] = address_str[ti];
-                    ti++;
-                }
-                tok[ti] = '\0';
-                if (!is_valid_label_name(tok)) {
-                    fprintf(stderr, "Error: Invalid label name '%s'\n\
-                         in line %d\n\
-                         \"%s\"", tok, line_num, line_to_assemble);
-                    return EXIT_FAILURE;
-                }
-                // emit opcode with rs set; address will be backpatched later
-                uint16_t word = (uint16_t)(opcode | (reg << 4));
-                if (!codevec_push(&code, word)) {
-                    fprintf(stderr, "Error: out of memory\n");
-                    return EXIT_FAILURE;
-                }
-                if (!add_fixup(&ls, (int)(code.size - 1), tok, line_num)) return EXIT_FAILURE;
+        } else if (!strcmp(inst, "calr") || !strcmp(inst, "jr")) {
+            uint8_t op4 = (!strcmp(inst, "jr")) ? 0xF : 0xE;
+            char *off = next_token(&ctx);
+            if (!off) die("Missing offset");
+
+            if (is_valid_label_name(off)) {
+                word = enc_op4_rel12(op4, 0);
+                codevec_push(&code, word);
+                fixupvec_push(&fixups, (int)(code.size - 1), off, g_line_num, FIX_REL12, 0, op4);
                 instr_index++;
-                continue;
+                emit = 0;
             } else {
-                int addr = strtol(address_str, NULL, 0);
-                if (!check_immediate_range(addr)) return EXIT_FAILURE;
-                if (!check_register_range(reg)) return EXIT_FAILURE;
-                opcode = opcode | (reg << 4) | int2imm8(addr);
+                int iv = parse_int(off, -2048, 2047);
+                word = enc_op4_rel12(op4, (uint16_t)iv);
             }
+        } else if (!strcmp(inst, "stm")) {
+            char *m = next_token(&ctx);
+            if (!m) die("Missing memory operand");
+            char *r = next_token(&ctx);
+            if (!r) die("Missing register operand");
+
+            int is_x = 0;
+            int iv = 0;
+            parse_memref(m, &is_x, &iv);
+            int rs = parse_reg(r);
+            word = enc_op4_reg_imm8(is_x ? 0x8 : 0xA, (uint8_t)rs, (uint8_t)iv);
+        } else if (!strcmp(inst, "ldm")) {
+            char *r = next_token(&ctx);
+            if (!r) die("Missing register operand");
+            char *m = next_token(&ctx);
+            if (!m) die("Missing memory operand");
+
+            int is_x = 0;
+            int iv = 0;
+            parse_memref(m, &is_x, &iv);
+            int rd = parse_reg(r);
+            word = enc_op4_reg_imm8(is_x ? 0x9 : 0xB, (uint8_t)rd, (uint8_t)iv);
         } else {
-            fprintf(stderr, "Error: Unhandled instruction type for '%s'\n\
-                         in line %d\n\
-                         \"%s\"", instruction, line_num, line_to_assemble);
-            return EXIT_FAILURE;
+            die_fmt("Unknown instruction", inst);
         }
 
-        if (!codevec_push(&code, (uint16_t)opcode)) {
-            fprintf(stderr, "Error: out of memory\n");
-            return EXIT_FAILURE;
+        if (emit) {
+            codevec_push(&code, word);
+            instr_index++;
         }
-        instr_index++;
     }
 
-    // resolve fixups
-    for (size_t i = 0; i < ls.fix_size; i++) {
-        Fixup *f = &ls.fix[i];
-        int addr = find_symbol(&ls, f->name);
-        if (addr < 0) {
-            fprintf(stderr, "Error: Undefined label '%s'\n", f->name);
-            return EXIT_FAILURE;
+    for (size_t i = 0; i < fixups.size; i++) {
+        Fixup *f = &fixups.data[i];
+        int tgt = symbol_find(&symbols, f->name);
+        if (tgt < 0) {
+            g_line_num = f->line_num;
+            snprintf(g_line, sizeof(g_line), "%s", f->name);
+            die_fmt("Undefined label", f->name);
         }
-        int ofs = (addr - f->index - 1);
-        if ((code.data[f->index] & 0xF000) == find_opcode("call", inst_dict, sizeof(inst_dict)/sizeof(inst_dict[0])) || 
-            (code.data[f->index] & 0xF000) == find_opcode("jr", inst_dict, sizeof(inst_dict)/sizeof(inst_dict[0]))) {
-            // keep top nibble and low nibble, set middle 8 bits with (addr<<4)
-            if (!check_long_addr_range(ofs)) return EXIT_FAILURE;
-            code.data[f->index] = (uint16_t)((code.data[f->index] & 0xF000) | int2j12(ofs));
+
+        int rel = tgt - (f->index + 1);
+        if (f->kind == FIX_IMM8) {
+            if (rel < -128 || rel > 127) {
+                g_line_num = f->line_num;
+                die("8-bit relative offset out of range");
+            }
+            code.data[f->index] = enc_op4_reg_imm8(f->op_nibble, f->reg_nibble, (uint8_t)rel);
         } else {
-            if (!check_immediate_range(ofs)) return EXIT_FAILURE;
-            code.data[f->index] = (uint16_t)((code.data[f->index] & 0xF0F0) | int2imm8(ofs));
+            if (rel < -2048 || rel > 2047) {
+                g_line_num = f->line_num;
+                die("12-bit relative offset out of range");
+            }
+            code.data[f->index] = enc_op4_rel12(f->op_nibble, (uint16_t)rel);
         }
     }
 
-    // output
     for (size_t i = 0; i < code.size; i++) {
         printf("%04X\n", code.data[i]);
     }
