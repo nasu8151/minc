@@ -47,11 +47,11 @@ if __name__ == "__main__":
     tf.test_e2e("char main(){return (2+2>=4)+(2+2>=5);}", 1)
     tf.test_e2e("char main(){return ~(((0b11111111 & 0b11000011) | 0b00001111) ^ 0b00111100);}", 0b00001100, verbose=True)
     tf.test_e2e("int main(){return 1919 + 4545;}", 6464) # 数値に特に深い意味はない
-    tf.test_e2e("int main(){int a = 1234; int b = 5678; return b - a;}", 4444) # 16-bit integer subtraction
-    tf.test_e2e("int add(char a, int b){int aa = a;return aa + b;}int main(){char a = 107; int b = 1032; return add(a, b);}", 1139, verbose=True)
     tf.test_e2e("char main(){char a=3;return a+2;}", 5)
     tf.test_e2e("char main(){char a=2;char b=3;return a * b;}", 6)
     tf.test_e2e("char main(){char a=1;char b=2;char c=3;return a + b * c;}", 7)
+    tf.test_e2e("int main(){int a = 1234; int b = 5678; return b - a;}", 4444) # 16-bit integer subtraction
+    tf.test_e2e("int add(char a, int b){int aa = a;return aa + b;}int main(){char a = 107; int b = 1032; return add(a, b);}", 1139, verbose=True)
     tf.test_e2e("char main(){char hoge =3;char fuga= hoge +2;if (fuga==5) return 42;return 0;}", 42)
     tf.test_e2e("char main(){char hoge=2; char fuga = 3;if (hoge != 0) if (hoge+fuga > 3) return 2;else return 0;}", 2)
     tf.test_e2e("char main(){char sum=0;\nfor(char i=1;i<5;i=i+1) sum=sum+i;\nreturn sum;}", 10)
