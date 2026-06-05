@@ -11,9 +11,9 @@ module minc (
     output logic [15:0] address,
     output logic [7:0]  data_out,
     output logic        we,
+    output logic        avma,
     input  logic [7:0]  data_in,
-    input  logic        wait_req,
-    input  logic        wait_rel
+    input  logic        wait_req
 );
 
     // PC, SP
@@ -23,7 +23,7 @@ module minc (
 
     logic [2:0] state;
 
-    logic wait_reg;
+    // logic wait_reg;
 
     // General purpose registers r0..r15 (8-bit)
     logic  [7:0]  regs [0:15]; /* synthesis syn_ramstyle = "distributed" */
@@ -95,8 +95,6 @@ module minc (
 
     logic [7:0]  alu_out;
     logic [15:0] pc_next;
-    // logic [14:0] sp_next;
-    logic        wait_reg_next;
 
     assign sp0 =    ((is_push || is_calr) && (state == `S_WB)) ? 1'b1 :
                     ((is_pop || is_ret) && (state == `S_DECEXEC)) ? 1'b1 : 1'b0;
@@ -144,13 +142,17 @@ module minc (
     // Write Enable
     assign we = (state == `S_WB && (is_push || is_calr)) || (state == `S_WB2 && (is_stm || is_push || is_calr));
 
+    // Varid Memory Access
+    assign avma = (state == `S_WB && is_mem_like) || (state == `S_WB2 && (is_mem_like));
+
+
     // Main sequential logic
     always_ff @(posedge clk) begin
         if (!reset_n) begin
             pc <= 16'h0000;
             sp <= 15'h0000;
             state <= `S_FETCH;
-            wait_reg <= 1'b0;
+            // wait_reg <= 1'b0;
             instr <= 16'h0000;
         end else begin
             case (state)
@@ -237,13 +239,8 @@ module minc (
                     else if (is_calr)
                         pc <= pc + simm12;
 
-                    if (wait_req)
-                        wait_reg <= 1'b1;
-                    if (wait_rel)
-                        wait_reg <= 1'b0;
-
-                    if (wait_reg || wait_req) begin
-                        state <= `S_WB;
+                    if (wait_req) begin
+                        state <= `S_WB2;
                     end else begin
                         state <= `S_FETCH;
                     end

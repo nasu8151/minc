@@ -16,8 +16,9 @@ module minc_tb;
     logic [7:0] data_in;
     logic [7:0] data_in_ram;
     logic       we;
-    logic        wait_req;
-    logic        wait_rel;
+    logic       wait_req;
+    logic       avma;
+    logic       wait_ma;
     integer i;
 
     wire ram_ce = address > 16'h000F ? 1'b1 : 1'b0; // RAM is enabled for addresses > 0x000F
@@ -35,9 +36,9 @@ module minc_tb;
         .address(address),
         .data_out(data_out),
         .we(we),
+        .avma(avma),
         .data_in(data_in),
-        .wait_req(wait_req),
-        .wait_rel(wait_rel)
+        .wait_req(wait_req)
     );
 
     ssram #(
@@ -92,21 +93,21 @@ module minc_tb;
     end
 
     `ifdef WAIT_TEST
-    parameter WAITp3 = 6;
-    logic [WAITp3:0] wait_sr;
-    assign wait_req = wait_sr[1];
-    assign wait_rel = wait_sr[WAITp3 - 1];
+    parameter WAITp4 = 8;
+    logic [WAITp4:0] wait_sr;
+    assign wait_req = (wait_sr[WAITp4-2:1] != 'b0) ? 1'b1 : 1'b0;
+    assign wait_ma = wait_sr[1];
     always_ff @(posedge clk or negedge reset_n) begin
         if (!reset_n) begin
             wait_sr <= 'b1;
         end else begin
-            if (address[15:3] == 13'b00001) begin
-                {wait_sr[0], wait_sr[WAITp3:1]} <= wait_sr;
+            if ((address[15:3] == 13'b00001) && avma) begin
+                {wait_sr[0], wait_sr[WAITp4:1]} <= wait_sr;
             end else
                 wait_sr <= 'b1;
         end
     end
-    assign data_in = (address == 16'h000D) ? 8'h01 : data_in_ram;
+    assign data_in = (address == 16'h000D) ? 8'h21 : data_in_ram;
     `else
     assign wait_req = 1'b0;
     assign wait_rel = 1'b0;

@@ -410,16 +410,18 @@ int generate(Node *node, int size) {
 
         int ret_size = (node->valtype) ? node->valtype->size : 2;
         if (ret_size == 1) {
-            printf("mov r%d,r0\npop r0\n", push_regstack(1));
+            printf("mov r%d,r0\n", push_regstack(1));
         } else if (ret_size == 2) {
             int dst = push_regstack(2);
-            printf("mov r%d,r0\nmov r%d,r1\npop r0\n", dst, dst + 1);
+            printf("mov r%d,r0\nmov r%d,r1\n", dst, dst + 1);
         } else if (ret_size == 0) {
             // Nothing
         } else {
             error_at(node->loc, "Invalid return size: %d", ret_size);
         }
-        return ret_size;    } case ND_BREAK: {
+        printf("pop r0\n");
+        return ret_size;    
+    } case ND_BREAK: {
         printf("jr %s\n", get_break_label());
         return 0;
     } case ND_ADDR: {
