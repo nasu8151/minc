@@ -140,6 +140,8 @@ void generate_epilogue(long arg_count, int size, char *loc) {
         printf("mov r0,r%d\nmvi r1,0\n", dst);            // 戻り値をr0にセット(Little Endian)
     } else if (size == 2) {
         printf("mov r0,r%d\nmov r1,r%d\n", dst, dst + 1); // 戻り値をr0:r1にセット
+    } else if (size == 0){
+        // Nothing
     } else {
         error_at(loc, "Invalid size for return value: %d", size);
     }
@@ -412,6 +414,8 @@ int generate(Node *node, int size) {
         } else if (ret_size == 2) {
             int dst = push_regstack(2);
             printf("mov r%d,r0\nmov r%d,r1\npop r0\n", dst, dst + 1);
+        } else if (ret_size == 0) {
+            // Nothing
         } else {
             error_at(node->loc, "Invalid return size: %d", ret_size);
         }

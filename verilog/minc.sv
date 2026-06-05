@@ -66,7 +66,7 @@ module minc (
     wire [7:0] rd_val = regs[rd];
     wire [7:0] rs_val = regs[rs];
     // wire [7:0] rb_val_hi = regs[rs_pair_hi];
-    wire [7:0] ra_val_hi = regs[rd_pair_hi];
+    // wire [7:0] ra_val_hi = regs[rd_pair_hi];
     logic  [15:0] addr_base;
 
     wire is_alu    = (op6[5:4] == 2'b00);
@@ -99,7 +99,7 @@ module minc (
     logic        wait_reg_next;
 
     assign sp0 =    ((is_push || is_calr) && (state == `S_WB)) ? 1'b1 :
-                    ((is_pop || is_ret) && (state == `S_WB)) ? 1'b1 : 1'b0;
+                    ((is_pop || is_ret) && (state == `S_DECEXEC)) ? 1'b1 : 1'b0;
     wire [15:0] sp_val = {sp, sp0};
 
     always_comb begin : ALU
@@ -126,20 +126,20 @@ module minc (
                         is_pop  ? sp_val :
                         is_ret  ? sp_val :
                         (is_stm || is_ldm) ? addr_base + simm8 :
-                        is_calr ? sp_val : 16'h0000;
+                        is_calr ? sp_val : 16'hxxxx;
 
     // Determines written data
     // ALU out, rb_val for PUSH/STM, sp for STS, imm8 for MVI, pc for CALL
     wire [7:0] data_out_next =  (is_push) ? ra_val :
                                 (is_stm)  ? ra_val :
-                                (is_calr && (state == `S_WB)) ? pc[7:0] : 
-                                (is_calr && (state == `S_DECEXEC)) ? pc[15:8]  : 8'h00;
+                                (is_calr && (state == `S_WB)) ? pc[15:8] : 
+                                (is_calr && (state == `S_DECEXEC)) ? pc[7:0]  : 8'hxx;
     
     wire [7:0] rw_next =    is_alu ? alu_out :
-                            (is_lds && (state == `S_WB))  ? {sp[6:0], 1'b0}  :
-                            (is_lds && (state == `S_WB2)) ? sp[14:7] :
+                            (is_lds && (state == `S_WB))  ? sp[14:7]  :
+                            (is_lds && (state == `S_WB2)) ? {sp[6:0], 1'b0} :
                             is_mvi ? imm8 : 
-                            (is_pop || is_ldm) ? data_in : ra_val;
+                            (is_pop || is_ldm) ? data_in : 8'hxx;
 
     // Write Enable
     assign we = (state == `S_WB && (is_push || is_calr)) || (state == `S_WB2 && (is_stm || is_push || is_calr));
@@ -186,7 +186,15 @@ module minc (
                         carry_flag <= carry_flag_next;
                     end
 
-                    if (is_alu || is_mvi) begin
+                    if (is_jz) begin
+                        if (ra_val == 8'd0) begin
+                            pc <= pc + simm8;
+                        end
+                    end else if (is_jr) begin
+                        pc <= pc + simm12;
+                    end
+
+                    if (is_alu || is_mvi || is_jr || is_jz) begin
                         state <= `S_FETCH;
                     end else begin
                         state <= `S_WB;
@@ -202,25 +210,14 @@ module minc (
                     // Update PC
                     if (is_ret) begin
                         pc[7:0] <= data_in;
-                    end else if (is_jz) begin
-                        if (ra_val == 8'd0) begin
-                            pc <= pc + simm8;
-                        end
-                    end else if (is_jr) begin
-                        pc <= pc + simm12;
                     end
 
-                    if (is_sts) sp <= {sp[14:7], ra_val[7:1]};
-
-                    if (wait_req)
-                        wait_reg <= 1'b1;
-                    if (wait_rel)
-                        wait_reg <= 1'b0;
+                    if (is_sts) begin
+                        sp <= {sp[14:7], ra_val[7:1]};
+                    end
 
                     if (is_calr || is_ret || is_push || is_pop || is_lds || is_sts || is_ldm || is_stm) begin
                         state <= `S_WB2;
-                    end else if (wait_reg || wait_req) begin
-                        state <= `S_WB;
                     end else begin
                         state <= `S_FETCH;
                     end
@@ -240,7 +237,16 @@ module minc (
                     else if (is_calr)
                         pc <= pc + simm12;
 
-                    state <= `S_FETCH;
+                    if (wait_req)
+                        wait_reg <= 1'b1;
+                    if (wait_rel)
+                        wait_reg <= 1'b0;
+
+                    if (wait_reg || wait_req) begin
+                        state <= `S_WB;
+                    end else begin
+                        state <= `S_FETCH;
+                    end
                 end
                 // `S_WAIT: begin
                 //     if (wait_rel)
@@ -275,13 +281,12 @@ module minc (
                 rw = rd;
             end
             `S_WB: begin
-                rw = rd;
+                rw = rd_pair_hi;
             end
             `S_WB2: begin
-                if (is_ldm) rw = rd;
-                else        rw = rd_pair_hi;
+                rw = rd;
             end
-            default: rw = rd;
+            default: rw = 4'hx;
         endcase
     end
 

@@ -63,32 +63,32 @@ module minc_gw_top (
         .oce(1'b1), //input oce
         .reset(~sys_nrst), //input reset
         .wre(we), //input wre
-        .ad(address), //input [7:0] ad
+        .ad(address), //input [11:0] ad
         .din(data_out) //input [7:0] din
     );
 
-    // UART_MASTER_Top uartc(
-	// 	.I_CLK(sys_clk), //input I_CLK
-	// 	.I_RESETN(sys_nrst), //input I_RESETN
-	// 	.I_TX_EN(we && address[7:3] == 5'b00001 && wait_req), //input I_TX_EN
-	// 	.I_WADDR(address[2:0]), //input [2:0] I_WADDR
-	// 	.I_WDATA(data_out), //input [7:0] I_WDATA
-	// 	.I_RX_EN(address[7:3] == 5'b00001 && wait_req), //input I_RX_EN
-	// 	.I_RADDR(address[2:0]), //input [2:0] I_RADDR
-	// 	.O_RDATA(uartc_data_out), //output [7:0] O_RDATA
-	// 	.SIN(uart_rx), //input SIN
-	// 	.RxRDYn(), //output RxRDYn
-	// 	.SOUT(uart_tx), //output SOUT
-	// 	.TxRDYn(), //output TxRDYn
-	// 	.DDIS(), //output DDIS
-	// 	.INTR(), //output INTR
-	// 	.DCDn(1'b1), //input DCDn
-	// 	.CTSn(1'b1), //input CTSn
-	// 	.DSRn(1'b1), //input DSRn
-	// 	.RIn(1'b1), //input RIn
-	// 	.DTRn(), //output DTRn
-	// 	.RTSn() //output RTSn
-	// );
+    UART_MASTER_Top uartc(
+        .I_CLK(sys_clk), //input I_CLK
+        .I_RESETN(sys_nrst), //input I_RESETN
+        .I_TX_EN(we && address[7:3] == 5'b00001 && wait_req), //input I_TX_EN
+        .I_WADDR(address[2:0]), //input [2:0] I_WADDR
+        .I_WDATA(data_out), //input [7:0] I_WDATA
+        .I_RX_EN(address[7:3] == 5'b00001 && wait_req), //input I_RX_EN
+        .I_RADDR(address[2:0]), //input [2:0] I_RADDR
+        .O_RDATA(uartc_data_out), //output [7:0] O_RDATA
+        .SIN(uart_rx), //input SIN
+        .RxRDYn(), //output RxRDYn
+        .SOUT(uart_tx), //output SOUT
+        .TxRDYn(), //output TxRDYn
+        .DDIS(), //output DDIS
+        .INTR(), //output INTR
+        .DCDn(1'b1), //input DCDn
+        .CTSn(1'b1), //input CTSn
+        .DSRn(1'b1), //input DSRn
+        .RIn(1'b1), //input RIn
+        .DTRn(), //output DTRn
+        .RTSn() //output RTSn
+    );
 
     always_ff @(posedge sys_clk or negedge sys_nrst) begin
         if (!sys_nrst) begin
