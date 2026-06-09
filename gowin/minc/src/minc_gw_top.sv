@@ -8,7 +8,7 @@ module minc_gw_top (
     output logic        uart_tx,
     input  logic        uart_rx,
     output logic        wait_req_out,
-    output logic        wait_rel_out,
+    output logic        avma_out,
     output logic        we_out
 );
 
@@ -24,14 +24,15 @@ module minc_gw_top (
     logic [7:0] data_out;
     logic       we;
     logic       wait_req;
-    logic       wait_rel;
+    logic       wait_ma;
+    logic       avma;
     logic [15:0] address;
     // logic       int_clk;
     assign address_out = we ? data_out : data_in;
     assign address_out2= ~address[5:0]; // For debugging: show address bits in reverse order
     wire        ram_ce = address > 8'h0F ? 1'b1 : 1'b0; // RAM is enabled for addresses > 0x0F
     assign wait_req_out = wait_req;
-    assign wait_rel_out = wait_rel;
+    assign avma_out = avma;
     assign we_out = we;
 
     logic [7:0] port_a_out;
@@ -51,9 +52,9 @@ module minc_gw_top (
         .address(address),
         .data_out(data_out),
         .we(we),
+        .avma(avma),
         .data_in(data_in),
-        .wait_req(wait_req),
-        .wait_rel(wait_rel)
+        .wait_req(wait_req)
     );
 
     Gowin_SP ram(
@@ -110,16 +111,16 @@ module minc_gw_top (
     end
     
     // assign wait_req = 8'h10 > address ? 1'b1 : 1'b0;
-    parameter WAITp3 = 6;
-    logic [WAITp3:0] wait_sr;
-    assign wait_req = wait_sr[1];
-    assign wait_rel = wait_sr[WAITp3 - 1];
+    parameter WAITp4 = 8;
+    logic [WAITp4:0] wait_sr;
+    assign wait_req = (wait_sr[WAITp4-2:1] != 'b0) ? 1'b1 : 1'b0;
+    assign wait_ma = wait_sr[1];
     always_ff @(posedge sys_clk or negedge sys_nrst) begin
         if (!sys_nrst) begin
             wait_sr <= 'b1;
         end else begin
-            if (address[7:3] == 5'b00001) begin
-                {wait_sr[0], wait_sr[WAITp3:1]} <= wait_sr;
+            if ((address[15:3] == 13'b00001) && avma) begin
+                {wait_sr[0], wait_sr[WAITp4:1]} <= wait_sr;
             end else
                 wait_sr <= 'b1;
         end
