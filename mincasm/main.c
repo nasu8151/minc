@@ -89,7 +89,7 @@ static const InstSpec g_inst_specs[] = {
     {"mulh", INST_ALU_RR, 0x0F, 0x00, 0x0000, 0},
     {"stf", INST_FLAG_IMM, 0x10, 0x00, 0x0000, 0},
     {"clf", INST_FLAG_IMM, 0x11, 0x00, 0x0000, 0},
-    {"push", INST_REG, 0x1C, 0x00, 0x0000, 0},
+    {"push", INST_REG, 0x1C, 0x00, 0x0000, INST_FLAG_EVEN_REG},
     {"pop", INST_REG, 0x1D, 0x00, 0x0000, INST_FLAG_EVEN_REG},
     {"sts", INST_REG, 0x1E, 0x00, 0x0000, 0},
     {"lds", INST_REG, 0x1F, 0x00, 0x0000, 0},
@@ -543,7 +543,7 @@ int main(void) {
 
                 int rd = parse_reg(r);
                 if ((spec->flags & INST_FLAG_EVEN_REG) && ((rd & 1) != 0)) {
-                    die_fmt("pop requires even register", r);
+                    die_fmt("push and pop requires even register", r);
                 }
                 word = enc_op6_rd(spec->opcode_a, (uint8_t)rd);
                 break;
