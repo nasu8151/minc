@@ -11,7 +11,7 @@
 
 typedef enum {
     FIX_IMM8,
-    FIX_REL12
+    FIX_REL16
 } FixKind;
 
 typedef struct {
@@ -24,7 +24,7 @@ typedef struct {
 } Fixup;
 
 typedef struct {
-    uint16_t *data;
+    uint32_t *data;
     size_t size;
     size_t cap;
 } CodeVec;
@@ -55,7 +55,7 @@ typedef enum {
     INST_FLAG_IMM,
     INST_MVI,
     INST_JZ,
-    INST_REL12,
+    INST_REL16,
     INST_MEM_STORE,
     INST_MEM_LOAD
 } InstKind;
@@ -69,7 +69,7 @@ typedef struct {
     InstKind kind;
     uint8_t opcode_a;
     uint8_t opcode_b;
-    uint16_t fixed_word;
+    uint32_t fixed_word;
     uint8_t flags;
 } InstSpec;
 
@@ -97,8 +97,8 @@ static const InstSpec g_inst_specs[] = {
     {"halt", INST_FIXED, 0x00, 0x00, 0xFFFF, 0},
     {"mvi", INST_MVI, 0x0C, 0x00, 0x0000, 0},
     {"jz", INST_JZ, 0x0D, 0x00, 0x0000, 0},
-    {"calr", INST_REL12, 0x0E, 0x00, 0x0000, 0},
-    {"jr", INST_REL12, 0x0F, 0x00, 0x0000, 0},
+    {"calr", INST_REL16, 0x0E, 0x00, 0x0000, 0},
+    {"jr", INST_REL16, 0x0F, 0x00, 0x0000, 0},
     {"stm", INST_MEM_STORE, 0x08, 0x0A, 0x0000, 0},
     {"ldm", INST_MEM_LOAD, 0x09, 0x0B, 0x0000, 0},
 };
@@ -148,10 +148,10 @@ static size_t next_pow2(size_t n) {
     return cap;
 }
 
-static void codevec_push(CodeVec *v, uint16_t x) {
+static void codevec_push(CodeVec *v, uint32_t x) {
     if (v->size == v->cap) {
         size_t ncap = v->cap ? v->cap * 2 : 128;
-        uint16_t *nd = (uint16_t *)realloc(v->data, ncap * sizeof(uint16_t));
+        uint32_t *nd = (uint32_t *)realloc(v->data, ncap * sizeof(uint32_t));
         if (!nd) {
             die_oom();
         }
@@ -391,23 +391,23 @@ static int parse_int(const char *tok, int min_v, int max_v) {
     return (int)v;
 }
 
-static uint16_t enc_op6_rr(uint8_t op6, uint8_t rd, uint8_t rs) {
-    return (uint16_t)(((uint16_t)op6 << 10) | ((uint16_t)rd << 4) | rs);
+static uint32_t enc_op6_rr(uint8_t op6, uint8_t rd, uint8_t rs) {
+    return (uint32_t)(((uint32_t)op6 << 10) | ((uint32_t)rd << 4) | rs);
 }
 
-static uint16_t enc_op6_rd(uint8_t op6, uint8_t rd) {
-    return (uint16_t)(((uint16_t)op6 << 10) | ((uint16_t)rd << 4));
+static uint32_t enc_op6_rd(uint8_t op6, uint8_t rd) {
+    return (uint32_t)(((uint32_t)op6 << 10) | ((uint32_t)rd << 4));
 }
 
-static uint16_t enc_op4_reg_imm8(uint8_t op4, uint8_t reg, uint8_t imm8) {
-    return (uint16_t)(((uint16_t)op4 << 12) | ((uint16_t)(imm8 >> 4) << 8) | ((uint16_t)reg << 4) | (imm8 & 0x0F));
+static uint32_t enc_op6_reg_imm8(uint8_t op4, uint8_t reg, uint8_t imm8) {
+    return (uint32_t)(((uint32_t)op4 << 12) | ((uint32_t)(imm8 >> 4) << 8) | ((uint32_t)reg << 4) | (imm8 & 0x0F));
 }
 
-static uint16_t enc_op4_rel12(uint8_t op4, uint16_t rel12) {
+static uint32_t enc_op2_rel16(uint8_t op4, uint32_t rel12) {
     uint8_t n_low = (uint8_t)(rel12 & 0x0F);
     uint8_t n_mid = (uint8_t)((rel12 >> 4) & 0x0F);
     uint8_t n_hi = (uint8_t)((rel12 >> 8) & 0x0F);
-    return (uint16_t)(((uint16_t)op4 << 12) | ((uint16_t)n_mid << 8) | ((uint16_t)n_hi << 4) | n_low);
+    return (uint32_t)(((uint32_t)op4 << 12) | ((uint32_t)n_mid << 8) | ((uint32_t)n_hi << 4) | n_low);
 }
 
 static void parse_memref(char *tok, int *is_x, int *imm8) {
@@ -451,7 +451,7 @@ static char *next_token(char **pctx) {
     return start;
 }
 
-static void emit_fixup(CodeVec *code, FixupVec *fixups, const char *name, int line_num, FixKind kind, uint8_t reg_nibble, uint8_t op_nibble, uint16_t placeholder) {
+static void emit_fixup(CodeVec *code, FixupVec *fixups, const char *name, int line_num, FixKind kind, uint8_t reg_nibble, uint8_t op_nibble, uint32_t placeholder) {
     codevec_push(code, placeholder);
     fixupvec_push(fixups, code->size - 1, name, line_num, kind, reg_nibble, op_nibble);
 }
@@ -516,7 +516,7 @@ int main(void) {
             die_fmt("Unknown instruction", inst);
         }
 
-        uint16_t word = 0;
+        uint32_t word = 0;
         int emit = 1;
 
         switch (spec->kind) {
@@ -560,7 +560,7 @@ int main(void) {
                     imm++;
                 }
                 int c = parse_int(imm, 0, 1);
-                word = (uint16_t)(((uint16_t)spec->opcode_a << 10) | (uint16_t)c);
+                word = (uint32_t)(((uint32_t)spec->opcode_a << 10) | (uint32_t)c);
                 break;
             }
             case INST_MVI: {
@@ -574,7 +574,7 @@ int main(void) {
                 }
                 int rd = parse_reg(r);
                 int iv = parse_int(imm, -128, 255);
-                word = enc_op4_reg_imm8(spec->opcode_a, (uint8_t)rd, (uint8_t)iv);
+                word = enc_op6_reg_imm8(spec->opcode_a, (uint8_t)rd, (uint8_t)iv);
                 break;
             }
             case INST_JZ: {
@@ -589,26 +589,26 @@ int main(void) {
                 int rs = parse_reg(r);
 
                 if (is_valid_label_name(off)) {
-                    emit_fixup(&code, &fixups, off, g_line_num, FIX_IMM8, (uint8_t)rs, spec->opcode_a, enc_op4_reg_imm8(spec->opcode_a, (uint8_t)rs, 0));
+                    emit_fixup(&code, &fixups, off, g_line_num, FIX_IMM8, (uint8_t)rs, spec->opcode_a, enc_op6_reg_imm8(spec->opcode_a, (uint8_t)rs, 0));
                     emit = 0;
                 } else {
                     int iv = parse_int(off, -128, 127);
-                    word = enc_op4_reg_imm8(spec->opcode_a, (uint8_t)rs, (uint8_t)iv);
+                    word = enc_op6_reg_imm8(spec->opcode_a, (uint8_t)rs, (uint8_t)iv);
                 }
                 break;
             }
-            case INST_REL12: {
+            case INST_REL16: {
                 char *off = next_token(&ctx);
                 if (!off) {
                     die("Missing offset");
                 }
 
                 if (is_valid_label_name(off)) {
-                    emit_fixup(&code, &fixups, off, g_line_num, FIX_REL12, 0, spec->opcode_a, enc_op4_rel12(spec->opcode_a, 0));
+                    emit_fixup(&code, &fixups, off, g_line_num, FIX_REL16, 0, spec->opcode_a, enc_op2_rel16(spec->opcode_a, 0));
                     emit = 0;
                 } else {
                     int iv = parse_int(off, -2048, 2047);
-                    word = enc_op4_rel12(spec->opcode_a, (uint16_t)iv);
+                    word = enc_op2_rel16(spec->opcode_a, (uint32_t)iv);
                 }
                 break;
             }
@@ -626,7 +626,7 @@ int main(void) {
                 int iv = 0;
                 parse_memref(m, &is_x, &iv);
                 int rs = parse_reg(r);
-                word = enc_op4_reg_imm8(is_x ? spec->opcode_a : spec->opcode_b, (uint8_t)rs, (uint8_t)iv);
+                word = enc_op6_reg_imm8(is_x ? spec->opcode_a : spec->opcode_b, (uint8_t)rs, (uint8_t)iv);
                 break;
             }
             case INST_MEM_LOAD: {
@@ -643,7 +643,7 @@ int main(void) {
                 int iv = 0;
                 parse_memref(m, &is_x, &iv);
                 int rd = parse_reg(r);
-                word = enc_op4_reg_imm8(is_x ? spec->opcode_a : spec->opcode_b, (uint8_t)rd, (uint8_t)iv);
+                word = enc_op6_reg_imm8(is_x ? spec->opcode_a : spec->opcode_b, (uint8_t)rd, (uint8_t)iv);
                 break;
             }
         }
@@ -669,19 +669,19 @@ int main(void) {
                 snprintf(g_line, sizeof(g_line), "%s", f->name);
                 die("8-bit relative offset out of range");
             }
-            code.data[f->index] = enc_op4_reg_imm8(f->op_nibble, f->reg_nibble, (uint8_t)rel);
+            code.data[f->index] = enc_op6_reg_imm8(f->op_nibble, f->reg_nibble, (uint8_t)rel);
         } else {
-            if (rel < -2048 || rel > 2047) {
+            if (rel < -65536 || rel > 65535) {
                 g_line_num = f->line_num;
                 snprintf(g_line, sizeof(g_line), "%s", f->name);
-                die("12-bit relative offset out of range");
+                die("16-bit relative offset out of range");
             }
-            code.data[f->index] = enc_op4_rel12(f->op_nibble, (uint16_t)rel);
+            code.data[f->index] = enc_op2_rel16(f->op_nibble, (uint32_t)rel);
         }
     }
 
     for (size_t i = 0; i < code.size; i++) {
-        printf("%04X\n", code.data[i]);
+        printf("%05X\n", code.data[i]);
     }
 
     fixupvec_destroy(&fixups);

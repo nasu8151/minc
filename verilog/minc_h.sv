@@ -60,7 +60,7 @@ module minc (
     logic [3:0] rw;
 
     wire [7:0] imm8 = {instr[11:8], instr[3:0]};
-    wire [15:0] imm16 = {instr[15:8], instr[7:4], instr[11:8], instr[3:0]};
+    wire [15:0] imm16 = {instr[15:12], instr[7:4], instr[11:8], instr[3:0]};
     wire signed [15:0] simm8  = 16'($signed(imm8));
     wire signed [15:0] simm16 = 16'($signed(imm16));
 
@@ -79,10 +79,8 @@ module minc (
     wire is_mulh   = (op6 == 6'b000101);
     wire is_stf    = (op6 == 6'b001000);
     wire is_clf    = (op6 == 6'b001001);
-    wire is_jz     = (op6 == 6'b001010);
-    wire is_push   = (op6 == 6'b001100);
-    wire is_pop    = (op6 == 6'b001110);
-    wire is_ret    = (op6 == 6'b001111);
+    wire is_jz     = (op6 == 6'b001100);
+    wire is_mvi    = (op6 == 6'b001110);
 
     wire is_stm_x  = (op6 == 6'b010000);
     wire is_ldm_x  = (op6 == 6'b010001);
@@ -92,27 +90,29 @@ module minc (
     wire is_ldm_n  = (op6 == 6'b010101);
     wire is_stm    = (op6[5:3] == 3'b010 && op6[0] == 0);
     wire is_ldm    = (op6[5:3] == 3'b010 && op6[0] == 1);
-    wire is_mvi    = (op6 == 6'b011100);
+    wire is_push   = (op6 == 6'b011100);
+    wire is_pop    = (op6 == 6'b011101);
+    wire is_ret    = (op6 == 6'b011111);
     wire is_calr   = (op2 == 2'b10);
     wire is_jr     = (op2 == 2'b11);
 
     // ALU
     always_comb begin
         case (subop)
-            4'b0000: begin alu_out = rs_val; carry_flag_next = 1'bx; end // MOV
-            4'b0001: begin alu_out = rd_val | rs_val; carry_flag_next = 1'bx; end // OR
-            4'b0010: begin alu_out = rd_val & rs_val; carry_flag_next = 1'bx; end // AND
-            4'b0011: begin alu_out = rd_val ^ rs_val; carry_flag_next = 1'bx; end // XOR
-            4'b0100: {carry_flag_next, alu_out} = rd_val + rs_val;
-            4'b0101: {carry_flag_next, alu_out} = rd_val + rs_val + carry_flag;
-            4'b0110: {carry_flag_next, alu_out} = rd_val - rs_val;
-            4'b0111: {carry_flag_next, alu_out} = rd_val - rs_val + carry_flag;
-            4'b1000: {carry_flag_next, alu_out} = (rd_val < rs_val) ? 8'b1 : 8'b0; // LT
-            4'b1001: {carry_flag_next, alu_out} = (rd_val < rs_val - carry_flag) ? 8'b1 : 8'b0; // LTC
-            4'b1011: {alu_out, carry_flag_next} = rs_val >> 1 | (carry_flag << 7); // ROR
-            4'b1110: begin alu_out = rd_val * rs_val; carry_flag_next = 1'bx; end // MUL
-            4'b1111: begin alu_out = (rd_val * rs_val) >> 8; carry_flag_next = 1'bx; end // MULH
-            default: begin alu_out = rd_val; carry_flag_next = 1'bx; end
+            4'b0000: begin alu_out = rb_val; carry_flag_next = 1'bx; end // MOV
+            4'b0001: begin alu_out = ra_val | rb_val; carry_flag_next = 1'bx; end // OR
+            4'b0010: begin alu_out = ra_val & rb_val; carry_flag_next = 1'bx; end // AND
+            4'b0011: begin alu_out = ra_val ^ rb_val; carry_flag_next = 1'bx; end // XOR
+            4'b0100: {carry_flag_next, alu_out} = ra_val + rb_val; // ADD
+            4'b0101: {carry_flag_next, alu_out} = ra_val + rb_val + carry_flag; // ADC
+            4'b0110: {carry_flag_next, alu_out} = ra_val - rb_val; // SUB
+            4'b0111: {carry_flag_next, alu_out} = ra_val - rb_val + carry_flag; // SBC
+            4'b1000: {carry_flag_next, alu_out} = (ra_val < rb_val) ? 8'b1 : 8'b0; // LT
+            4'b1001: {carry_flag_next, alu_out} = (ra_val < rb_val - carry_flag) ? 8'b1 : 8'b0; // LTC
+            4'b1011: {alu_out, carry_flag_next} = rb_val >> 1 | (carry_flag << 7); // ROR
+            4'b1110: begin alu_out = ra_val * rb_val; carry_flag_next = 1'bx; end // MUL
+            4'b1111: begin alu_out = (ra_val * rb_val) >> 8; carry_flag_next = 1'bx; end // MULH
+            default: begin alu_out = ra_val; carry_flag_next = 1'bx; end
         endcase
     end
 
@@ -126,7 +126,10 @@ module minc (
                     state <= `S_DECEXEC;
                 end
                 `S_DECEXEC: begin
-                    if (is_alu) state <= `S_FETCH;
+                    if (is_alu) begin 
+                        carry_flag <= carry_flag_next;
+                        state <= `S_FETCH;
+                    end
                     else if (is_mem_like) state <= `S_MA;
                     else state <= `S_WB;
                 end
@@ -140,6 +143,9 @@ module minc (
             endcase
         end
     end
+    assign we = ((is_calr || is_stm || is_push) && (state == `S_WB)) 
+                || ((is_calr) && (state == `S_MA)) ? 1'b1 : 1'b0;
+    assign avma = (is_stm) && (state == `S_MA);
 
     // PC and ROM control
     always_ff @(posedge clk or negedge reset_n) begin
@@ -158,7 +164,7 @@ module minc (
                 end
                 `S_WB: begin
                     if (is_jz) begin
-                        if (rd_val == 8'd0) pc <= pc + simm8;
+                        if (ra_val == 8'd0) pc <= pc + simm8;
                     end else if (is_jr || is_calr) begin
                         pc <= pc + simm16;
                     end else if (is_ret) begin
