@@ -65,13 +65,13 @@ module minc_tb;
             port_a_in <= 8'h00;
         end else begin
             // port_a_in <= port_a_out; // Loopback for testing
-            if (address == 16'h0000) begin
+            if (address == 16'h0004) begin
                 // data_in <= port_a_out; // Read from port A
                 if (we) port_a_out <= data_out & port_a_dir; // Output only on bits set as output
-            end else if (address == 16'h0001) begin
+            end else if (address == 16'h0005) begin
                 // data_in <= port_a_dir; // Read direction register
                 if (we) port_a_dir <= data_out; // Set direction on address 0x01
-            end else if (address == 16'h0002) begin
+            end else if (address == 16'h0006) begin
                 // data_in <= port_a_in & ~port_a_dir; // Read input values on bits set as input
             end
         end

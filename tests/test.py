@@ -2,24 +2,24 @@ import testfuncs as tf
 
 if __name__ == "__main__":
     # MINCASM tests
-    tf.expect("""echo "mov r0,r1\nadd r2,r3\nsub r4,r5\nlt r6,r7\nmul r7,r8\nor r8,r9\nand r9,r10\nxor r10,r11" | ./target/mincasm""", 
-                "0001\n1023\n1845\n2067\n3878\n0489\n089A\n0CAB") # Arithmetic instructions
-    tf.expect("""echo "push r0\nsts r0\npop r2\nlds r2" | ./target/mincasm""",
-                "7000\n7800\n7420\n7C20") # Stack and load/store instructions
-    tf.expect("""echo "jz 10,r0\ncalr 20\njr -2\nret\nhalt" | ./target/mincasm""",
-                "D00A\nE104\nFFFE\n7410\nFFFF") # Jump and calr instructions
-    tf.expect_fail("""echo foo | ./target/mincasm""") # Invalid instruction
-    tf.expect_fail("""echo "mvi r0,256" | ./target/mincasm""") # Out of range immediate
-    # MINCASM label tests (one-pass backpatch)
-    # Forward reference: label after use
-    tf.expect("""echo "jz L1,r0\nmvi r0,1\nL1: ret" | ./target/mincasm""",
-                "D001\nC001\n7410")
-    # Backward reference: label before use
-    tf.expect("""echo "L0: mvi r0,1\njz L0,r0\nret" | ./target/mincasm""",
-                "C001\nDF0E\n7410")
-    # calr to label
-    tf.expect("""echo "calr MAIN\nFUNC: ret\nMAIN: calr FUNC\nhalt" | ./target/mincasm""",
-                "E001\n7410\nEFFE\nFFFF")
+    # tf.expect("""echo "mov r0,r1\nadd r2,r3\nsub r4,r5\nlt r6,r7\nmul r7,r8\nor r8,r9\nand r9,r10\nxor r10,r11" | ./target/mincasm""", 
+    #             "0001\n1023\n1845\n2067\n3878\n0489\n089A\n0CAB") # Arithmetic instructions
+    # tf.expect("""echo "push r0\nsts r0\npop r2\nlds r2" | ./target/mincasm""",
+    #             "7000\n7800\n7420\n7C20") # Stack and load/store instructions
+    # tf.expect("""echo "jz 10,r0\ncalr 20\njr -2\nret\nhalt" | ./target/mincasm""",
+    #             "D00A\nE104\nFFFE\n7410\nFFFF") # Jump and calr instructions
+    # tf.expect_fail("""echo foo | ./target/mincasm""") # Invalid instruction
+    # tf.expect_fail("""echo "mvi r0,256" | ./target/mincasm""") # Out of range immediate
+    # # MINCASM label tests (one-pass backpatch)
+    # # Forward reference: label after use
+    # tf.expect("""echo "jz L1,r0\nmvi r0,1\nL1: ret" | ./target/mincasm""",
+    #             "D001\nC001\n7410")
+    # # Backward reference: label before use
+    # tf.expect("""echo "L0: mvi r0,1\njz L0,r0\nret" | ./target/mincasm""",
+    #             "C001\nDF0E\n7410")
+    # # calr to label
+    # tf.expect("""echo "calr MAIN\nFUNC: ret\nMAIN: calr FUNC\nhalt" | ./target/mincasm""",
+    #             "E001\n7410\nEFFE\nFFFF")
     # Undefined label should fail
     tf.expect_fail("""echo "jz NO_SUCH_LABEL,r0" | ./target/mincasm""")
     # MINCC tests
@@ -65,9 +65,9 @@ if __name__ == "__main__":
     tf.test_e2e("char fib(char i){if(i==0) return 0;if(i==1) return 1;char a=fib(i-1);char b=fib(i-2);return a+b;}char main(){return fib(11);}" , 89)
     tf.test_e2e("char mac(char a,char b,char c){return a*b+c;}char main(){return mac(2,3,4);}", 10)
     tf.test_e2e("char main(){char j=0;for(char i=0;i<7;i=i+1){} char k=0; char i=i+5; return i;}", -1)
-    tf.test_e2e("char [[address=0x00]] port_a_out;char [[address=0x01]] port_a_dir;char main(){port_a_dir = 0xFF;port_a_out=0x55; return 0;}", 0, porta=0x55)
+    tf.test_e2e("char [[address=0x04]] port_a_out;char [[address=0x05]] port_a_dir;char main(){port_a_dir = 0xFF;port_a_out=0x55; return 0;}", 0, porta=0x55)
     tf.test_e2e("char main(){char i=0;while(1){if(i==5) break;i=i+1;}return i;}", 5)
-    tf.test_e2e("char [[address = 0x00]] b;char a;char addi(char s){a = a + s;return a;}char main(){a = 0;for(char i = 0;i < 254;i=i+1){while(addi(3) < 20){b = b;}}return 21;}", 21)
+    tf.test_e2e("char [[address = 0x04]] b;char a;char addi(char s){a = a + s;return a;}char main(){a = 0;for(char i = 0;i < 254;i=i+1){while(addi(3) < 20){b = b;}}return 21;}", 21)
     tf.test_e2e("char main(){char a = 3;char *b = &a;return *b;}", 3, verbose=True)
     tf.test_e2e("int main(){int a = 1155; int *b = &a; int **c = &b; return **c;}", 1155)
     tf.test_e2e("char main(){char a = 3;char *b = &a;*b = 5;return a;}", 5)

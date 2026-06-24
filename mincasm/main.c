@@ -69,38 +69,37 @@ typedef struct {
     InstKind kind;
     uint8_t opcode_a;
     uint8_t opcode_b;
+    uint8_t opcode_c;
     uint32_t fixed_word;
     uint8_t flags;
 } InstSpec;
 
 static const InstSpec g_inst_specs[] = {
-    {"mov", INST_ALU_RR, 0x00, 0x00, 0x0000, 0},
-    {"or", INST_ALU_RR, 0x01, 0x00, 0x0000, 0},
-    {"and", INST_ALU_RR, 0x02, 0x00, 0x0000, 0},
-    {"xor", INST_ALU_RR, 0x03, 0x00, 0x0000, 0},
-    {"add", INST_ALU_RR, 0x04, 0x00, 0x0000, 0},
-    {"adc", INST_ALU_RR, 0x05, 0x00, 0x0000, 0},
-    {"sub", INST_ALU_RR, 0x06, 0x00, 0x0000, 0},
-    {"sbc", INST_ALU_RR, 0x07, 0x00, 0x0000, 0},
-    {"lt", INST_ALU_RR, 0x08, 0x00, 0x0000, 0},
-    {"ltc", INST_ALU_RR, 0x09, 0x00, 0x0000, 0},
-    {"rr", INST_ALU_RR, 0x0A, 0x00, 0x0000, 0},
-    {"mul", INST_ALU_RR, 0x0E, 0x00, 0x0000, 0},
-    {"mulh", INST_ALU_RR, 0x0F, 0x00, 0x0000, 0},
-    {"stf", INST_FLAG_IMM, 0x10, 0x00, 0x0000, 0},
-    {"clf", INST_FLAG_IMM, 0x11, 0x00, 0x0000, 0},
-    {"push", INST_REG, 0x1C, 0x00, 0x0000, INST_FLAG_EVEN_REG},
-    {"pop", INST_REG, 0x1D, 0x00, 0x0000, INST_FLAG_EVEN_REG},
-    {"sts", INST_REG, 0x1E, 0x00, 0x0000, 0},
-    {"lds", INST_REG, 0x1F, 0x00, 0x0000, 0},
-    {"ret", INST_FIXED, 0x00, 0x00, 0x7410, 0},
-    {"halt", INST_FIXED, 0x00, 0x00, 0xFFFF, 0},
-    {"mvi", INST_MVI, 0x0C, 0x00, 0x0000, 0},
-    {"jz", INST_JZ, 0x0D, 0x00, 0x0000, 0},
-    {"calr", INST_REL16, 0x0E, 0x00, 0x0000, 0},
-    {"jr", INST_REL16, 0x0F, 0x00, 0x0000, 0},
-    {"stm", INST_MEM_STORE, 0x08, 0x0A, 0x0000, 0},
-    {"ldm", INST_MEM_LOAD, 0x09, 0x0B, 0x0000, 0},
+    {"mov",  INST_ALU_RR,    0x00, 0x00, 0x00, 0x00000, 0},
+    {"or",   INST_ALU_RR,    0x01, 0x00, 0x00, 0x00000, 0},
+    {"and",  INST_ALU_RR,    0x02, 0x00, 0x00, 0x00000, 0},
+    {"xor",  INST_ALU_RR,    0x03, 0x00, 0x00, 0x00000, 0},
+    {"add",  INST_ALU_RR,    0x04, 0x00, 0x00, 0x00000, 0},
+    {"adc",  INST_ALU_RR,    0x05, 0x00, 0x00, 0x00000, 0},
+    {"sub",  INST_ALU_RR,    0x06, 0x00, 0x00, 0x00000, 0},
+    {"sbc",  INST_ALU_RR,    0x07, 0x00, 0x00, 0x00000, 0},
+    {"lt",   INST_ALU_RR,    0x08, 0x00, 0x00, 0x00000, 0},
+    {"ltc",  INST_ALU_RR,    0x09, 0x00, 0x00, 0x00000, 0},
+    {"rr",   INST_ALU_RR,    0x0B, 0x00, 0x00, 0x00000, 0},
+    {"mul",  INST_ALU_RR,    0x0E, 0x00, 0x00, 0x00000, 0},
+    {"mulh", INST_ALU_RR,    0x0F, 0x00, 0x00, 0x00000, 0},
+    {"stf",  INST_FLAG_IMM,  0x08, 0x00, 0x00, 0x00000, 0},
+    {"clf",  INST_FLAG_IMM,  0x09, 0x00, 0x00, 0x00000, 0},
+    {"push", INST_REG,       0x1C, 0x00, 0x00, 0x00000, 0},
+    {"pop",  INST_REG,       0x1D, 0x00, 0x00, 0x00000, 0},
+    {"ret",  INST_FIXED,     0x00, 0x00, 0x00, 0x1F000, 0},
+    {"halt", INST_FIXED,     0x00, 0x00, 0x00, 0x3FFFF, 0},
+    {"mvi",  INST_MVI,       0x0E, 0x00, 0x00, 0x00000, 0},
+    {"jz",   INST_JZ,        0x0C, 0x00, 0x00, 0x00000, 0},
+    {"calr", INST_REL16,     0x02, 0x00, 0x00, 0x00000, 0},
+    {"jr",   INST_REL16,     0x03, 0x00, 0x00, 0x00000, 0},
+    {"stm",  INST_MEM_STORE, 0x10, 0x12, 0x14, 0x00000, 0},
+    {"ldm",  INST_MEM_LOAD,  0x11, 0x13, 0x15, 0x00000, 0},
 };
 
 static int g_line_num;
@@ -396,27 +395,34 @@ static uint32_t enc_op6_rr(uint8_t op6, uint8_t rd, uint8_t rs) {
 }
 
 static uint32_t enc_op6_rd(uint8_t op6, uint8_t rd) {
-    return (uint32_t)(((uint32_t)op6 << 10) | ((uint32_t)rd << 4));
+    return (uint32_t)(((uint32_t)op6 << 12) | ((uint32_t)rd << 4));
 }
 
 static uint32_t enc_op6_reg_imm8(uint8_t op4, uint8_t reg, uint8_t imm8) {
     return (uint32_t)(((uint32_t)op4 << 12) | ((uint32_t)(imm8 >> 4) << 8) | ((uint32_t)reg << 4) | (imm8 & 0x0F));
 }
 
-static uint32_t enc_op2_rel16(uint8_t op4, uint32_t rel12) {
-    uint8_t n_low = (uint8_t)(rel12 & 0x0F);
-    uint8_t n_mid = (uint8_t)((rel12 >> 4) & 0x0F);
-    uint8_t n_hi = (uint8_t)((rel12 >> 8) & 0x0F);
-    return (uint32_t)(((uint32_t)op4 << 12) | ((uint32_t)n_mid << 8) | ((uint32_t)n_hi << 4) | n_low);
+static uint32_t enc_op2_rel16(uint8_t op2, uint32_t off16) {
+    uint8_t n3 = (off16 >> 12) & 0xF;
+    uint8_t n2 = (off16 >>  8) & 0xF;
+    uint8_t n1 = (off16 >>  4) & 0xF;
+    uint8_t n0 =  off16        & 0xF;
+    return ((uint32_t)op2 << 16) | ((uint32_t)n3 << 12)
+         | ((uint32_t)n1 <<  8) | ((uint32_t)n2 <<  4) | n0;
 }
 
-static void parse_memref(char *tok, int *is_x, int *imm8) {
-    if ((tok[0] == 'X' || tok[0] == 'x' || tok[0] == 'Y' || tok[0] == 'y') && (tok[1] == '+' || tok[1] == '-')) {
-        *is_x = (tok[0] == 'X' || tok[0] == 'x');
+static void parse_memref(char *tok, int *addr_mode, int *imm8) {
+    if ((tok[0] == 'X' || tok[0] == 'x') && (tok[1] == '+' || tok[1] == '-')) {
+        *addr_mode = 0;
         *imm8 = parse_int(tok + 1, -128, 127);
         return;
     }
-    *is_x = 0;
+    if ((tok[0] == 'Y' || tok[0] == 'y') && (tok[1] == '+' || tok[1] == '-')) {
+        *addr_mode = 1;
+        *imm8 = parse_int(tok + 1, -128, 127);
+        return;
+    }
+    *addr_mode = 2;
     *imm8 = parse_int(tok, -128, 127);
 }
 
@@ -560,7 +566,7 @@ int main(void) {
                     imm++;
                 }
                 int c = parse_int(imm, 0, 1);
-                word = (uint32_t)(((uint32_t)spec->opcode_a << 10) | (uint32_t)c);
+                word = (uint32_t)(((uint32_t)spec->opcode_a << 12) | (uint32_t)c);
                 break;
             }
             case INST_MVI: {
@@ -607,7 +613,7 @@ int main(void) {
                     emit_fixup(&code, &fixups, off, g_line_num, FIX_REL16, 0, spec->opcode_a, enc_op2_rel16(spec->opcode_a, 0));
                     emit = 0;
                 } else {
-                    int iv = parse_int(off, -2048, 2047);
+                    int iv = parse_int(off, -32768, 32767);
                     word = enc_op2_rel16(spec->opcode_a, (uint32_t)iv);
                 }
                 break;
@@ -622,11 +628,13 @@ int main(void) {
                     die("Missing register operand");
                 }
 
-                int is_x = 0;
+                int addr_mode = 0;
                 int iv = 0;
-                parse_memref(m, &is_x, &iv);
+                parse_memref(m, &addr_mode, &iv);
                 int rs = parse_reg(r);
-                word = enc_op6_reg_imm8(is_x ? spec->opcode_a : spec->opcode_b, (uint8_t)rs, (uint8_t)iv);
+                uint8_t op = (addr_mode == 0) ? spec->opcode_a :
+                             (addr_mode == 1) ? spec->opcode_b : spec->opcode_c;
+                word = enc_op6_reg_imm8(op, (uint8_t)rs, (uint8_t)iv);
                 break;
             }
             case INST_MEM_LOAD: {
@@ -639,11 +647,13 @@ int main(void) {
                     die("Missing memory operand");
                 }
 
-                int is_x = 0;
+                int addr_mode = 0;
                 int iv = 0;
-                parse_memref(m, &is_x, &iv);
+                parse_memref(m, &addr_mode, &iv);
                 int rd = parse_reg(r);
-                word = enc_op6_reg_imm8(is_x ? spec->opcode_a : spec->opcode_b, (uint8_t)rd, (uint8_t)iv);
+                uint8_t op = (addr_mode == 0) ? spec->opcode_a :
+                             (addr_mode == 1) ? spec->opcode_b : spec->opcode_c;
+                word = enc_op6_reg_imm8(op, (uint8_t)rd, (uint8_t)iv);
                 break;
             }
         }
@@ -671,7 +681,7 @@ int main(void) {
             }
             code.data[f->index] = enc_op6_reg_imm8(f->op_nibble, f->reg_nibble, (uint8_t)rel);
         } else {
-            if (rel < -65536 || rel > 65535) {
+            if (rel < -32768 || rel > 32767) {
                 g_line_num = f->line_num;
                 snprintf(g_line, sizeof(g_line), "%s", f->name);
                 die("16-bit relative offset out of range");

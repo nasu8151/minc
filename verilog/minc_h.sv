@@ -44,6 +44,8 @@ module minc (
 
     logic [17:0] instr;
 
+    logic [7:0] data_in_internal;
+
     logic carry_flag;
     logic carry_flag_next;
 
@@ -105,8 +107,8 @@ module minc (
             4'b0011: begin alu_out = ra_val ^ rb_val; carry_flag_next = 1'bx; end // XOR
             4'b0100: {carry_flag_next, alu_out} = ra_val + rb_val; // ADD
             4'b0101: {carry_flag_next, alu_out} = ra_val + rb_val + carry_flag; // ADC
-            4'b0110: {carry_flag_next, alu_out} = ra_val - rb_val; // SUB
-            4'b0111: {carry_flag_next, alu_out} = ra_val - rb_val + carry_flag; // SBC
+            4'b0110: {carry_flag_next, alu_out} = ra_val + {1'b0, ~rb_val} + 1'b1; // SUB
+            4'b0111: {carry_flag_next, alu_out} = ra_val + {1'b0, ~rb_val} + carry_flag; // SBC
             4'b1000: {carry_flag_next, alu_out} = (ra_val < rb_val) ? 8'b1 : 8'b0; // LT
             4'b1001: {carry_flag_next, alu_out} = (ra_val < rb_val - carry_flag) ? 8'b1 : 8'b0; // LTC
             4'b1011: {alu_out, carry_flag_next} = rb_val >> 1 | (carry_flag << 7); // ROR
@@ -145,7 +147,7 @@ module minc (
     end
     assign we = ((is_calr || is_stm || is_push) && (state == `S_WB)) 
                 || ((is_calr) && (state == `S_MA)) ? 1'b1 : 1'b0;
-    assign avma = (is_stm) && (state == `S_MA);
+    assign avma = (is_stm || is_ldm) && (state == `S_MA);
 
     // PC and ROM control
     always_ff @(posedge clk or negedge reset_n) begin
@@ -159,7 +161,7 @@ module minc (
                 end
                 `S_MA: begin
                     if (is_ret) begin
-                        pc[7:0] <= data_in;
+                        pc[7:0] <= data_in_internal;
                     end
                 end
                 `S_WB: begin
@@ -168,9 +170,11 @@ module minc (
                     end else if (is_jr || is_calr) begin
                         pc <= pc + simm16;
                     end else if (is_ret) begin
-                        pc[15:8] <= data_in;
+                        pc[15:8] <= data_in_internal;
                     end
+`ifdef SIM
                     if (instr == 18'h3FFFF) $finish;
+`endif
                 end
             endcase
         end
@@ -178,14 +182,17 @@ module minc (
 
     // SP and AGU
     logic [15:0] addr_base;
-    always @(posedge clk or negedge reset_n) begin
+    logic [15:0] addr_latch;
+    always_ff @(posedge clk or negedge reset_n) begin
         if (!reset_n) begin
             sp <= 16'd0;
         end else begin
             case (state)
                 `S_DECEXEC: begin
-                    if (is_stm) begin
+                    if (is_stm_x || is_ldm_x || is_stm_y || is_ldm_y) begin
                         addr_base <= {ra_val, rb_val};
+                    end else if (is_stm_n || is_ldm_n) begin
+                        addr_base <= 16'd0;
                     end
                     if (is_calr) begin
                         sp <= sp - 16'd1;
@@ -203,23 +210,48 @@ module minc (
                     end
                 end
             endcase
+            if (we && (address == 16'h0000))
+                sp[7:0] <= data_out;
+            else if (we && (address == 16'h0001))
+                sp[15:8] <= data_out;
         end
+        addr_latch <= address;
     end
     assign address =    (is_ldm || is_stm) ? addr_base + simm8 : 
-                        (is_calr || is_ret || is_push || is_pop) ? sp : 16'hxxxx;
+                        (is_calr || is_push || is_pop) ? sp : 
+                        (is_ret) ? sp : 16'hxxxx;
+
+    assign data_in_internal =   (addr_latch == 16'h0000) ? sp[7:0] :
+                                (addr_latch == 16'h0001) ? sp[15:8] : data_in;
+
+    always_ff @( posedge clk or negedge reset_n ) begin
+        if (!reset_n) begin
+            data_out <= 8'hxx;
+        end else begin
+            if (state == `S_DECEXEC) begin
+                data_out <= (is_calr) ? pc[15:8] : 8'hxx;
+            end else if (state == `S_MA) begin
+            data_out <= (is_push) ? ra_val :
+                            (is_stm)  ? ra_val :
+                            (is_calr) ? pc[7:0] : 8'hxx;
+            end else begin
+                data_out <= 8'hxx;
+            end
+        end
+    end
 
     wire [7:0] rw_next =   (is_alu) ? alu_out : 
                             (is_mvi) ? imm8 : 
-                            (is_pop || is_ldm) ? data_in : 8'hxx;
+                            (is_pop || is_ldm) ? data_in_internal : 8'hxx;
     // Register file
     
-    assign ra = (is_ldm_x || is_stm_x) ? 4'd13 :
-                (is_ldm_y || is_stm_y) ? 4'd15 : rd;
+    assign ra = (is_ldm_x || (is_stm_x && (state == `S_DECEXEC))) ? 4'd13 :
+                (is_ldm_y || (is_stm_y && (state == `S_DECEXEC))) ? 4'd15 : rd;
     assign rb = (is_ldm_x || is_stm_x) ? 4'd12 :
                 (is_ldm_y || is_stm_y) ? 4'd14 : rs;
     assign rw = rd;
 
-    always @(posedge clk or negedge reset_n) begin
+    always_ff @(posedge clk or negedge reset_n) begin
         if (!reset_n) begin
             // Nothing
         end else begin

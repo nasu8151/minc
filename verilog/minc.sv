@@ -163,7 +163,7 @@ module minc (
                     state <= `S_DECEXEC;
                 end
                 `S_DECEXEC: begin
-                    // Assign combinational routing outputs at execution stage
+                    // Assign combinational routing outputs at execution 
                     data_out <= data_out_next;
 
                     // Decode and Execute - Halting if unknown instruction
