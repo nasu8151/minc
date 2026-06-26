@@ -1,7 +1,7 @@
-`define S_FETCH   3'b000
-`define S_MA      3'b100
-`define S_DECEXEC 3'b001
-`define S_WB      3'b010
+`define S_FETCH   2'b00
+`define S_DECEXEC 2'b01
+`define S_MA      2'b10
+`define S_WB      2'b11
 
 module minc (
     input  logic        clk,
@@ -20,7 +20,7 @@ module minc (
     logic [15:0] pc;
     logic [15:0] sp;
 
-    logic [2:0] state;
+    logic [1:0] state;
 
     logic wait_reg;
 
@@ -128,12 +128,7 @@ module minc (
                     state <= `S_DECEXEC;
                 end
                 `S_DECEXEC: begin
-                    if (is_alu) begin 
-                        carry_flag <= carry_flag_next;
-                        state <= `S_FETCH;
-                    end
-                    else if (is_mem_like) state <= `S_MA;
-                    else state <= `S_WB;
+                    state <= `S_MA;
                 end
                 `S_MA: begin
                     state <= `S_WB;
@@ -190,14 +185,12 @@ module minc (
             case (state)
                 `S_DECEXEC: begin
                     if (is_stm_x || is_ldm_x || is_stm_y || is_ldm_y) begin
-                        addr_base <= {ra_val, rb_val};
+                        addr_base <= {ra_val, rb_val} + simm8;
                     end else if (is_stm_n || is_ldm_n) begin
-                        addr_base <= 16'd0;
-                    end
-                    if (is_calr) begin
+                        addr_base <= 16'd0 + imm8;
+                    end else if (is_calr) begin
                         sp <= sp - 16'd1;
-                    end
-                    if (is_ret) begin
+                    end else if (is_ret) begin
                         sp <= sp + 16'd1;
                     end
                 end
@@ -214,10 +207,10 @@ module minc (
                 sp[7:0] <= data_out;
             else if (we && (address == 16'h0001))
                 sp[15:8] <= data_out;
+            addr_latch <= address;
         end
-        addr_latch <= address;
     end
-    assign address =    (is_ldm || is_stm) ? addr_base + simm8 : 
+    assign address =    (is_ldm || is_stm) ? addr_base : 
                         (is_calr || is_push || is_pop) ? sp : 
                         (is_ret) ? sp : 16'hxxxx;
 
@@ -240,9 +233,9 @@ module minc (
         end
     end
 
-    wire [7:0] rw_next =   (is_alu) ? alu_out : 
+    wire [7:0] rw_next =    (is_alu) ? alu_out : 
                             (is_mvi) ? imm8 : 
-                            (is_pop || is_ldm) ? data_in_internal : 8'hxx;
+                            (is_pop || is_ldm) ? data_in_internal : ra_val;
     // Register file
     
     assign ra = (is_ldm_x || (is_stm_x && (state == `S_DECEXEC))) ? 4'd13 :
@@ -256,11 +249,9 @@ module minc (
             // Nothing
         end else begin
             case (state)
-                `S_DECEXEC: begin
-                    if (is_alu) regs[rw] <= rw_next;
-                end
                 `S_WB: begin
-                    if (is_mvi || is_pop || is_ldm) regs[rw] <= rw_next;
+                    regs[rw] <= rw_next;
+                    if (is_alu) carry_flag <= carry_flag_next;
                 end
             endcase
         end

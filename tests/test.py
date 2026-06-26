@@ -51,7 +51,6 @@ if __name__ == "__main__":
     tf.test_e2e("char main(){char a=2;char b=3;return a * b;}", 6)
     tf.test_e2e("char main(){char a=1;char b=2;char c=3;return a + b * c;}", 7)
     tf.test_e2e("int main(){int a = 1234; int b = 5678; return b - a;}", 4444) # 16-bit integer subtraction
-    tf.test_e2e("int add(char a, int b){int aa = a;return aa + b;}int main(){char a = 107; int b = 1032; return add(a, b);}", 1139, verbose=True)
     tf.test_e2e("char main(){char hoge =3;char fuga= hoge +2;if (fuga==5) return 42;return 0;}", 42)
     tf.test_e2e("char main(){char hoge=2; char fuga = 3;if (hoge != 0) if (hoge+fuga > 3) return 2;else return 0;}", 2)
     tf.test_e2e("char main(){char sum=0;\nfor(char i=1;i<5;i=i+1) sum=sum+i;\nreturn sum;}", 10)
@@ -63,6 +62,7 @@ if __name__ == "__main__":
     tf.test_e2e("char ret42(){return 42;}\nchar main(){return ret42();}", 42)
     tf.test_e2e("char arg=0;char fac(){char i=arg;if (i==0) return 1;arg=i-1;return fac()*i;}char main(){arg=5;return fac();}", 120)
     tf.test_e2e("char fib(char i){if(i==0) return 0;if(i==1) return 1;char a=fib(i-1);char b=fib(i-2);return a+b;}char main(){return fib(11);}" , 89)
+    tf.test_e2e("int add(char a, int b){int aa = a;return aa + b;}int main(){char a = 107; int b = 1032; return add(a, b);}", 1139, verbose=True)
     tf.test_e2e("char mac(char a,char b,char c){return a*b+c;}char main(){return mac(2,3,4);}", 10)
     tf.test_e2e("char main(){char j=0;for(char i=0;i<7;i=i+1){} char k=0; char i=i+5; return i;}", -1)
     tf.test_e2e("char [[address=0x04]] port_a_out;char [[address=0x05]] port_a_dir;char main(){port_a_dir = 0xFF;port_a_out=0x55; return 0;}", 0, porta=0x55)

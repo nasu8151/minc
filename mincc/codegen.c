@@ -98,10 +98,6 @@ void generate_prologue(Node **args, long arg_reg_count, long local_var_count) {
             if (arg_size != 1 && arg_size != 2) {
                 error_at(a ? a->loc : NULL, "Invalid argument size: %d", arg_size);
             }
-            // 16bit は偶数境界に揃える（パディングはコピーしない）
-            if (arg_size == 2 && (reg_index % 2) != 0) {
-                reg_index += 1;
-            }
             if (arg_size == 1) {
                 printf("stm Y%ld,r%ld\n", -(mem_off + 1), reg_index);
                 mem_off += 1;
@@ -384,12 +380,11 @@ int generate(Node *node, int size) {
             if (arg_size != 1 && arg_size != 2) {
                 error_at(a ? a->loc : node->loc, "Invalid argument size: %d", arg_size);
             }
-            // Align 16-bit args to even register boundary
-            if (arg_size == 2 && (nxt_regstack_top % 2) != 0) {
-                push_regstack(1); // padding register
-                arg_reg_count += 1;
+            if (arg_size == 1) {
+                printf("push r%d\n", nxt_regstack_top);
+            } else if (arg_size == 2) {
+                printf("push r%ld\npush r%ld\n", nxt_regstack_top, nxt_regstack_top + 1);
             }
-            printf("push r%d\n", nxt_regstack_top);
             generate(a, arg_size); // 引数を評価してregstackに積む
             arg++;
             arg_reg_count += arg_size;
