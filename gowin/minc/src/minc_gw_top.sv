@@ -15,6 +15,10 @@ module minc_gw_top (
 //    logic [23:0] presc_cnt;
 //    logic        int_clk;
 
+// `define UART
+// `define PORTA
+// `define WAIT
+
     logic [15:0] sp_out;
     logic [7:0] data_in;
 
@@ -68,6 +72,7 @@ module minc_gw_top (
         .din(data_out) //input [7:0] din
     );
 
+`ifdef UART
     UART_MASTER_Top uartc(
         .I_CLK(sys_clk), //input I_CLK
         .I_RESETN(sys_nrst), //input I_RESETN
@@ -90,7 +95,12 @@ module minc_gw_top (
         .DTRn(), //output DTRn
         .RTSn() //output RTSn
     );
+`ifndef WAIT
+`define WAIT
+`endif
+`endif
 
+`ifdef PORTA
     always_ff @(posedge sys_clk or negedge sys_nrst) begin
         if (!sys_nrst) begin
             port_a_out <= 8'h00;
@@ -109,7 +119,9 @@ module minc_gw_top (
             end
         end
     end
-    
+`endif
+
+`ifdef WAIT
     // assign wait_req = 8'h10 > address ? 1'b1 : 1'b0;
     parameter WAITp4 = 8;
     logic [WAITp4:0] wait_sr;
@@ -125,6 +137,11 @@ module minc_gw_top (
                 wait_sr <= 'b1;
         end
     end
+`endif
+
+`ifndef WAIT
+    assign wait_req = 1'b0;
+`endif 
 
     // always_ff @(posedge sys_clk or negedge sys_nrst) begin
     //     logic [23:0] presc_cnt;
@@ -139,6 +156,4 @@ module minc_gw_top (
     //     end
     // end
 
-    // assign wait_req = 1'b0;
-    // assign wait_rel = 1'b0;
 endmodule

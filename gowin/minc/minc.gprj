@@ -8,7 +8,7 @@
         <File path="src/gowin_sp/gowin_sp.v" type="file.verilog" enable="1"/>
         <File path="src/minc_gw_top.sv" type="file.verilog" enable="1"/>
         <File path="src/uart_master/uart_master.v" type="file.verilog" enable="1"/>
-        <File path="../../verilog/minc.sv" type="file.verilog" enable="1"/>
+        <File path="../../verilog/minc_h.sv" type="file.verilog" enable="1"/>
         <File path="src/minc.cst" type="file.cst" enable="1"/>
         <File path="src/minc.sdc" type="file.sdc" enable="1"/>
         <File path="../../verilog/program.hex" type="file.other" enable="1"/>
