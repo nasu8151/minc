@@ -22,14 +22,21 @@ module minc (
 
     logic [1:0] state;
 
-    logic wait_reg;
-
     // General purpose registers r0..r15 (8-bit)
-    logic  [7:0]  regs [0:15]; /* synthesis syn_ramstyle = "distributed" */
+    logic  [7:0]  regs [0:15];
+    logic  [7:0]  reg12;
+    logic  [7:0]  reg13;
+    logic  [7:0]  reg14;
+    logic  [7:0]  reg15;
 
-    // Instruction ROM: 64k words x 15-bit (instruction is 15-bit)
-    logic  [17:0] rom  [0:65535]; 
-    wire [17:0] cur = rom[pc];
+
+    // Instruction ROM: sized to fit 4 pROMX9 blocks (4096 x 18-bit).
+    // pc stays 16-bit for pc_out/branch arithmetic, but only its low 12
+    // bits address the ROM so the synthesizer doesn't need to prove pc's
+    // reachable range to keep this out of LUT-based fallback.
+    localparam ROM_ADDR_WIDTH = 12;
+    logic  [17:0] rom  [0:(1<<ROM_ADDR_WIDTH)-1]; /* synthesis syn_romstyle = "BLOCK_ROM" */
+    wire [17:0] cur = rom[pc[ROM_ADDR_WIDTH-1:0]];
 
     // ROM load (one word per line, hex). TEST selects test.hex
     `ifdef TEST
@@ -57,10 +64,6 @@ module minc (
     wire [3:0] rd = instr[7:4];
     wire [3:0] rs = instr[3:0];
 
-    logic [3:0] ra;
-    logic [3:0] rb;
-    logic [3:0] rw;
-
     wire [7:0] imm8 = {instr[11:8], instr[3:0]};
     wire [15:0] imm16 = {instr[15:12], instr[7:4], instr[11:8], instr[3:0]};
     wire signed [15:0] simm8  = 16'($signed(imm8));
@@ -69,8 +72,8 @@ module minc (
     wire [7:0] rd_val = regs[rd];
     wire [7:0] rs_val = regs[rs];
 
-    wire [7:0] ra_val = regs[ra];
-    wire [7:0] rb_val = regs[rb];
+    wire [7:0] ra_val = regs[rd];
+    wire [7:0] rb_val = regs[rs];
 
     logic [7:0] alu_out;
 
@@ -84,14 +87,15 @@ module minc (
     wire is_jz     = (op6 == 6'b001100);
     wire is_mvi    = (op6 == 6'b001110);
 
-    wire is_stm_x  = (op6 == 6'b010000);
-    wire is_ldm_x  = (op6 == 6'b010001);
-    wire is_stm_y  = (op6 == 6'b010010);
-    wire is_ldm_y  = (op6 == 6'b010011);
-    wire is_stm_n  = (op6 == 6'b010100);
-    wire is_ldm_n  = (op6 == 6'b010101);
-    wire is_stm    = (op6[5:3] == 3'b010 && op6[0] == 0);
-    wire is_ldm    = (op6[5:3] == 3'b010 && op6[0] == 1);
+    // stm/ldm share op6[5:3]==010; op6[2:1] picks the addressing mode
+    // (X/Y/N) and op6[0] picks store vs. load, so decode each field once
+    // instead of six separate 6-bit comparators.
+    wire is_mem_grp = (op6[5:3] == 3'b010);
+    wire is_stm     = is_mem_grp && (op6[0] == 1'b0);
+    wire is_ldm     = is_mem_grp && (op6[0] == 1'b1);
+    wire is_addr_x  = is_mem_grp && (op6[2:1] == 2'b00);
+    wire is_addr_y  = is_mem_grp && (op6[2:1] == 2'b01);
+    wire is_addr_n  = is_mem_grp && (op6[2:1] == 2'b10);
     wire is_push   = (op6 == 6'b011100);
     wire is_pop    = (op6 == 6'b011101);
     wire is_ret    = (op6 == 6'b011111);
@@ -99,17 +103,28 @@ module minc (
     wire is_jr     = (op2 == 2'b11);
 
     // ALU
+    // ADD/ADC/SUB/SBC/LT share one 8-bit adder: subop[3]|subop[1] selects
+    // subtract (invert b, cin defaults to 1), subop[0] selects carry-in from
+    // the flag (ADC/SBC). LT reads out the borrow instead of the sum.
+    wire       alu_do_sub = subop[3] | subop[1];
+    wire       alu_use_cf = subop[0];
+    wire [7:0] alu_b      = alu_do_sub ? ~rb_val : rb_val;
+    wire       alu_cin    = alu_use_cf ? carry_flag : alu_do_sub;
+    wire       alu_cout;
+    wire [7:0] alu_sum;
+    assign {alu_cout, alu_sum} = ra_val + alu_b + alu_cin;
+
     always_comb begin
         case (subop)
             4'b0000: begin alu_out = rb_val; carry_flag_next = 1'bx; end // MOV
             4'b0001: begin alu_out = ra_val | rb_val; carry_flag_next = 1'bx; end // OR
             4'b0010: begin alu_out = ra_val & rb_val; carry_flag_next = 1'bx; end // AND
             4'b0011: begin alu_out = ra_val ^ rb_val; carry_flag_next = 1'bx; end // XOR
-            4'b0100: {carry_flag_next, alu_out} = ra_val + rb_val; // ADD
-            4'b0101: {carry_flag_next, alu_out} = ra_val + rb_val + carry_flag; // ADC
-            4'b0110: {carry_flag_next, alu_out} = ra_val + {1'b0, ~rb_val} + 1'b1; // SUB
-            4'b0111: {carry_flag_next, alu_out} = ra_val + {1'b0, ~rb_val} + carry_flag; // SBC
-            4'b1000: {carry_flag_next, alu_out} = (ra_val < rb_val) ? 8'b1 : 8'b0; // LT
+            4'b0100, 4'b0101, 4'b0110, 4'b0111: begin // ADD, ADC, SUB, SBC
+                alu_out = alu_sum;
+                carry_flag_next = alu_cout;
+            end
+            4'b1000: begin alu_out = {7'b0, ~alu_cout}; carry_flag_next = 1'b0; end // LT (shares the subtractor above)
             4'b1001: {carry_flag_next, alu_out} = (ra_val < rb_val - carry_flag) ? 8'b1 : 8'b0; // LTC
             4'b1011: {alu_out, carry_flag_next} = rb_val >> 1 | (carry_flag << 7); // ROR
             4'b1110: begin alu_out = ra_val * rb_val; carry_flag_next = 1'bx; end // MUL
@@ -117,6 +132,7 @@ module minc (
             default: begin alu_out = ra_val; carry_flag_next = 1'bx; end
         endcase
     end
+
 
     // State machine
     always_ff @(posedge clk or negedge reset_n) begin
@@ -134,7 +150,8 @@ module minc (
                     state <= `S_WB;
                 end
                 `S_WB: begin
-                    state <= `S_FETCH;
+                    if ((is_stm || is_ldm) && wait_req) state <= `S_WB;
+                    else state <= `S_FETCH;
                 end
                 default: state <= `S_FETCH;
             endcase
@@ -142,9 +159,13 @@ module minc (
     end
     assign we = ((is_calr || is_stm || is_push) && (state == `S_WB)) 
                 || ((is_calr) && (state == `S_MA)) ? 1'b1 : 1'b0;
-    assign avma = (is_stm || is_ldm) && (state == `S_MA);
+    assign avma = (is_stm || is_ldm) && (state == `S_MA || state == `S_WB);
 
     // PC and ROM control
+    wire [15:0] delta_pc =  (state == `S_FETCH) ? 16'd1 :
+                            (is_jz) ? (rd_val == 8'd0) ? simm8 : 16'b0 :
+                            (is_jr || is_calr) ? simm16 : 16'hxxxx;
+    wire [15:0] pc_next = pc + delta_pc;
     always_ff @(posedge clk or negedge reset_n) begin
         if (!reset_n) begin
             pc <= 16'd0;
@@ -152,7 +173,7 @@ module minc (
             case (state)
                 `S_FETCH: begin
                     instr <= cur;
-                    pc <= pc + 16'd1;
+                    pc <= pc_next;
                 end
                 `S_MA: begin
                     if (is_ret) begin
@@ -160,10 +181,8 @@ module minc (
                     end
                 end
                 `S_WB: begin
-                    if (is_jz) begin
-                        if (ra_val == 8'd0) pc <= pc + simm8;
-                    end else if (is_jr || is_calr) begin
-                        pc <= pc + simm16;
+                    if (is_jz || is_jr || is_calr) begin
+                        pc <= pc_next;
                     end else if (is_ret) begin
                         pc[15:8] <= data_in_internal;
                     end
@@ -177,45 +196,45 @@ module minc (
 
     // SP and AGU
     logic [15:0] addr_base;
-    logic [15:0] addr_latch;
+    logic aeq0;
+    logic aeq1;
+    wire [15:0] delta_sp = (is_calr || is_push) ? -16'd1 :
+                        (is_pop || is_ret) ? 16'd1 : 16'hxxxx;
+    wire [15:0] sp_next = sp + delta_sp;
     always_ff @(posedge clk or negedge reset_n) begin
         if (!reset_n) begin
             sp <= 16'd0;
         end else begin
             case (state)
                 `S_DECEXEC: begin
-                    if (is_stm_x || is_ldm_x || is_stm_y || is_ldm_y) begin
-                        addr_base <= {ra_val, rb_val} + simm8;
-                    end else if (is_stm_n || is_ldm_n) begin
-                        addr_base <= 16'd0 + imm8;
-                    end else if (is_calr) begin
-                        sp <= sp - 16'd1;
-                    end else if (is_ret) begin
-                        sp <= sp + 16'd1;
+                    if (is_calr || is_ret) begin
+                        sp <= sp_next;
                     end
                 end
                 `S_MA: begin
-                    if (is_push || is_calr) begin
-                        sp <= sp - 16'd1;
-                    end
-                    if (is_pop || is_ret) begin
-                        sp <= sp + 16'd1;
+                    if (is_push || is_calr || is_pop || is_ret) begin
+                        sp <= sp_next;
                     end
                 end
+                `S_WB: begin
+                    if (we && (address == 16'h0000))
+                        sp[7:0] <= data_out;
+                    else if (we && (address == 16'h0001))
+                        sp[15:8] <= data_out;
+                end
             endcase
-            if (we && (address == 16'h0000))
-                sp[7:0] <= data_out;
-            else if (we && (address == 16'h0001))
-                sp[15:8] <= data_out;
-            addr_latch <= address;
+            aeq0 <= (address == 16'h0000) ? 1'b1 : 1'b0;
+            aeq1 <= (address == 16'h0001) ? 1'b1 : 1'b0;
         end
     end
-    assign address =    (is_ldm || is_stm) ? addr_base : 
-                        (is_calr || is_push || is_pop) ? sp : 
-                        (is_ret) ? sp : 16'hxxxx;
+    assign addr_base =  (is_addr_x) ? {reg13, reg12} :
+                        (is_addr_y) ? {reg15, reg14} :
+                        (is_addr_n) ? 16'd0 : 16'hxxxx;
+    assign address =    (is_mem_grp) ? addr_base + simm8: 
+                        (is_calr || is_push || is_pop || is_ret) ? sp : 16'hxxxx;
 
-    assign data_in_internal =   (addr_latch == 16'h0000) ? sp[7:0] :
-                                (addr_latch == 16'h0001) ? sp[15:8] : data_in;
+    assign data_in_internal =   aeq0 ? sp[7:0] :
+                                aeq1 ? sp[15:8] : data_in;
 
     always_ff @( posedge clk or negedge reset_n ) begin
         if (!reset_n) begin
@@ -224,7 +243,7 @@ module minc (
             if (state == `S_DECEXEC) begin
                 data_out <= (is_calr) ? pc[15:8] : 8'hxx;
             end else if (state == `S_MA) begin
-            data_out <= (is_push) ? ra_val :
+                data_out <= (is_push) ? ra_val :
                             (is_stm)  ? ra_val :
                             (is_calr) ? pc[7:0] : 8'hxx;
             end else begin
@@ -238,11 +257,9 @@ module minc (
                             (is_pop || is_ldm) ? data_in_internal : ra_val;
     // Register file
     
-    assign ra = (is_ldm_x || (is_stm_x && (state == `S_DECEXEC))) ? 4'd13 :
-                (is_ldm_y || (is_stm_y && (state == `S_DECEXEC))) ? 4'd15 : rd;
-    assign rb = (is_ldm_x || is_stm_x) ? 4'd12 :
-                (is_ldm_y || is_stm_y) ? 4'd14 : rs;
-    assign rw = rd;
+    // is_ldm_x||is_stm_x reduces to is_addr_x (is_ldm|is_stm == is_mem_grp,
+    // which is_addr_x already implies); the DECEXEC-only gate for stores
+    // is factored out once as agu_rd_active.
 
     always_ff @(posedge clk or negedge reset_n) begin
         if (!reset_n) begin
@@ -250,8 +267,14 @@ module minc (
         end else begin
             case (state)
                 `S_WB: begin
-                    regs[rw] <= rw_next;
+                    regs[rd] <= rw_next;
                     if (is_alu) carry_flag <= carry_flag_next;
+                    case (rd)
+                        4'd12: reg12 <= rw_next;
+                        4'd13: reg13 <= rw_next;
+                        4'd14: reg14 <= rw_next;
+                        4'd15: reg15 <= rw_next;
+                    endcase
                 end
             endcase
         end
