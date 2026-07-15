@@ -69,8 +69,8 @@ module minc (
     wire signed [15:0] simm8  = 16'($signed(imm8));
     wire signed [15:0] simm16 = 16'($signed(imm16));
 
-    wire [7:0] rd_val = regs[rd];
-    wire [7:0] rs_val = regs[rs];
+    // wire [7:0] rd_val = regs[rd];
+    // wire [7:0] rs_val = regs[rs];
 
     wire [7:0] ra_val = regs[rd];
     wire [7:0] rb_val = regs[rs];
@@ -78,12 +78,12 @@ module minc (
     logic [7:0] alu_out;
 
     wire is_alu = (op4 == 4'b0000);
-    wire is_mem_like = (op2 != 2'b00);
+    // wire is_mem_like = (op2 != 2'b00);
 
-    wire is_mul    = (op6 == 6'b000100);
-    wire is_mulh   = (op6 == 6'b000101);
-    wire is_stf    = (op6 == 6'b001000);
-    wire is_clf    = (op6 == 6'b001001);
+    // wire is_mul    = (op6 == 6'b000100);
+    // wire is_mulh   = (op6 == 6'b000101);
+    // wire is_stf    = (op6 == 6'b001000);
+    // wire is_clf    = (op6 == 6'b001001);
     wire is_jz     = (op6 == 6'b001100);
     wire is_mvi    = (op6 == 6'b001110);
 
@@ -163,7 +163,7 @@ module minc (
 
     // PC and ROM control
     wire [15:0] delta_pc =  (state == `S_FETCH) ? 16'd1 :
-                            (is_jz) ? (rd_val == 8'd0) ? simm8 : 16'b0 :
+                            (is_jz) ? (ra_val == 8'd0) ? simm8 : 16'b0 :
                             (is_jr || is_calr) ? simm16 : 16'hxxxx;
     wire [15:0] pc_next = pc + delta_pc;
     always_ff @(posedge clk or negedge reset_n) begin
@@ -222,14 +222,16 @@ module minc (
                     else if (we && (address == 16'h0001))
                         sp[15:8] <= data_out;
                 end
+                default: ;
             endcase
             aeq0 <= (address == 16'h0000) ? 1'b1 : 1'b0;
             aeq1 <= (address == 16'h0001) ? 1'b1 : 1'b0;
         end
     end
     assign addr_base =  (is_addr_x) ? {reg13, reg12} :
-                        (is_addr_y) ? {reg15, reg14} : 16'hxxxx;
-    assign address =    (is_mem_grp) ? is_addr_n ? ({8'h00, imm8}) : (addr_base + simm8) : 
+                        (is_addr_y) ? {reg15, reg14} : 
+                        (is_addr_n) ? 16'h0000 : 16'hxxxx;
+    assign address =    (is_mem_grp) ? (addr_base + (is_addr_n ? {8'h00, imm8} : simm8)) : 
                         (is_calr || is_push || is_pop || is_ret) ? sp : 16'hxxxx;
 
     assign data_in_internal =   aeq0 ? sp[7:0] :

@@ -1,5 +1,5 @@
-char [[address = 0x00]] PORTA_OUT;
-char [[address = 0x01]] PORTA_DIR;
+char [[address = 0x04]] PORTA_OUT;
+char [[address = 0x05]] PORTA_DIR;
 
 char [[address = 0x08]] UARTC_DATA;
 char [[address = 0x09]] UARTC_IER;

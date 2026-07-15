@@ -15,9 +15,9 @@ module minc_gw_top (
 //    logic [23:0] presc_cnt;
 //    logic        int_clk;
 
-// `define UART
-// `define PORTA
-// `define WAIT
+`define UART
+`define PORTA
+`define WAIT
 
     logic [15:0] sp_out;
     logic [7:0] data_in;
@@ -76,10 +76,10 @@ module minc_gw_top (
     UART_MASTER_Top uartc(
         .I_CLK(sys_clk), //input I_CLK
         .I_RESETN(sys_nrst), //input I_RESETN
-        .I_TX_EN(we && address[15:3] == 13'b00001 && wait_req), //input I_TX_EN
+        .I_TX_EN(we && address[15:3] == 13'b00001 && wait_ma), //input I_TX_EN
         .I_WADDR(address[2:0]), //input [2:0] I_WADDR
         .I_WDATA(data_out), //input [7:0] I_WDATA
-        .I_RX_EN(address[15:3] == 13'b00001 && wait_req), //input I_RX_EN
+        .I_RX_EN(address[15:3] == 13'b00001 && wait_ma), //input I_RX_EN
         .I_RADDR(address[2:0]), //input [2:0] I_RADDR
         .O_RDATA(uartc_data_out), //output [7:0] O_RDATA
         .SIN(uart_rx), //input SIN
