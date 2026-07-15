@@ -21,6 +21,12 @@ module minc_tb;
     logic       wait_ma;
     integer i;
 
+    logic [31:0] cycle_count;
+    always_ff @(posedge clk or negedge reset_n) begin
+        if (!reset_n) cycle_count <= 32'd0;
+        else          cycle_count <= cycle_count + 32'd1;
+    end
+
     wire ram_ce = address > 16'h000F ? 1'b1 : 1'b0; // RAM is enabled for addresses > 0x000F
 
     logic [7:0] port_a_out;
@@ -55,7 +61,8 @@ module minc_tb;
         .dbg_addr0(sp_out),
         .dbg_dout0(top_out[7:0]),
         .dbg_addr1(sp_out + 16'h0001),
-        .dbg_dout1(top_out[15:8])
+        .dbg_dout1(top_out[15:8]),
+        .dbg_addr2(16'hFFFB)
     );
 
     always_ff @(posedge clk or negedge reset_n) begin
@@ -137,13 +144,22 @@ module minc_tb;
     end
     `ifdef VERBOSE
     // Verbose output on each clock cycle
-    initial $display("TIME\tPC\tTOP\tSP");
-    always @(posedge clk) $display("%0t\t%0h\t%0h\t%0h", $time, pc_out, top_out, sp_out);
+    always @(posedge clk) begin
+        if (uut.state == 2'b00) begin // just entered S_FETCH: previous instruction's writeback is committed
+            $display("PC=%0d\tinsn=%05H\tR0=%2h\tR1=%2h\tR2=%2h\tR3=%2h\tR4=%2h\tR5=%2h\tR6=%2h\tR7=%2h\tR8=%2h\tR9=%2h\tR10=%2h\tR11=%2h\tR12=%2h\tR13=%2h\tR14=%2h\tR15=%2h",
+                pc_out, uut.instr,
+                uut.regs[0], uut.regs[1], uut.regs[2], uut.regs[3],
+                uut.regs[4], uut.regs[5], uut.regs[6], uut.regs[7],
+                uut.regs[8], uut.regs[9], uut.regs[10], uut.regs[11],
+                uut.regs[12], uut.regs[13], uut.regs[14], uut.regs[15]);
+        end
+    end
     `endif
 
     final begin
         $display("PORTA: %0h", port_a_out);
         $display("PC: %0h, TOP: %0h, SP: %0h", pc_out, top_out, sp_out);
+        $display("CYCLES: %0d", cycle_count);
     end
 
 endmodule

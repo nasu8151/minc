@@ -228,9 +228,8 @@ module minc (
         end
     end
     assign addr_base =  (is_addr_x) ? {reg13, reg12} :
-                        (is_addr_y) ? {reg15, reg14} :
-                        (is_addr_n) ? 16'd0 : 16'hxxxx;
-    assign address =    (is_mem_grp) ? addr_base + simm8: 
+                        (is_addr_y) ? {reg15, reg14} : 16'hxxxx;
+    assign address =    (is_mem_grp) ? is_addr_n ? ({8'h00, imm8}) : (addr_base + simm8) : 
                         (is_calr || is_push || is_pop || is_ret) ? sp : 16'hxxxx;
 
     assign data_in_internal =   aeq0 ? sp[7:0] :
