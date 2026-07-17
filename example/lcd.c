@@ -2,7 +2,7 @@ char [[address = 0x00]] PORTA_OUT;
 char [[address = 0x01]] PORTA_DIR;
 
 void wait_05ms() {
-    for (int i = 0; i < 254; i=i+1) {
+    for (char i = 0; i < 254; i=i+1) {
     }
 }
 
@@ -29,7 +29,7 @@ void lcd_sendcmd(char c) {
 
 void lcd_init() {
     lcd_send4(0, 0x30);
-    for (int i = 0;i < 10; i=i+1) {
+    for (char i = 0;i < 10; i=i+1) {
         wait_05ms();
     }
     lcd_send4(0, 0x30);

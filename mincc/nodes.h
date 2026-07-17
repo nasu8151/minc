@@ -34,6 +34,9 @@ typedef enum {
     ND_BREAK,
     ND_ADDR,
     ND_DEREF,
+    ND_NOT,
+    ND_AND,
+    ND_OR,
 
     ND_EOF
 } NodeType;

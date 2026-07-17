@@ -39,6 +39,7 @@ int main() {
     printf("mvi r15,0\n");
     printf("calr __on_entry\n");
     printf("calr main\n");
+    printf("push r1\n");
     printf("push r0\n");
     printf("halt\n");
     program();

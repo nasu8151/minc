@@ -1,5 +1,5 @@
-char [[address = 0x00]] PORTA_OUT;
-char [[address = 0x01]] PORTA_DIR;
+char [[address = 0x04]] PORTA_OUT;
+char [[address = 0x05]] PORTA_DIR;
 
 char [[address = 0x08]] UARTC_DATA;
 char [[address = 0x09]] UARTC_IER;
@@ -15,11 +15,11 @@ void uart_init() {
 }
 
 void uart_putch(char c) {
-    while ((UARTC_LSR & 0b00100000) ^ 0b00100000) { }
     UARTC_DATA = c;
 }
 
 void main() {
+    PORTA_OUT = 0xDE;
     uart_init();
     uart_putch(104);
     uart_putch(101);

@@ -59,6 +59,8 @@ Node *assign(char *l);
 Node *bitwise_or(char *l);
 Node *bitwise_xor(char *l);
 Node *bitwise_and(char *l);
+Node *and(char *l);
+Node *or(char *l);
 Node *equality(char *l);
 Node *relational(char *l);
 Node *expr(char *l);

@@ -7,11 +7,11 @@
 
 -mod_name Gowin_SP
 -file_name gowin_sp
--path C:/Users/senas/Documents/cybozulab/minc/gowin/minc/src/gowin_sp/
+-path //wsl.localhost/Ubuntu/home/sena/cybozu/minc/gowin/minc/src/gowin_sp/
 -type RAM_SP
 -file_type vlg
--depth 256
+-depth 4096
 -width 8
 -read_mode bypass
--write_mode read-before-write
+-write_mode normal
 -reset_mode sync

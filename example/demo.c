@@ -29,7 +29,7 @@ void uart_putch(char c) {
 }
 
 void wait_05ms() {
-    for (int i = 0; i < 254; i=i+1) {
+    for (char i = 0; i < 254; i=i+1) {
     }
 }
 
@@ -56,7 +56,7 @@ void lcd_sendcmd(char c) {
 
 void lcd_init() {
     lcd_send4(0, 0x30);
-    for (int i = 0;i < 10; i=i+1) {
+    for (char i = 0;i < 10; i=i+1) {
         wait_05ms();
     }
     lcd_send4(0, 0x30);
@@ -73,16 +73,6 @@ void lcd_init() {
     lcd_sendcmd(0x0C);
 }
 
-int bs(int idx) {
-    int i = idx - 1;
-    lcd_sendcmd(0b10000000 | (i));
-    lcd_senddat(0x20);
-    lcd_sendcmd(0b10000000 | (i));
-    uart_putch(0x20);
-    uart_putch(0x08);
-    return i;
-}
-
 void main() {
     uart_init();
     lcd_init();
@@ -93,7 +83,12 @@ void main() {
             char c = UARTC_DATA;
             uart_putch(c);
             if (c == 0x08) {
-                idx = bs(idx);
+                int idx = idx - 1;
+                lcd_sendcmd(0b10000000 | (idx));
+                lcd_senddat(0x20);
+                lcd_sendcmd(0b10000000 | (idx));
+                uart_putch(0x20);
+                uart_putch(0x08);
             } else {
                 lcd_sendcmd(0b10000000 | idx);
                 lcd_senddat(c);
