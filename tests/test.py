@@ -48,6 +48,9 @@ E2E_CASES = {
     "pointer" : ("char main(){char a = 3;char *b = &a;return *b;}", 3, {}),
     "poipoi" : ("int main(){int a = 1155; int *b = &a; int **c = &b; return **c;}", 1155, {}),
     "assigninpointer" : ("char main(){char a = 3;char *b = &a;*b = 5;return a;}", 5, {}),
+    "logicaland" : ("char main(){char a = 1;char b = 2;return ((a != b) && (a < b));}", 1, {}),
+    "logicalor" : ("char main(){char a = 1;char b = 2;return ((a == b) || (a > b));}", 0, {}),
+    "logicalnot" : ("char main(){char a = 1;char b = 2;return !b == !a;}", 1, {}),
 }
 
 
@@ -99,6 +102,19 @@ if __name__ == "__main__":
     # E2E tests
     if (len(sys.argv) == 1):
         run_e2e_tests()
+        # minc_h.sv interrupt hardware tests (hand-assembled fixture, no mincc
+        # involved -- see tests/fixtures/irq_vector.asm). Each case fires the
+        # interrupt mid-loop via a different irq_mask and checks that: the correct
+        # ISR (by vector priority) ran, execution resumed at the exact interrupted
+        # instruction, and RETI restored PSR (carry+IE) from the auto-saved shadow
+        # even though the ISR deliberately clobbers PSR before returning.
+        IRQ_FIXTURE = "tests/fixtures/irq_vector.asm"
+        tf.test_irq(IRQ_FIXTURE, irq_cycle=40, irq_mask=1, expected_top=0xA003, title="irq-vector0")
+        tf.test_irq(IRQ_FIXTURE, irq_cycle=40, irq_mask=4, expected_top=0xA203, title="irq-vector2")
+        tf.test_irq(IRQ_FIXTURE, irq_cycle=40, irq_mask=8, expected_top=0xA303, title="irq-vector3")
+        tf.test_irq(IRQ_FIXTURE, irq_cycle=40, irq_mask=0b0101, expected_top=0xA003, title="irq-priority-0-over-2")
+        tf.test_irq(IRQ_FIXTURE, irq_cycle=40, irq_mask=0b1010, expected_top=0xA103, title="irq-priority-1-over-3")
+
     if (len(sys.argv) >= 2):
         run_e2e_tests(key=sys.argv[1])
 

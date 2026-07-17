@@ -13,7 +13,8 @@ module minc (
     output logic        we,
     output logic        avma,
     input  logic [7:0]  data_in,
-    input  logic        wait_req
+    input  logic        wait_req,
+    input  logic [3:0]  irq_in
 );
 
     // PC, SP
@@ -21,6 +22,8 @@ module minc (
     logic [15:0] sp;
 
     logic [1:0] state;
+    logic servicing_irq; // 1 for the 4-state hardware interrupt-entry pseudo-op (push + jump to IRQ_VECTOR)
+    logic [1:0] irq_sel; // which irq_in line was accepted (0 = highest priority), latched on entry
 
     // General purpose registers r0..r15 (8-bit)
     logic  [7:0]  regs [0:15];
@@ -53,7 +56,12 @@ module minc (
 
     logic [7:0] data_in_internal;
 
-    logic carry_flag;
+    // PSR: bit0 = carry, bit1 = ie (interrupt enable), bit2-7 reserved (read as 0).
+    // Memory-mapped at 0x0002 (read/write via existing stm/ldm absolute addressing).
+    logic [1:0] psr;
+    logic [1:0] psr_shadow; // one-level auto-save of psr, memory-mapped at 0x0003, restored by RETI
+    wire        carry_flag = psr[0];
+    wire        ie         = psr[1];
     logic carry_flag_next;
 
     wire [5:0] op6 = instr[17:12];
@@ -99,6 +107,7 @@ module minc (
     wire is_push   = (op6 == 6'b011100);
     wire is_pop    = (op6 == 6'b011101);
     wire is_ret    = (op6 == 6'b011111);
+    wire is_reti   = (op6 == 6'b011110);
     wire is_calr   = (op2 == 2'b10);
     wire is_jr     = (op2 == 2'b11);
 
@@ -150,19 +159,32 @@ module minc (
                     state <= `S_WB;
                 end
                 `S_WB: begin
-                    if ((is_stm || is_ldm) && wait_req) state <= `S_WB;
+                    if (!servicing_irq && (is_stm || is_ldm) && wait_req) state <= `S_WB;
                     else state <= `S_FETCH;
                 end
                 default: state <= `S_FETCH;
             endcase
         end
     end
-    assign we = ((is_calr || is_stm || is_push) && (state == `S_WB)) 
+    assign we = (servicing_irq && (state == `S_MA || state == `S_WB))
+                || ((is_calr || is_stm || is_push) && (state == `S_WB))
                 || ((is_calr) && (state == `S_MA)) ? 1'b1 : 1'b0;
-    assign avma = (is_stm || is_ldm) && (state == `S_MA || state == `S_WB);
+    assign avma = !servicing_irq && (is_stm || is_ldm) && (state == `S_MA || state == `S_WB);
+
+    // Interrupt entry: 4 level-triggered request lines, fixed priority (irq_in[0] highest).
+    // Vectors live in PC-space (rom[]/pc), entirely separate from the 0x0002/0x0003 data-space
+    // MMIO addresses used by PSR/psr_shadow below, despite the similar-looking numbers.
+    wire any_irq = |irq_in;
+    wire [1:0] irq_sel_next =  irq_in[0] ? 2'd0 :
+                                irq_in[1] ? 2'd1 :
+                                irq_in[2] ? 2'd2 : 2'd3;
+    wire take_irq = ie && any_irq && (state == `S_FETCH);
+    wire [15:0] irq_vector = (irq_sel == 2'd0) ? 16'h0001 :
+                             (irq_sel == 2'd1) ? 16'h0002 :
+                             (irq_sel == 2'd2) ? 16'h0003 : 16'h0004;
 
     // PC and ROM control
-    wire [15:0] delta_pc =  (state == `S_FETCH) ? 16'd1 :
+    wire [15:0] delta_pc =  (state == `S_FETCH) ? (take_irq ? 16'd0 : 16'd1) :
                             (is_jz) ? (ra_val == 8'd0) ? simm8 : 16'b0 :
                             (is_jr || is_calr) ? simm16 : 16'hxxxx;
     wire [15:0] pc_next = pc + delta_pc;
@@ -176,18 +198,20 @@ module minc (
                     pc <= pc_next;
                 end
                 `S_MA: begin
-                    if (is_ret) begin
+                    if (!servicing_irq && (is_ret || is_reti)) begin
                         pc[7:0] <= data_in_internal;
                     end
                 end
                 `S_WB: begin
-                    if (is_jz || is_jr || is_calr) begin
+                    if (servicing_irq) begin
+                        pc <= irq_vector;
+                    end else if (is_jz || is_jr || is_calr) begin
                         pc <= pc_next;
-                    end else if (is_ret) begin
+                    end else if (is_ret || is_reti) begin
                         pc[15:8] <= data_in_internal;
                     end
 `ifdef SIM
-                    if (instr == 18'h3FFFF) $finish;
+                    if (!servicing_irq && instr == 18'h3FFFF) $finish;
 `endif
                 end
             endcase
@@ -198,21 +222,30 @@ module minc (
     logic [15:0] addr_base;
     logic aeq0;
     logic aeq1;
-    wire [15:0] delta_sp = (is_calr || is_push) ? -16'd1 :
-                        (is_pop || is_ret) ? 16'd1 : 16'hxxxx;
+    logic aeq2;
+    logic aeq3;
+    wire [15:0] delta_sp = servicing_irq ? -16'd1 :
+                        (is_calr || is_push) ? -16'd1 :
+                        (is_pop || is_ret || is_reti) ? 16'd1 : 16'hxxxx;
     wire [15:0] sp_next = sp + delta_sp;
     always_ff @(posedge clk or negedge reset_n) begin
         if (!reset_n) begin
             sp <= 16'd0;
+            servicing_irq <= 1'b0;
+            irq_sel <= 2'd0;
         end else begin
             case (state)
+                `S_FETCH: begin
+                    servicing_irq <= take_irq;
+                    if (take_irq) irq_sel <= irq_sel_next;
+                end
                 `S_DECEXEC: begin
-                    if (is_calr || is_ret) begin
+                    if (servicing_irq || is_calr || is_ret || is_reti) begin
                         sp <= sp_next;
                     end
                 end
                 `S_MA: begin
-                    if (is_push || is_calr || is_pop || is_ret) begin
+                    if (servicing_irq || is_push || is_calr || is_pop || is_ret || is_reti) begin
                         sp <= sp_next;
                     end
                 end
@@ -226,25 +259,31 @@ module minc (
             endcase
             aeq0 <= (address == 16'h0000) ? 1'b1 : 1'b0;
             aeq1 <= (address == 16'h0001) ? 1'b1 : 1'b0;
+            aeq2 <= (address == 16'h0002) ? 1'b1 : 1'b0;
+            aeq3 <= (address == 16'h0003) ? 1'b1 : 1'b0;
         end
     end
     assign addr_base =  (is_addr_x) ? {reg13, reg12} :
-                        (is_addr_y) ? {reg15, reg14} : 
+                        (is_addr_y) ? {reg15, reg14} :
                         (is_addr_n) ? 16'h0000 : 16'hxxxx;
-    assign address =    (is_mem_grp) ? (addr_base + (is_addr_n ? {8'h00, imm8} : simm8)) : 
-                        (is_calr || is_push || is_pop || is_ret) ? sp : 16'hxxxx;
+    assign address =    servicing_irq ? sp :
+                        (is_mem_grp) ? (addr_base + (is_addr_n ? {8'h00, imm8} : simm8)) :
+                        (is_calr || is_push || is_pop || is_ret || is_reti) ? sp : 16'hxxxx;
 
     assign data_in_internal =   aeq0 ? sp[7:0] :
-                                aeq1 ? sp[15:8] : data_in;
+                                aeq1 ? sp[15:8] :
+                                aeq2 ? psr :
+                                aeq3 ? psr_shadow : data_in;
 
     always_ff @( posedge clk or negedge reset_n ) begin
         if (!reset_n) begin
             data_out <= 8'hxx;
         end else begin
             if (state == `S_DECEXEC) begin
-                data_out <= (is_calr) ? pc[15:8] : 8'hxx;
+                data_out <= (servicing_irq || is_calr) ? pc[15:8] : 8'hxx;
             end else if (state == `S_MA) begin
-                data_out <= (is_push) ? ra_val :
+                data_out <= (servicing_irq) ? pc[7:0] :
+                            (is_push) ? ra_val :
                             (is_stm)  ? ra_val :
                             (is_calr) ? pc[7:0] : 8'hxx;
             end else begin
@@ -268,19 +307,51 @@ module minc (
         end else begin
             case (state)
                 `S_WB: begin
-                    regs[rd] <= rw_next;
-                    if (is_alu) carry_flag <= carry_flag_next;
-                    case (rd)
-                        4'd12: reg12 <= rw_next;
-                        4'd13: reg13 <= rw_next;
-                        4'd14: reg14 <= rw_next;
-                        4'd15: reg15 <= rw_next;
-                    endcase
+                    if (!servicing_irq) begin
+                        regs[rd] <= rw_next;
+                        case (rd)
+                            4'd12: reg12 <= rw_next;
+                            4'd13: reg13 <= rw_next;
+                            4'd14: reg14 <= rw_next;
+                            4'd15: reg15 <= rw_next;
+                        endcase
+                    end
                 end
             endcase
         end
     end
 
-
+    // PSR / psr_shadow: all writes consolidated into this one always_ff to avoid
+    // multiple drivers (ALU writeback, software MMIO store, hardware IE auto-clear
+    // on interrupt entry, and RETI's shadow restore all target the same register).
+    always_ff @(posedge clk or negedge reset_n) begin
+        if (!reset_n) begin
+            psr <= 2'b00;
+            psr_shadow <= 2'b00;
+        end else begin
+            case (state)
+                `S_FETCH: begin
+                    if (take_irq) begin
+                        psr_shadow <= psr;  // one-level auto-save
+                        psr[1] <= 1'b0;     // auto-clear IE only; carry bit is left as-is
+                    end
+                end
+                `S_WB: begin
+                    if (!servicing_irq) begin
+                        if (is_reti) begin
+                            psr <= psr_shadow;
+                        end else if (we && address == 16'h0002) begin
+                            psr[1:0] <= data_out[1:0];
+                        end else if (we && address == 16'h0003) begin
+                            psr_shadow[1:0] <= data_out[1:0];
+                        end else if (is_alu) begin
+                            psr[0] <= carry_flag_next;
+                        end
+                    end
+                end
+                default: ;
+            endcase
+        end
+    end
 
 endmodule

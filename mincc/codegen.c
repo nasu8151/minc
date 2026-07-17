@@ -487,7 +487,9 @@ int generate(Node *node, int size) {
 
 int gen_i8(Node *node) {
 
-    int src = pop_regstack(1);
+    int src;
+    if (!(node->type == ND_NOT))
+        src = pop_regstack(1);
     int dst = chg_regstack(1);
 
     switch (node->type) {
@@ -520,6 +522,15 @@ int gen_i8(Node *node) {
         break;
     case ND_BITWISE_XOR:
         printf("xor r%d,r%d\n", dst, src);
+        break;
+    case ND_AND:
+        printf("mvi r0,0\nmvi r1,0\nlt r0,r%d\nlt r1,r%d\nand r0,r1\nmov r0,r%d\n", dst, src, dst);
+        break;
+    case ND_OR:
+        printf("mvi r0,0\nmvi r1,0\nlt r0,r%d\nlt r1,r%d\nor r0,r1\nmov r0,r%d\n", dst, src, dst);
+        break;
+    case ND_NOT:
+        printf("mvi r0,0\nlt r0,r%d\nmvi r%d,1\nxor r%d,r0\n", dst, dst, dst);
         break;
     default:
         error_at(node->loc, "Unknown node type");

@@ -93,6 +93,7 @@ static const InstSpec g_inst_specs[] = {
     {"push", INST_REG,       0x1C, 0x00, 0x00, 0x00000, 0},
     {"pop",  INST_REG,       0x1D, 0x00, 0x00, 0x00000, 0},
     {"ret",  INST_FIXED,     0x00, 0x00, 0x00, 0x1F000, 0},
+    {"reti", INST_FIXED,     0x00, 0x00, 0x00, 0x1E000, 0},
     {"halt", INST_FIXED,     0x00, 0x00, 0x00, 0x3FFFF, 0},
     {"mvi",  INST_MVI,       0x0E, 0x00, 0x00, 0x00000, 0},
     {"jz",   INST_JZ,        0x0C, 0x00, 0x00, 0x00000, 0},
@@ -158,6 +159,23 @@ static void codevec_push(CodeVec *v, uint32_t x) {
         v->cap = ncap;
     }
     v->data[v->size++] = x;
+}
+
+/* Grows the code vector with zero-filled words, if needed, so that
+ * v->size >= addr + 1, i.e. v->data[addr] is a valid slot. */
+static void codevec_reserve_addr(CodeVec *v, size_t addr) {
+    while (v->size <= addr) {
+        codevec_push(v, 0);
+    }
+}
+
+/* Writes a word at an explicit address (the current .org location counter).
+ * addr may fall before the current end of the buffer (a backward .org),
+ * in which case the existing word there is overwritten; otherwise the gap
+ * is zero-filled up to addr. */
+static void emit_at(CodeVec *v, size_t addr, uint32_t word) {
+    codevec_reserve_addr(v, addr);
+    v->data[addr] = word;
 }
 
 static void fixupvec_push(FixupVec *v, size_t index, const char *name, int line_num, FixKind kind, uint8_t reg_nibble, uint8_t op_nibble) {
@@ -457,9 +475,9 @@ static char *next_token(char **pctx) {
     return start;
 }
 
-static void emit_fixup(CodeVec *code, FixupVec *fixups, const char *name, int line_num, FixKind kind, uint8_t reg_nibble, uint8_t op_nibble, uint32_t placeholder) {
-    codevec_push(code, placeholder);
-    fixupvec_push(fixups, code->size - 1, name, line_num, kind, reg_nibble, op_nibble);
+static void emit_fixup(CodeVec *code, FixupVec *fixups, const char *name, int line_num, FixKind kind, uint8_t reg_nibble, uint8_t op_nibble, uint32_t placeholder, size_t addr) {
+    emit_at(code, addr, placeholder);
+    fixupvec_push(fixups, addr, name, line_num, kind, reg_nibble, op_nibble);
 }
 
 int main(void) {
@@ -467,6 +485,7 @@ int main(void) {
     FixupVec fixups = {0};
     HashMap labels;
     HashMap inst_map;
+    size_t cur_addr = 0;
 
     hashmap_init(&labels);
     instruction_map_init(&inst_map);
@@ -502,7 +521,7 @@ int main(void) {
                 if (!is_valid_label_name(p)) {
                     die_fmt("Invalid label", p);
                 }
-                labelmap_put(&labels, p, code.size);
+                labelmap_put(&labels, p, cur_addr);
                 p = lskip(colon + 1);
                 if (*p == '\0') {
                     continue;
@@ -516,6 +535,15 @@ int main(void) {
             continue;
         }
         to_lower_str(inst);
+
+        if (strcmp(inst, ".org") == 0) {
+            char *addr_tok = next_token(&ctx);
+            if (!addr_tok) {
+                die("Missing address for .org");
+            }
+            cur_addr = (size_t)parse_int(addr_tok, 0, 65535);
+            continue;
+        }
 
         const InstSpec *spec = instruction_lookup(&inst_map, inst);
         if (!spec) {
@@ -595,7 +623,7 @@ int main(void) {
                 int rs = parse_reg(r);
 
                 if (is_valid_label_name(off)) {
-                    emit_fixup(&code, &fixups, off, g_line_num, FIX_IMM8, (uint8_t)rs, spec->opcode_a, enc_op6_reg_imm8(spec->opcode_a, (uint8_t)rs, 0));
+                    emit_fixup(&code, &fixups, off, g_line_num, FIX_IMM8, (uint8_t)rs, spec->opcode_a, enc_op6_reg_imm8(spec->opcode_a, (uint8_t)rs, 0), cur_addr);
                     emit = 0;
                 } else {
                     int iv = parse_int(off, -128, 127);
@@ -610,7 +638,7 @@ int main(void) {
                 }
 
                 if (is_valid_label_name(off)) {
-                    emit_fixup(&code, &fixups, off, g_line_num, FIX_REL16, 0, spec->opcode_a, enc_op2_rel16(spec->opcode_a, 0));
+                    emit_fixup(&code, &fixups, off, g_line_num, FIX_REL16, 0, spec->opcode_a, enc_op2_rel16(spec->opcode_a, 0), cur_addr);
                     emit = 0;
                 } else {
                     int iv = parse_int(off, -32768, 32767);
@@ -659,8 +687,9 @@ int main(void) {
         }
 
         if (emit) {
-            codevec_push(&code, word);
+            emit_at(&code, cur_addr, word);
         }
+        cur_addr++;
     }
 
     for (size_t i = 0; i < fixups.size; i++) {

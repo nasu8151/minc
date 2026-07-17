@@ -33,7 +33,40 @@ module minc_tb;
     logic [7:0] port_a_in = 8'h00; // Initialize port A input to 0
     logic [7:0] port_a_dir;
 
+    // minc_h.sv-only irq_in port. Guarded so this same testbench still builds
+    // against minc_p2.sv/minc_p5.sv (via tests/test_pipeline.py), which don't
+    // have this port yet.
+    `ifdef IRQ_TEST
+    logic [3:0] irq_in;
+    integer     irq_cycle;
+    integer     irq_mask;
+    integer     irq_len;
+    logic       irq_test_active;
+    initial begin
+        irq_test_active = $value$plusargs("irq_cycle=%d", irq_cycle);
+        if (!$value$plusargs("irq_mask=%d", irq_mask)) irq_mask = 1;
+        if (!$value$plusargs("irq_len=%d", irq_len)) irq_len = 6;
+    end
+    assign irq_in = (irq_test_active && (cycle_count >= irq_cycle) && (cycle_count < irq_cycle + irq_len))
+                    ? irq_mask[3:0] : 4'b0000;
+    `endif
+
     // Instantiate the DUT
+    `ifdef IRQ_TEST
+    minc uut (
+        .clk(clk),
+        .reset_n(reset_n),
+        .pc_out(pc_out),
+        .sp_out(sp_out),
+        .address(address),
+        .data_out(data_out),
+        .we(we),
+        .avma(avma),
+        .data_in(data_in),
+        .wait_req(wait_req),
+        .irq_in(irq_in)
+    );
+    `else
     minc uut (
         .clk(clk),
         .reset_n(reset_n),
@@ -46,6 +79,7 @@ module minc_tb;
         .data_in(data_in),
         .wait_req(wait_req)
     );
+    `endif
 
     ssram #(
         .ADDR_WIDTH(16),
@@ -100,6 +134,7 @@ module minc_tb;
     end
 
     `ifdef WAIT_TEST
+    // assign wait_req = 8'h10 > address ? 1'b1 : 1'b0;
     parameter WAITp4 = 8;
     logic [WAITp4:0] wait_sr;
     assign wait_req = (wait_sr[WAITp4-2:1] != 'b0) ? 1'b1 : 1'b0;

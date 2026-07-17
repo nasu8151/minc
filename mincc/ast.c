@@ -12,7 +12,7 @@ void program() {
     long i = 0;
     head = calloc(1, sizeof(Vars_List));
     head->parent = NULL;
-    head->var_alloc_ptr = 0x10; // グローバル変数のアドレスは0x10から割り当てる
+    head->var_alloc_ptr = 0x100; // グローバル変数のアドレスは0x10から割り当てる
     tail = head;
     while (!at_eof()) {
         code[i++] = *toplevel(token->loc);
@@ -224,16 +224,39 @@ Node *bitwise_xor(char *l) {
 
 Node *bitwise_and(char *l) {
     char *loc = l;
-    Node *node = equality(loc);
+    Node *node = and(loc);
     while (true) {
         if (consume_la("&", &loc)) {
-            node = new_node(ND_BITWISE_AND, node, equality(loc), loc);
+            node = new_node(ND_BITWISE_AND, node, and(loc), loc);
         } else {
             return node;
         }
     }
 }
 
+Node *and(char *l) {
+    char *loc = l;
+    Node *node = or(loc);
+    while (true) {
+        if (consume_la("&&", &loc)) {
+            node = new_node(ND_AND, node, or(loc), loc);
+        } else {
+            return node;
+        }
+    }
+}
+
+Node *or(char *l) {
+    char *loc = l;
+    Node *node = equality(loc);
+    while (true) {
+        if (consume_la("||", &loc)) {
+            node = new_node(ND_OR, node, equality(loc), loc);
+        } else {
+            return node;
+        }
+    }
+}
 
 Node *equality(char *l) {
     char *loc = l;
@@ -390,6 +413,8 @@ Node *unary(char *l) {
         Node *node = new_node(ND_DEREF, operand, NULL, loc);
         node->valtype = operand->valtype->ptr_to;
         return node;
+    } else if (consume_la("!", &loc)) {
+        return new_node(ND_NOT, unary(loc), NULL, loc);
     } else {
         return primary(loc);
     }

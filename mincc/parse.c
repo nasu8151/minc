@@ -198,14 +198,16 @@ Token *tokenize(const char *p){
             continue;
         }
 
-        if (strncmp(p, "==", 2) == 0 || strncmp(p, "!=", 2) == 0 || strncmp(p, "<=", 2) == 0 || strncmp(p, ">=", 2) == 0) {
+        if (strncmp(p, "==", 2) == 0 || strncmp(p, "!=", 2) == 0 || strncmp(p, "<=", 2) == 0 || strncmp(p, ">=", 2) == 0 ||
+            strncmp(p, "||", 2) == 0 || strncmp(p, "&&", 2) == 0) {
             cur = new_token(TOKEN_RESERVED, cur, p, 2, 0, (char *)p);
             p += 2;
             continue;
         }
 
-        if (*p == '+' || *p == '-' || *p == '*' || *p == '(' || *p == ')' || *p == '<' || *p == '>' || *p == '=' || *p == ';' 
-            || *p == '{' || *p == '}' || *p == ',' || *p == '[' || *p == ']' || *p == '|' || *p == '&' || *p == '^' || *p == '~') {
+        if (*p == '+' || *p == '-' || *p == '*' || *p == '(' || *p == ')' || *p == '<' || *p == '>' || *p == '=' || *p == ';' ||
+            *p == '{' || *p == '}' || *p == ',' || *p == '[' || *p == ']' || *p == '|' || *p == '&' || *p == '^' || *p == '~' ||
+            *p == '!') {
             cur = new_token(TOKEN_RESERVED, cur, p, 1, 0, (char *)p);
             p++;
             continue;
