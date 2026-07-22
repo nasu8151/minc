@@ -93,6 +93,17 @@ if __name__ == "__main__":
     #             "E001\n7410\nEFFE\nFFFF")
     # Undefined label should fail
     tf.expect_fail("""echo "jz NO_SUCH_LABEL,r0" | ./target/mincasm""")
+    # .org directive: forward org pads the gap with zero words, and labels
+    # defined after an .org land at the new address.
+    tf.expect("""printf 'jr MAIN\\n.org 3\\nMAIN:\\n    halt\\n' | ./target/mincasm""",
+                "30002\n00000\n00000\n3FFFF")
+    # .org directive: an explicit vector-table style layout (jump to MAIN at
+    # address 0, jump to ISR0 at address 1, code resuming at address 5).
+    tf.expect("""printf '.org 0\\njr MAIN\\n.org 1\\njr ISR0\\n.org 5\\nMAIN:\\n    halt\\nISR0:\\n    reti\\n' | ./target/mincasm""",
+                "30004\n30004\n00000\n00000\n00000\n3FFFF\n1E000")
+    # .org directive: missing/out-of-range address should fail
+    tf.expect_fail("""echo ".org" | ./target/mincasm""")
+    tf.expect_fail("""echo ".org 70000" | ./target/mincasm""")
     # MINCC tests
     tf.expect_fail("""echo "char main(){1+}" | ./target/mincc""") # Incomplete expression
     tf.expect_fail("""echo "char main(){a+1=5;}" | ./target/mincc""") # Invalid assignment
