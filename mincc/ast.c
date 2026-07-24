@@ -3,12 +3,14 @@
 
 Node code[256];
 
+static char *isr_vector_owner[4]; // name of the function claiming each [[isr=N]] vector slot, NULL if unclaimed
+
 extern Vars_List *head;
 extern Vars_List *current;
 extern Vars_List *tail;
 
 // Create new node (type != ND_NUM)
-void program() {
+long program() {
     long i = 0;
     head = calloc(1, sizeof(Vars_List));
     head->parent = NULL;
@@ -22,7 +24,7 @@ void program() {
     for (long j = 0; j < i; j++) {
         print_node(&code[j]);
     }
-    generate_top(code, i);
+    return i;
 }
 
 Node *toplevel(char *l) {
@@ -52,17 +54,32 @@ Node *toplevel(char *l) {
     }
     type = cur;
     long address = -1;
+    long isr_vector = -1;
     if (consume_la("[", &loc)) {
         expect("[", &loc);
-        char *attr = expect_ident(&loc);
-        if (strcmp(attr, "address") == 0) {
-            expect("=", &loc);
-            address = expect_number( &loc);
-            expect("]", &loc);
-            expect("]", &loc);
-        } else {
-            error_at(loc, "Unknown attribute for global variable: %s", attr);
-        }
+        do {
+            char *attr = expect_ident(&loc);
+            if (strcmp(attr, "address") == 0) {
+                expect("=", &loc);
+                address = expect_number( &loc);
+            } else if (strcmp(attr, "isr") == 0) {
+                if (type->size != 0) {
+                    warn_at(loc, "Since ISRs doesn't have a return value, the type is ignored.");
+                }
+                type->type = TY_ISR;
+                type->size = 0;
+                if (consume_la("=", &loc)) {
+                    isr_vector = expect_number(&loc);
+                    if (isr_vector < 0 || isr_vector > 3) {
+                        error_at(loc, "ISR vector number must be between 0 and 3, got %ld", isr_vector);
+                    }
+                }
+            } else {
+                error_at(loc, "Unknown attribute for global variable: %s", attr);
+            }
+        } while (consume(",", &loc));
+        expect("]", &loc);
+        expect("]", &loc);
     }
 
     Token *tok = token;
@@ -80,9 +97,9 @@ Node *toplevel(char *l) {
                 error_at(loc, "Invalid argument size: %d", arg_size);
             }
             // r2 is even, so odd reg count means odd register index
-            if (arg_size == 2 && (arg_reg_count % 2) != 0) {
-                arg_reg_count += 1; // padding to even register boundary
-            }
+            // if (arg_size == 2 && (arg_reg_count % 2) != 0) {
+            //     arg_reg_count += 1; // padding to even register boundary
+            // }
             arg_reg_count += arg_size;
             nv = nodevec_push(nv, arg_count++, arg);
             if (!consume(",", &loc)) {
@@ -90,8 +107,18 @@ Node *toplevel(char *l) {
                 break;
             }
         }
+        if (type->type == TY_ISR && arg_count > 0) {
+            error_at(loc, "ISR function '%s' cannot have parameters", name);
+        }
+        if (type->type == TY_ISR && isr_vector != -1) {
+            if (isr_vector_owner[isr_vector]) {
+                error_at(loc, "ISR vector %ld already claimed by '%s'", isr_vector, isr_vector_owner[isr_vector]);
+            }
+            isr_vector_owner[isr_vector] = name;
+        }
         add_function(tok, type);
         Node *node = new_func_node(ND_FUNC_DEF, name, nv, stmt(loc), arg_reg_count, type, loc);
+        node->isr_vector = isr_vector;
         end_scope();
         return node;
     } else {
@@ -363,6 +390,9 @@ Node *ident(char *l) {
     Token *tok = token;
     char *var_name = expect_ident(&loc);
     if (name && name->type == FUNCTION && consume_la("(", &loc)) { // ident "(" ((expr ",")* expr)? ")" の部分（関数呼び出し）
+        if (name->valtype && name->valtype->type == TY_ISR) {
+            error_at(loc, "ISR function '%.*s' cannot be called directly", (int)tok->len, tok->str);
+        }
         Node **args = calloc(1, sizeof(Node**));
         if (!args) {
             error("Memory allocation failed");
