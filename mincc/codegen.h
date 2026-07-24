@@ -46,5 +46,7 @@ int cast_i8_to_i16();
 int cast_i16_to_i8();
 void generate_prologue(Node **args, long arg_reg_count, long local_var_count);
 void generate_epilogue(long arg_count, int size, char *loc);
+void generate_isr_prologue(long local_var_count);
+void generate_isr_epilogue(void);
 
 #endif // MINCC_CODEGEN_H

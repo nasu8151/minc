@@ -93,11 +93,28 @@ if __name__ == "__main__":
     #             "E001\n7410\nEFFE\nFFFF")
     # Undefined label should fail
     tf.expect_fail("""echo "jz NO_SUCH_LABEL,r0" | ./target/mincasm""")
+    # .org directive: forward org pads the gap with zero words, and labels
+    # defined after an .org land at the new address.
+    tf.expect("""printf 'jr MAIN\\n.org 3\\nMAIN:\\n    halt\\n' | ./target/mincasm""",
+                "30002\n00000\n00000\n3FFFF")
+    # .org directive: an explicit vector-table style layout (jump to MAIN at
+    # address 0, jump to ISR0 at address 1, code resuming at address 5).
+    tf.expect("""printf '.org 0\\njr MAIN\\n.org 1\\njr ISR0\\n.org 5\\nMAIN:\\n    halt\\nISR0:\\n    reti\\n' | ./target/mincasm""",
+                "30004\n30004\n00000\n00000\n00000\n3FFFF\n1E000")
+    # .org directive: missing/out-of-range address should fail
+    tf.expect_fail("""echo ".org" | ./target/mincasm""")
+    tf.expect_fail("""echo ".org 70000" | ./target/mincasm""")
     # MINCC tests
     tf.expect_fail("""echo "char main(){1+}" | ./target/mincc""") # Incomplete expression
     tf.expect_fail("""echo "char main(){a+1=5;}" | ./target/mincc""") # Invalid assignment
     tf.expect_fail("""echo "char main(){i>=0;\nwhile(i<10) {\n i=i+1;\n if (i==5) {\nreturn 20*i;\n}\n\nreturn 0;}" | target/mincc """) # Missing closing brace
     tf.expect_fail("""echo "char main(){char a = 3;int b = &a;return *b;}" | ./target/mincc""")
+    # [[isr]]/[[isr=N]] validation
+    tf.expect_fail("""echo "void [[isr=0]] tick(){return 1;}" | ./target/mincc""") # return-with-value in ISR
+    tf.expect_fail("""echo "void [[isr=0]] tick(char x){}" | ./target/mincc""") # ISR with a parameter
+    tf.expect_fail("""echo "void [[isr=5]] tick(){}" | ./target/mincc""") # vector out of range
+    tf.expect_fail("""echo "void [[isr=0]] a(){}void [[isr=0]] b(){}char main(){return 0;}" | ./target/mincc""") # duplicate vector claim
+    tf.expect_fail("""echo "void [[isr=0]] tick(){}char main(){tick();return 0;}" | ./target/mincc""") # calling an ISR directly
 
     # E2E tests
     if (len(sys.argv) == 1):
@@ -114,6 +131,30 @@ if __name__ == "__main__":
         tf.test_irq(IRQ_FIXTURE, irq_cycle=40, irq_mask=8, expected_top=0xA303, title="irq-vector3")
         tf.test_irq(IRQ_FIXTURE, irq_cycle=40, irq_mask=0b0101, expected_top=0xA003, title="irq-priority-0-over-2")
         tf.test_irq(IRQ_FIXTURE, irq_cycle=40, irq_mask=0b1010, expected_top=0xA103, title="irq-priority-1-over-3")
+
+        # mincc-compiled [[isr=N]] end-to-end: proves the full mincc -> mincasm ->
+        # minc_h.sv pipeline for a *compiled* ISR (vector-table placement, reactive
+        # register save/restore, RETI), not just the hand-assembled fixture above.
+        ISR_C_SRC = """
+char [[address=0x02]] psr;
+char [[address=0x04]] port_a_out;
+char [[address=0x05]] port_a_dir;
+char counter = 0;
+
+void [[isr=0]] tick() {
+    counter = counter + 1;
+    port_a_out = 0xA5;
+}
+
+char main() {
+    port_a_dir = 0xFF;
+    psr = 2;
+    char i = 0;
+    for (i = 0; i < 200; i = i + 1) {}
+    return counter;
+}
+"""
+        tf.test_irq_e2e(ISR_C_SRC, irq_cycle=4000, irq_mask=1, expected_top=1, porta=0xA5, title="isr-compiled-e2e")
 
     if (len(sys.argv) >= 2):
         run_e2e_tests(key=sys.argv[1])

@@ -135,6 +135,64 @@ def test_irq(asm_path: str, irq_cycle: int, expected_top: int, title: str,
     print(f"""[OK] IRQ test "{title}" => TOP: {top_value:#06x}, SP: {sp_value:#06x} ({core}, {cycles} cycles)""")
     return cycles
 
+def test_irq_e2e(code: str, irq_cycle: int, expected_top: int, title: str,
+                  irq_mask: int = 1, irq_len: int = 6, porta=None,
+                  verbose: bool = False, core: str = "minc_h.sv"):
+    """Like test_e2e, but compiles+assembles C source that declares a
+    [[isr=N]]-vectored ISR, then simulates with irq_in driven the same way
+    test_irq does (via -DIRQ_TEST + plusargs), proving the full
+    mincc -> mincasm -> minc_h.sv pipeline for a *compiled* ISR."""
+    asm = subprocess.run("./target/mincc", input=code, shell=True, capture_output=True, text=True)
+    if asm.returncode != 0:
+        print(f"code:\n{code}")
+        print(f"test title: {title}")
+        raise Exception(f"mincc failed with return code {asm.returncode}:\nStderr:\n{asm.stderr}")
+    asm_code = asm.stdout
+    inst = subprocess.run("./target/mincasm", input=asm_code, shell=True, capture_output=True, text=True)
+    if inst.returncode != 0:
+        print(f"Assembly:\n{asm_code}")
+        print(f"test title: {title}")
+        raise Exception(f"mincasm failed with return code {inst.returncode}:\nStderr:\n{inst.stderr}")
+    with open("verilog/test.hex", "w") as f:
+        f.write(inst.stdout)
+    synthesis = subprocess.run(
+        ["iverilog", "-o", "__minc_isr_e2e.out", core, "minc_tb.sv",
+         "-g2012", "-DTEST", "-DVERBOSE", "-DSIM", "-DIRQ_TEST"],
+        cwd="./verilog", capture_output=True, text=True)
+    if synthesis.returncode != 0:
+        print(f"test title: {title}")
+        raise Exception(f"Verilog synthesis failed with return code {synthesis.returncode}:\nStderr: {synthesis.stderr.strip()}")
+    sim = subprocess.run(["vvp", "./__minc_isr_e2e.out",
+                           f"+irq_cycle={irq_cycle}", f"+irq_mask={irq_mask}", f"+irq_len={irq_len}"],
+                          cwd="./verilog", capture_output=True, text=True)
+    if sim.returncode != 0:
+        print(f"test title: {title}")
+        raise Exception(f"Verilog simulation failed with return code {sim.returncode}:\nStderr: {sim.stderr.strip()}")
+    if verbose:
+        print(sim.stdout)
+    lines = sim.stdout.strip().splitlines()
+    if not lines:
+        raise Exception("No output from simulation")
+    porta_str = lines[-3].strip().split(", ")
+    pc_str, top_str, sp_str = lines[-2].split(", ")
+    cycles_str = lines[-1]
+    cycles = int(cycles_str.split(":")[1].strip()) if ":" in cycles_str else None
+    try:
+        top_value = int(top_str.split(":")[1].strip(), 16)
+        sp_value = int(sp_str.split(":")[1].strip(), 16)
+    except ValueError:
+        print(f"Assembly output:\n{asm_code}")
+        print(f"Verilog output:\n{sim.stdout}")
+        print(f"test title: {title}")
+        raise
+    if porta is not None:
+        port_a_value = int(porta_str[0].split(": ")[1], 16)
+        assert port_a_value == (porta & 0xff), f"""[FAIL] Expected PORTA: {porta}, but got: {port_a_value} """
+    assert top_value == expected_top, f"""[FAIL] Expected TOP: {expected_top:#06x}, but got: {top_value:#06x}"""
+    assert sp_value == 65534, f"[FAIL] The stack's symmetry is broken. SP: {sp_value:#06x}"
+    print(f"""[OK] IRQ e2e test "{title}" => TOP: {top_value:#06x}, SP: {sp_value:#06x} ({core}, {cycles} cycles)""")
+    return cycles
+
 
 if __name__ == "__main__":
     expect("""echo "Hello World!" """, "Hello World!")

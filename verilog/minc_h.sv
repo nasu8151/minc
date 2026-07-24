@@ -23,7 +23,7 @@ module minc (
 
     logic [1:0] state;
     logic servicing_irq; // 1 for the 4-state hardware interrupt-entry pseudo-op (push + jump to IRQ_VECTOR)
-    logic [1:0] irq_sel; // which irq_in line was accepted (0 = highest priority), latched on entry
+    logic [2:0] irq_sel; // which irq_in line was accepted (0 = highest priority), latched on entry
 
     // General purpose registers r0..r15 (8-bit)
     logic  [7:0]  regs [0:15];
@@ -175,17 +175,16 @@ module minc (
     // Vectors live in PC-space (rom[]/pc), entirely separate from the 0x0002/0x0003 data-space
     // MMIO addresses used by PSR/psr_shadow below, despite the similar-looking numbers.
     wire any_irq = |irq_in;
-    wire [1:0] irq_sel_next =  irq_in[0] ? 2'd0 :
-                                irq_in[1] ? 2'd1 :
-                                irq_in[2] ? 2'd2 : 2'd3;
+    wire [2:0] irq_sel_next =   irq_in[0] ? 3'd1 :
+                                irq_in[1] ? 3'd2 :
+                                irq_in[2] ? 3'd3 :
+                                irq_in[3] ? 3'd4 : 3'dx;
     wire take_irq = ie && any_irq && (state == `S_FETCH);
-    wire [15:0] irq_vector = (irq_sel == 2'd0) ? 16'h0001 :
-                             (irq_sel == 2'd1) ? 16'h0002 :
-                             (irq_sel == 2'd2) ? 16'h0003 : 16'h0004;
+    wire [15:0] irq_vector = {13'd0, irq_sel};
 
     // PC and ROM control
-    wire [15:0] delta_pc =  (state == `S_FETCH) ? (take_irq ? 16'd0 : 16'd1) :
-                            (is_jz) ? (ra_val == 8'd0) ? simm8 : 16'b0 :
+    wire [15:0] delta_pc =  (state == `S_DECEXEC) ? (servicing_irq ? 16'd0 : 16'd1) :
+                            (is_jz) ? (ra_val == 8'd0) ? simm8 : 16'd0 :
                             (is_jr || is_calr) ? simm16 : 16'hxxxx;
     wire [15:0] pc_next = pc + delta_pc;
     always_ff @(posedge clk or negedge reset_n) begin
@@ -195,6 +194,8 @@ module minc (
             case (state)
                 `S_FETCH: begin
                     instr <= cur;
+                end
+                `S_DECEXEC: begin
                     pc <= pc_next;
                 end
                 `S_MA: begin
@@ -232,12 +233,12 @@ module minc (
         if (!reset_n) begin
             sp <= 16'd0;
             servicing_irq <= 1'b0;
-            irq_sel <= 2'd0;
+            irq_sel <= 3'd0;
         end else begin
             case (state)
                 `S_FETCH: begin
                     servicing_irq <= take_irq;
-                    if (take_irq) irq_sel <= irq_sel_next;
+                    irq_sel <= irq_sel_next;
                 end
                 `S_DECEXEC: begin
                     if (servicing_irq || is_calr || is_ret || is_reti) begin
@@ -330,12 +331,6 @@ module minc (
             psr_shadow <= 2'b00;
         end else begin
             case (state)
-                `S_FETCH: begin
-                    if (take_irq) begin
-                        psr_shadow <= psr;  // one-level auto-save
-                        psr[1] <= 1'b0;     // auto-clear IE only; carry bit is left as-is
-                    end
-                end
                 `S_WB: begin
                     if (!servicing_irq) begin
                         if (is_reti) begin
@@ -347,6 +342,9 @@ module minc (
                         end else if (is_alu) begin
                             psr[0] <= carry_flag_next;
                         end
+                    end else begin
+                        psr_shadow <= psr;  // one-level auto-save
+                        psr <= 2'b00;
                     end
                 end
                 default: ;
