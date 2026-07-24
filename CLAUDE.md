@@ -23,7 +23,7 @@ python3 tests/test.py   # run tests directly (requires target/mincc and target/m
 
 `tests/test.py` (via `tests/testfuncs.py`) drives the full toolchain per case: `mincc` (C → asm) → `mincasm` (asm → hex) → write `verilog/test.hex` → `iverilog`/`vvp` simulate a core (default `verilog/minc_h.sv`) + `verilog/minc_tb.sv` (compiled with `-DTEST -DVERBOSE -DSIM`) → assert the resulting TOP-of-stack/PORTA/SP register values. This requires `iverilog` and `vvp` (Icarus Verilog) on PATH in addition to gcc. There is no test runner for isolated unit tests — every case is an end-to-end compile+assemble+simulate round trip; add new cases as entries in the `E2E_CASES` dict in `tests/test.py` (tuples of `code, expected_top, kwargs` consumed by `tf.test_e2e`), or as standalone `tf.expect(...)` / `tf.expect_fail(...)` calls for assembler/compiler error cases.
 
-`tests/test_pipeline.py` runs the same `E2E_CASES` against all three CPU cores (`minc_h.sv`, `minc_p2.sv`, `minc_p5.sv`) via `tf.test_e2e(..., core=...)` / `t.run_e2e_tests(core=...)`, first as a correctness check (binary compatibility) and then to print a per-case and total cycle-count comparison table between cores. Run it directly with `python3 tests/test_pipeline.py` after `make` (it's not part of `make test`).
+`tf.test_e2e` / `tf.test_irq` in `tests/testfuncs.py` accept a `core:str = "minc_h.sv"` argument so a case can be pointed at a different core file, but `minc_h.sv` is currently the only CPU implementation in the tree — there's no second core to compare against yet.
 
 To manually run the pipeline on one program:
 
@@ -49,16 +49,9 @@ Single-pass, table-driven (`mincasm/main.c`). `g_inst_specs[]` maps each mnemoni
 
 ### CPU (verilog)
 
-**`verilog/minc_h.sv` is the baseline, actively-developed CPU implementation** (18-bit instruction word, 4-state `S_FETCH → S_DECEXEC → S_MA → S_WB` pipeline, memory-mapped SP at addresses `0x0000`/`0x0001`). `verilog/minc.sv` is an older/legacy core (15-bit instruction word, different opcode map and state machine) — check which one a task actually targets before editing.
+**`verilog/minc_h.sv` is the CPU implementation** (18-bit instruction word, 4-state `S_FETCH → S_DECEXEC → S_MA → S_WB` pipeline, memory-mapped SP at addresses `0x0000`/`0x0001`). `verilog/minc.sv` is an older/legacy core (15-bit instruction word, different opcode map and state machine) — check which one a task actually targets before editing; `minc_h.sv` is the one that gets active development.
 
-`minc_h.sv` also has single-level interrupt hardware (see `Hardware.md`'s "割り込み" section): 4 level-triggered, fixed-priority request lines (`irq_in[3:0]`, `irq_in[0]` highest), a `PSR` (carry + interrupt-enable, memory-mapped at `0x0002`) and a one-level auto-saved `PSR_SHADOW` (`0x0003`) that the new `reti` instruction (identical to `ret` plus restoring `PSR` from the shadow) restores. This is **not** ported to `minc_p2.sv`/`minc_p5.sv` — those two no longer have an identical port list to `minc_h.sv` (they lack `irq_in`), so `verilog/minc_tb.sv`'s DUT instantiation is `` `ifdef IRQ_TEST ``-guarded to keep building against all three cores; see `tests/fixtures/irq_vector.asm` + `tf.test_irq` in `tests/testfuncs.py` for the interrupt test harness (hand-assembled, bypasses `mincc` since there's no ORG/vector-table support in the toolchain).
-
-`verilog/minc_p2.sv` and `verilog/minc_p5.sv` are pipelined reimplementations, otherwise binary-compatible with `minc_h.sv`'s base ISA (same encoding, same `program.hex`/`test.hex` inputs — swappable as a drop-in `core` file in tests):
-
-- `minc_p2.sv` — PicoBlaze-style 2-stage pipeline (Fetch // Execute). Only the instruction in the Execute stage ever touches register file/SP/carry_flag, so Fetch never reads architectural state; only structural stalls (Execute busy) and always-flush branch bubbles are needed (no forwarding network).
-- `minc_p5.sv` — classic 5-stage pipeline (IF/ID/EX/MEM/WB) with forwarding from EX/MEM and MEM/WB into EX plus an ID-stage bypass for pending WB writes; load-use (`ldm`/`pop` consumed by the very next instruction) still needs one stall cycle. Branches (`jz`/`jr`/`calr`) resolve in EX (2-bubble flush); `ret` resolves in WB (larger flush) since its second byte read only lands the cycle `ret` is in WB. See the stage-plan comment at the top of the file for the full hazard writeup.
-
-All three cores are exercised by `tests/test_pipeline.py` (see above) for correctness parity and relative cycle counts; `tests/test.py`/`testfuncs.py`'s `tf.test_e2e` default to `minc_h.sv` but accept `core=...` to target either pipelined variant.
+`minc_h.sv` also has single-level interrupt hardware (see `Hardware.md`'s "割り込み" section): 4 level-triggered, fixed-priority request lines (`irq_in[3:0]`, `irq_in[0]` highest), a `PSR` (carry + interrupt-enable, memory-mapped at `0x0002`) and a one-level auto-saved `PSR_SHADOW` (`0x0003`) that the `reti` instruction (identical to `ret` plus restoring `PSR` from the shadow) restores. See `tests/fixtures/irq_vector.asm` + `tf.test_irq` in `tests/testfuncs.py` for the interrupt test harness (hand-assembled, bypasses `mincc` since there's no ORG/vector-table support in the toolchain).
 
 Instruction decode centers on `op6`/`op4`/`op2` (top bits of the instruction) — see the `is_*` wires in `minc_h.sv` for the opcode map, and `Hardware.md` for the mnemonic/encoding table. 16 general-purpose 8-bit registers (`r0`–`r15`); `r12`–`r15` double as pointer/index register pairs (X = r12:r13, Y = r14:r15) for `stm`/`ldm` addressing.
 

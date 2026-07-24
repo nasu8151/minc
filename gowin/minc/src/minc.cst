@@ -5,8 +5,12 @@
 //Part Number: GW1NR-LV9QN88PC6/I5
 //Device: GW1NR-9
 //Device Version: C
-//Created Time: Sat 06 06 05:18:08 2026
+//Created Time: Fri 07 24 12:04:52 2026
 
+IO_LOC "i2c_sda" 33;
+IO_PORT "i2c_sda" IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=3.3;
+IO_LOC "i2c_scl" 34;
+IO_PORT "i2c_scl" IO_TYPE=LVCMOS33 PULL_MODE=NONE DRIVE=8 BANK_VCCIO=3.3;
 IO_LOC "we_out" 57;
 IO_PORT "we_out" IO_TYPE=LVCMOS33 PULL_MODE=UP DRIVE=8 BANK_VCCIO=3.3;
 IO_LOC "wait_req_out" 68;
