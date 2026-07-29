@@ -7,8 +7,6 @@ module minc_gw_top (
     output logic [5:0]  address_out2,
     output logic        uart_tx,
     input  logic        uart_rx,
-    inout  logic        i2c_scl,
-    inout  logic        i2c_sda,
     output logic        wait_req_out,
     output logic        avma_out,
     output logic        we_out
@@ -20,14 +18,12 @@ module minc_gw_top (
 `define UART
 `define PORTA
 `define WAIT
-`define I2C
 
     logic [15:0] sp_out;
     logic [7:0] data_in;
 
     logic [7:0] ram_data_out;
     logic [7:0] uart_data_out;
-    logic [7:0] i2c_data_out;
 
     logic [7:0] data_out;
     logic       we;
@@ -38,9 +34,9 @@ module minc_gw_top (
     // logic       int_clk;
     assign address_out  = we ? data_out : data_in;
     assign address_out2 = ~address[5:0]; // For debugging: show address bits in reverse order
-    wire        ram_ce  = address > 16'h00FF ? 1'b1 : 1'b0; // RAM is enabled for addresses > 0x0F
+    wire        ram_ce  = address > 8'h0F ? 1'b1 : 1'b0; // RAM is enabled for addresses > 0x0F
     assign wait_req_out = wait_req;
-    assign avma_out = avma;
+    assign avma_out = uart_ce;
     assign we_out = we;
 
     logic [7:0] port_a_out;
@@ -53,8 +49,6 @@ module minc_gw_top (
     assign data_in =
     `ifdef UART
                         uart_ce ? uart_data_out :
-    `endif
-    `ifdef PORTA
     `endif
     `ifdef I2C
                         i2c_ce ? i2c_data_out :
@@ -117,6 +111,7 @@ module minc_gw_top (
 `endif
 
 `ifdef PORTA
+localparam PORT_A_BASE = 16'h0004;
     always_ff @(posedge sys_clk or negedge sys_nrst) begin
         if (!sys_nrst) begin
             port_a_out <= 8'h00;
@@ -166,7 +161,7 @@ module minc_gw_top (
         if (!sys_nrst) begin
             wait_sr <= 'b1;
         end else begin
-            if ((address[15:4] == 11'h001) && avma) begin
+            if ((address[15:3] == 13'b00001) && avma) begin
                 {wait_sr[0], wait_sr[WAITp4:1]} <= wait_sr;
             end else
                 wait_sr <= 'b1;
