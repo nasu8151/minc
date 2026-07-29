@@ -670,6 +670,18 @@ int gen_i16(Node *node) {
     case ND_SUB:
         printf("sub r%d,r%d\nsbc r%d,r%d\n", dst, src, dst + 1, src + 1);
         break;
+    case ND_EQ:
+        printf("sub r%d,r%d\nsbc r%d,r%d\nor r%d,r%d\nmvi r0,1\nlt r%d,r0\nmvi r%d,0\n",dst, src, dst + 1, src + 1, dst, dst + 1, dst, dst + 1);
+        break;
+    case ND_NEQ:
+        printf("sub r%d,r%d\nsbc r%d,r%d\nor r%d,r%d\nmvi r%d,0\nlt r%d,r%d\n", dst, src, dst + 1, src + 1, dst + 1, dst, dst, dst, dst + 1);
+        break;
+    case ND_LT:
+        printf("sub r%d,r%d\nltc r%d,r%d\nmov r%d,r%d\nmvi r%d,0\n", dst, src, dst + 1, src + 1, dst, dst + 1, dst + 1);
+        break;
+    case ND_GE:
+        printf("sub r%d,r%d\nltc r%d,r%d\nmvi r0,1\nlt r%d,r0\nmov r%d,r%d\nmvi r%d,0\n", dst, src, dst + 1, src + 1, dst + 1, dst, dst + 1, dst + 1);
+        break;
     default:
         error_at(node->loc, "Unknown node type");
         break;

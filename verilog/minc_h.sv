@@ -133,8 +133,8 @@ module minc (
                 alu_out = alu_sum;
                 carry_flag_next = alu_cout;
             end
-            4'b1000: begin alu_out = {7'b0, ~alu_cout}; carry_flag_next = 1'b0; end // LT (shares the subtractor above)
-            4'b1001: {carry_flag_next, alu_out} = (ra_val < rb_val - carry_flag) ? 8'b1 : 8'b0; // LTC
+            4'b1000: begin alu_out = {7'b0, ~alu_cout}; carry_flag_next = 1'bx; end // LT (shares the subtractor above)
+            4'b1001: begin alu_out = {7'b0, ~alu_cout}; carry_flag_next = 1'bx; end// LTC
             4'b1011: {alu_out, carry_flag_next} = rb_val >> 1 | (carry_flag << 7); // ROR
             4'b1110: begin alu_out = ra_val * rb_val; carry_flag_next = 1'bx; end // MUL
             4'b1111: begin alu_out = (ra_val * rb_val) >> 8; carry_flag_next = 1'bx; end // MULH

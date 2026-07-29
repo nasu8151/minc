@@ -24,6 +24,10 @@ E2E_CASES = {
     "greaterthanequal" : ("char main(){return (2+2>=4)+(2+2>=5);}", 1, {}),
     "bitmasks" : ("char main(){return ~(((0b11111111 & 0b11000011) | 0b00001111) ^ 0b00111100);}", 0b00001100, {}),
     "ikisugi" : ("int main(){return 1919 + 4545;}", 6464, {}), # 数値に特に深い意味はない
+    "lessthan16" : ("int main(){return (5555<5556)+(5555<5555);}", 1, {"verbose": True}),
+    "lessthanequal16" : ("int main(){return (666<=666)+(666<=665);}", 1, {}),
+    "greaterthan16" : ("int main(){return (4445>4444)+(4444>4444);}", 1, {}),
+    "greaterthanequal16" : ("int main(){return (4444>=4444)+(4444>=4445);}", 1, {}),
     "localval" : ("char main(){char a=3;return a+2;}", 5, {}),
     "val-arith" : ("char main(){char a=2;char b=3;return a * b;}", 6, {}),
     "val-arith2" : ("char main(){char a=1;char b=2;char c=3;return a + b * c;}", 7, {}),
