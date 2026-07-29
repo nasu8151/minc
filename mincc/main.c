@@ -75,6 +75,7 @@ int main() {
         }
         printf(".org 0x0005\n");
         printf("__crt0_start:\n");
+        printf("mvi r2,2\nstm 2,r2\n"); //enable the interrupts (temporary code. PLEASE change later.)
         print_default_crt0();
     }
 

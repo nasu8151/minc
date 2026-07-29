@@ -1,4 +1,4 @@
-module timer8 (
+module TIMER8 (
     input  logic       I_CLK,
     input  logic       I_RESETN,
 
