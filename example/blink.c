@@ -19,12 +19,16 @@ char main() {
     TIMER8_TOP = 211;
     TIMER8_CONFIG = 0b00111011;
     PORTA_DIR = 0xFF;
+    int i = 500;
     while (1) {
         int cur = millis;
         PORTA_OUT = 0x01;
-        while ((cur + 500) > millis) {}
+        while ((millis - cur) < i) {
+        }
         cur = millis;
-        PORTA_OUT = 0x00;
-        while ((cur + 500) > millis) {}
+        PORTA_OUT = 0x10;
+        while ((millis - cur) < i) {
+        }
     }
+    PORTA_OUT = 0xFF;
 }

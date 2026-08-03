@@ -192,6 +192,7 @@ void generate_isr_prologue(long local_var_count) {
     set_regstack(ast_min);
     printf("push r15\n");
     printf("push r14\n");
+    isr_x_save();
     printf("ldm r14,0\n"); // SP
     printf("ldm r15,1\n");
 
@@ -209,6 +210,7 @@ void generate_isr_epilogue(void) {
     }
     printf("stm 0,r14\n");
     printf("stm 1,r15\n");
+    isr_x_restore();
     printf("pop r14\n");
     printf("pop r15\n");
     printf("pop r0\n");
@@ -275,18 +277,14 @@ int generate(Node *node, int size) {
             // between our push r13/r12 and our matching pop.
             if (actual == 1) {
                 int dst = push_regstack(1);
-                isr_x_save();
                 printf("mvi r13,%ld\nmvi r12,%ld\n",
                     ((node->ofs_addr >> 8) & 0xFF), (node->ofs_addr & 0xFF));
                 printf("ldm r%d,X+0\n", dst);
-                isr_x_restore();
             } else if (actual == 2) {
                 int dst = push_regstack(2);
-                isr_x_save();
                 printf("mvi r13,%ld\nmvi r12,%ld\n",
                     ((node->ofs_addr >> 8) & 0xFF), (node->ofs_addr & 0xFF));
                 printf("ldm r%d,X+0\nldm r%d,X+1\n", dst, dst + 1);
-                isr_x_restore();
             } else {
                 error_at(node->loc, "Invalid size for global variable: %ld", node->valtype->size);
             }
@@ -330,16 +328,12 @@ int generate(Node *node, int size) {
         } else if (node->lhs->type == ND_GLOBAL_VAR) {
             if (node->lhs->valtype->size == 1) {
                 int src = pop_regstack(1);
-                isr_x_save();
                 printf("mvi r13,%ld\nmvi r12,%ld\nstm X+0,r%d\n", ((node->lhs->ofs_addr >> 8) & 0xFF), (node->lhs->ofs_addr & 0xFF), src);
-                isr_x_restore();
             } else if (node->lhs->valtype->size == 2) {
                 int src = pop_regstack(2);
-                isr_x_save();
                 printf("mvi r13,%ld\nmvi r12,%ld\n", ((node->lhs->ofs_addr >> 8) & 0xFF), (node->lhs->ofs_addr & 0xFF));
                 printf("stm X+0,r%d\n", src);
                 printf("stm X+1,r%d\n", src + 1);
-                isr_x_restore();
             } else {
                 error_at(node->loc, "Invalid size for global variable: %ld", node->lhs->valtype->size);
             }
@@ -349,7 +343,6 @@ int generate(Node *node, int size) {
             generate(node->rhs, val_size);      // 右辺値（代入すべき値）
             int val = pop_regstack(val_size);
             int addr = pop_regstack(PTR_SIZE);
-            isr_x_save();
             printf("mov r13,r%d\nmov r12,r%d\n", addr + 1, addr);
 
             if (val_size == 1) {
@@ -360,7 +353,6 @@ int generate(Node *node, int size) {
             } else {
                 error_at(node->loc, "Invalid size for dereferenced assignment: %d", val_size);
             }
-            isr_x_restore();
         } else {
             error_at(node->loc, "Left-hand side of assignment must be a variable");
         }
@@ -556,7 +548,6 @@ int generate(Node *node, int size) {
         // ポインタが指す先の値をロード
         int dst = push_regstack(node->valtype->size);
 
-        isr_x_save();
         // r13:r12 にアドレスをセット
         printf("mov r13,r%d\nmov r12,r%d\n", ptr_reg + 1, ptr_reg);
 
@@ -568,7 +559,6 @@ int generate(Node *node, int size) {
         } else {
             error_at(node->loc, "Invalid size for dereferenced value: %d", node->valtype->size);
         }
-        isr_x_restore();
         return node->valtype->size;
     }
     default:

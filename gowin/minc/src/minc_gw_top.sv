@@ -17,7 +17,7 @@ module minc_gw_top (
 //    logic [23:0] presc_cnt;
 //    logic        int_clk;
 
-// `define UART
+`define UART
 `define PORTA
 `define WAIT
 `define I2C
@@ -41,10 +41,11 @@ module minc_gw_top (
     logic [15:0] address;
     // logic       int_clk;
     assign address_out  = we ? data_out : data_in;
+    // assign address_out  = pc_out[7:0];
     assign address_out2 = ~address[5:0]; // For debugging: show address bits in reverse order
     wire        ram_ce  = address > 16'h00FF ? 1'b1 : 1'b0; // RAM is enabled for addresses > 0xFF
     assign wait_req_out = wait_req;
-    assign avma_out = i2c_ce;
+    assign avma_out = irq_line[0];
     assign we_out = we;
 
     logic [7:0] port_a_out;
@@ -177,8 +178,8 @@ localparam PORT_A_BASE = 16'h0004;
         .I_RADDR   (address[2:0]),
         .O_RDATA   (timer8_data_out),
         .O_OVERFLOW(),
-        .O_COMPARE (irq_line[0]),
-        .O_OVF_INT (),
+        .O_COMPARE (),
+        .O_OVF_INT (irq_line[0]),
         .O_CMP_INT ()
     );
 
