@@ -15,7 +15,7 @@ module timer8_tb;
     logic       O_OVF_INT;
     logic       O_CMP_INT;
 
-    timer8 dut (
+    TIMER8 dut (
         .I_CLK     (I_CLK),
         .I_RESETN  (I_RESETN),
         .I_TX_EN   (I_TX_EN),

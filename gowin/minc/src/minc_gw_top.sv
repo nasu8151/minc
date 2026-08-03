@@ -21,6 +21,7 @@ module minc_gw_top (
 `define PORTA
 `define WAIT
 `define I2C
+`define TIMER8
 
     logic [15:0] sp_out;
     logic [7:0] data_in;
@@ -28,6 +29,9 @@ module minc_gw_top (
     logic [7:0] ram_data_out;
     logic [7:0] uart_data_out;
     logic [7:0] i2c_data_out;
+    logic [7:0] timer8_data_out;
+
+    logic [3:0] irq_line;
 
     logic [7:0] data_out;
     logic       we;
@@ -57,6 +61,9 @@ module minc_gw_top (
     `ifdef I2C
                         i2c_ce ? i2c_data_out :
     `endif
+    `ifdef TIMER8
+                        timer8_ce ? timer8_data_out :
+    `endif
                         ram_ce ? ram_data_out : 8'hxx; // Mux data from RAM or UART based on address
 
     minc u_minc (
@@ -69,7 +76,8 @@ module minc_gw_top (
         .we(we),
         .avma(avma),
         .data_in(data_in),
-        .wait_req(wait_req)
+        .wait_req(wait_req),
+        .irq_in(irq_line)
     );
 
     Gowin_SP ram(
@@ -155,6 +163,27 @@ localparam PORT_A_BASE = 16'h0004;
 	);
 `endif
 
+`ifdef TIMER8
+    localparam TIMER8_ADDRESS_BASE = 16'h0018;
+    localparam TIMER8_ADDRESS_LEN  = 3; //2^3 = 8 bytes
+    wire timer8_ce =  (address[15:TIMER8_ADDRESS_LEN] == TIMER8_ADDRESS_BASE[15:TIMER8_ADDRESS_LEN]) ? 1'b1 : 1'b0;
+    TIMER8 timer8 (
+        .I_CLK     (sys_clk),
+        .I_RESETN  (sys_nrst),
+        .I_TX_EN   (timer8_ce && we && wait_ma),
+        .I_WADDR   (address[2:0]),
+        .I_WDATA   (data_out),
+        .I_RX_EN   (timer8_ce && wait_ma),
+        .I_RADDR   (address[2:0]),
+        .O_RDATA   (timer8_data_out),
+        .O_OVERFLOW(),
+        .O_COMPARE (irq_line[0]),
+        .O_OVF_INT (),
+        .O_CMP_INT ()
+    );
+
+`endif
+
 `ifdef WAIT
     // assign wait_req = 8'h10 > address ? 1'b1 : 1'b0;
     parameter WAITp4 = 8;
@@ -165,7 +194,7 @@ localparam PORT_A_BASE = 16'h0004;
         if (!sys_nrst) begin
             wait_sr <= 'b1;
         end else begin
-            if (((address[15:3] == 13'b00001) || (address[15:4] == 11'h001)) && avma) begin
+            if ((!ram_ce) && avma) begin
                 {wait_sr[0], wait_sr[WAITp4:1]} <= wait_sr;
             end else
                 wait_sr <= 'b1;
