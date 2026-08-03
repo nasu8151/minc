@@ -90,10 +90,13 @@ def test_e2e(code:str, expected_top:int, title : str, verbose:bool=False, porta 
         raise e
 
 def test_irq(asm_path: str, irq_cycle: int, expected_top: int, title: str,
-             irq_mask: int = 1, irq_len: int = 6, verbose: bool = False, core: str = "minc_h.sv"):
+             irq_mask: int = 1, irq_len: int = 6, irq_period: int = 0,
+             verbose: bool = False, core: str = "minc_h.sv"):
     """Hand-assemble (mincasm only, no mincc) a fixture exercising minc_h.sv's
     interrupt hardware, and simulate with irq_in driven by minc_tb.sv's
-    IRQ_TEST block via +irq_cycle=/+irq_mask=/+irq_len= plusargs."""
+    IRQ_TEST block via +irq_cycle=/+irq_mask=/+irq_len=/+irq_period= plusargs.
+    irq_period=0 (default) fires a single one-shot pulse; irq_period>0 repeats
+    the pulse every irq_period cycles for the rest of the simulation."""
     with open(asm_path) as f:
         asm_code = f.read()
     inst = subprocess.run("./target/mincasm", input=asm_code, shell=True, capture_output=True, text=True)
@@ -110,7 +113,8 @@ def test_irq(asm_path: str, irq_cycle: int, expected_top: int, title: str,
         print(f"test title: {title}")
         raise Exception(f"Verilog synthesis failed with return code {synthesis.returncode}:\nStderr: {synthesis.stderr.strip()}")
     sim = subprocess.run(["vvp", "./__minc_irq_test.out",
-                           f"+irq_cycle={irq_cycle}", f"+irq_mask={irq_mask}", f"+irq_len={irq_len}"],
+                           f"+irq_cycle={irq_cycle}", f"+irq_mask={irq_mask}", f"+irq_len={irq_len}",
+                           f"+irq_period={irq_period}"],
                           cwd="./verilog", capture_output=True, text=True)
     if sim.returncode != 0:
         print(f"test title: {title}")
@@ -136,12 +140,14 @@ def test_irq(asm_path: str, irq_cycle: int, expected_top: int, title: str,
     return cycles
 
 def test_irq_e2e(code: str, irq_cycle: int, expected_top: int, title: str,
-                  irq_mask: int = 1, irq_len: int = 6, porta=None,
+                  irq_mask: int = 1, irq_len: int = 6, irq_period: int = 0, porta=None,
                   verbose: bool = False, core: str = "minc_h.sv"):
     """Like test_e2e, but compiles+assembles C source that declares a
     [[isr=N]]-vectored ISR, then simulates with irq_in driven the same way
     test_irq does (via -DIRQ_TEST + plusargs), proving the full
-    mincc -> mincasm -> minc_h.sv pipeline for a *compiled* ISR."""
+    mincc -> mincasm -> minc_h.sv pipeline for a *compiled* ISR.
+    irq_period=0 (default) fires a single one-shot pulse; irq_period>0 repeats
+    the pulse every irq_period cycles for the rest of the simulation."""
     asm = subprocess.run("./target/mincc", input=code, shell=True, capture_output=True, text=True)
     if asm.returncode != 0:
         print(f"code:\n{code}")
@@ -163,7 +169,8 @@ def test_irq_e2e(code: str, irq_cycle: int, expected_top: int, title: str,
         print(f"test title: {title}")
         raise Exception(f"Verilog synthesis failed with return code {synthesis.returncode}:\nStderr: {synthesis.stderr.strip()}")
     sim = subprocess.run(["vvp", "./__minc_isr_e2e.out",
-                           f"+irq_cycle={irq_cycle}", f"+irq_mask={irq_mask}", f"+irq_len={irq_len}"],
+                           f"+irq_cycle={irq_cycle}", f"+irq_mask={irq_mask}", f"+irq_len={irq_len}",
+                           f"+irq_period={irq_period}"],
                           cwd="./verilog", capture_output=True, text=True)
     if sim.returncode != 0:
         print(f"test title: {title}")

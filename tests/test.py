@@ -77,6 +77,71 @@ def run_e2e_tests(core: str = "minc_h.sv", key: Optional[str] = None):
             total_cycles += cycles
     return total_cycles
 
+def run_irq_tests():
+    # minc_h.sv interrupt hardware tests (hand-assembled fixture, no mincc
+    # involved -- see tests/fixtures/irq_vector.asm). Each case fires the
+    # interrupt mid-loop via a different irq_mask and checks that: the correct
+    # ISR (by vector priority) ran, execution resumed at the exact interrupted
+    # instruction, and RETI restored PSR (carry+IE) from the auto-saved shadow
+    # even though the ISR deliberately clobbers PSR before returning.
+    IRQ_FIXTURE = "tests/fixtures/irq_vector.asm"
+    tf.test_irq(IRQ_FIXTURE, irq_cycle=40, irq_mask=1, expected_top=0xA003, title="irq-vector0")
+    tf.test_irq(IRQ_FIXTURE, irq_cycle=40, irq_mask=4, expected_top=0xA203, title="irq-vector2")
+    tf.test_irq(IRQ_FIXTURE, irq_cycle=40, irq_mask=8, expected_top=0xA303, title="irq-vector3")
+    tf.test_irq(IRQ_FIXTURE, irq_cycle=40, irq_mask=0b0101, expected_top=0xA003, title="irq-priority-0-over-2")
+    tf.test_irq(IRQ_FIXTURE, irq_cycle=40, irq_mask=0b1010, expected_top=0xA103, title="irq-priority-1-over-3")
+
+    # mincc-compiled [[isr=N]] end-to-end: proves the full mincc -> mincasm ->
+    # minc_h.sv pipeline for a *compiled* ISR (vector-table placement, reactive
+    # register save/restore, RETI), not just the hand-assembled fixture above.
+    ISR_C_SRC = """
+char [[address=0x02]] psr;
+char [[address=0x04]] port_a_out;
+char [[address=0x05]] port_a_dir;
+int counter = 0;
+
+void [[isr=0]] tick() {
+counter = counter + 1;
+port_a_out = 0xA5;
+}
+
+char main() {
+port_a_dir = 0xFF;
+psr = 2;
+char i = 0;
+for (i = 0; i < 200; i = i + 1) {}
+return counter;
+}
+"""
+    tf.test_irq_e2e(ISR_C_SRC, irq_cycle=4000, irq_mask=1, expected_top=1, porta=0xA5, title="isr-compiled-e2e")
+
+    # Periodic interrupts: irq_period makes minc_tb.sv re-pulse irq_in every
+    # N cycles instead of firing once. main busy-waits until the ISR's
+    # counter reaches TARGET, which only passes if every periodic pulse is
+    # actually serviced (IE correctly restored by RETI after each one) --
+    # a single one-shot interrupt would hang until the test timeout.
+    ISR_PERIODIC_C_SRC = """
+char [[address=0x02]] psr;
+int counter = 0;
+
+void [[isr=0]] tick() {
+counter = counter + 1;
+}
+
+int main() {
+psr = 2;
+int cur = counter;
+while ((counter - cur) < 5) {
+}
+cur = counter;
+while ((counter - cur) < 5) {
+}
+return counter;
+}
+"""
+    tf.test_irq_e2e(ISR_PERIODIC_C_SRC, irq_cycle=200, irq_period=500, irq_len=6,
+                        irq_mask=1, expected_top=10, title="isr-periodic-e2e")
+
 
 if __name__ == "__main__":
     # MINCASM tests
@@ -126,45 +191,12 @@ if __name__ == "__main__":
     # E2E tests
     if (len(sys.argv) == 1):
         run_e2e_tests()
-        # minc_h.sv interrupt hardware tests (hand-assembled fixture, no mincc
-        # involved -- see tests/fixtures/irq_vector.asm). Each case fires the
-        # interrupt mid-loop via a different irq_mask and checks that: the correct
-        # ISR (by vector priority) ran, execution resumed at the exact interrupted
-        # instruction, and RETI restored PSR (carry+IE) from the auto-saved shadow
-        # even though the ISR deliberately clobbers PSR before returning.
-        IRQ_FIXTURE = "tests/fixtures/irq_vector.asm"
-        tf.test_irq(IRQ_FIXTURE, irq_cycle=40, irq_mask=1, expected_top=0xA003, title="irq-vector0")
-        tf.test_irq(IRQ_FIXTURE, irq_cycle=40, irq_mask=4, expected_top=0xA203, title="irq-vector2")
-        tf.test_irq(IRQ_FIXTURE, irq_cycle=40, irq_mask=8, expected_top=0xA303, title="irq-vector3")
-        tf.test_irq(IRQ_FIXTURE, irq_cycle=40, irq_mask=0b0101, expected_top=0xA003, title="irq-priority-0-over-2")
-        tf.test_irq(IRQ_FIXTURE, irq_cycle=40, irq_mask=0b1010, expected_top=0xA103, title="irq-priority-1-over-3")
-
-        # mincc-compiled [[isr=N]] end-to-end: proves the full mincc -> mincasm ->
-        # minc_h.sv pipeline for a *compiled* ISR (vector-table placement, reactive
-        # register save/restore, RETI), not just the hand-assembled fixture above.
-        ISR_C_SRC = """
-char [[address=0x02]] psr;
-char [[address=0x04]] port_a_out;
-char [[address=0x05]] port_a_dir;
-char counter = 0;
-
-void [[isr=0]] tick() {
-    counter = counter + 1;
-    port_a_out = 0xA5;
-}
-
-char main() {
-    port_a_dir = 0xFF;
-    psr = 2;
-    char i = 0;
-    for (i = 0; i < 200; i = i + 1) {}
-    return counter;
-}
-"""
-        tf.test_irq_e2e(ISR_C_SRC, irq_cycle=4000, irq_mask=1, expected_top=1, porta=0xA5, title="isr-compiled-e2e")
 
     if (len(sys.argv) >= 2):
-        run_e2e_tests(key=sys.argv[1])
+        if (sys.argv[1] == "irq"):
+            run_irq_tests()
+        else:
+            run_e2e_tests(key=sys.argv[1])
 
     print()
     print("[OK] [ALL TESTS PASSED]")
