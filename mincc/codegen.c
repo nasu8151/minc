@@ -623,16 +623,16 @@ int gen_i8(Node *node) {
         printf("mul r%d,r%d\n", dst, src);
         break;
     case ND_EQ:
-        printf("sub r%d,r%d\nmvi r0,1\nlt r%d,r0\n", dst, src, dst);
+        printf("sub r%d,r%d\nchz r%d,r%d\n", dst, src, dst, dst);
         break;
     case ND_NEQ:
-        printf("sub r%d,r%d\nmvi r0,0\nlt r0,r%d\nmov r%d,r0\n", dst, src, dst, dst);
+        printf("sub r%d,r%d\nchz r%d,r%d\nchz r%d,r%d\n", dst, src, dst, dst, dst, dst);
         break;
     case ND_LT:
         printf("lt r%d,r%d\n", dst, src);
         break;
     case ND_GE:
-        printf("lt r%d,r%d\nmvi r0,1\nlt r%d,r0\n", dst, src, dst);
+        printf("lt r%d,r%d\nchz r%d,r%d\n", dst, src, dst, dst);
         break;
     case ND_BITWISE_AND:
         printf("and r%d,r%d\n", dst, src);
@@ -644,13 +644,13 @@ int gen_i8(Node *node) {
         printf("xor r%d,r%d\n", dst, src);
         break;
     case ND_AND:
-        printf("mvi r0,0\nmvi r1,0\nlt r0,r%d\nlt r1,r%d\nand r0,r1\nmov r0,r%d\n", dst, src, dst);
+        printf("chz r%d,r%d\nchz r%d,r%d\nor r%d,r%d\nchz r%d,r%d\n", dst, dst, src, src, dst, src, dst, dst);
         break;
     case ND_OR:
-        printf("mvi r0,0\nmvi r1,0\nlt r0,r%d\nlt r1,r%d\nor r0,r1\nmov r0,r%d\n", dst, src, dst);
+        printf("chz r%d,r%d\nchz r%d,r%d\nand r%d,r%d\nchz r%d,r%d\n", dst, dst, src, src, dst, src, dst, dst);
         break;
     case ND_NOT:
-        printf("mvi r0,0\nlt r0,r%d\nmvi r%d,1\nxor r%d,r0\n", dst, dst, dst);
+        printf("chz r%d,r%d\n", dst, dst);
         break;
     default:
         error_at(node->loc, "Unknown node type");
@@ -671,7 +671,7 @@ int gen_i16(Node *node) {
         printf("sub r%d,r%d\nsbc r%d,r%d\n", dst, src, dst + 1, src + 1);
         break;
     case ND_EQ:
-        printf("sub r%d,r%d\nsbc r%d,r%d\nor r%d,r%d\nmvi r0,1\nlt r%d,r0\nmvi r%d,0\n",dst, src, dst + 1, src + 1, dst, dst + 1, dst, dst + 1);
+        printf("sub r%d,r%d\nsbc r%d,r%d\nor r%d,r%d\nchz r%d,r%d\nmvi r%d,0\n", dst, src, dst + 1, src + 1, dst, dst + 1, dst, dst, dst + 1);
         break;
     case ND_NEQ:
         printf("sub r%d,r%d\nsbc r%d,r%d\nor r%d,r%d\nmvi r%d,0\nlt r%d,r%d\n", dst, src, dst + 1, src + 1, dst + 1, dst, dst, dst, dst + 1);
@@ -680,7 +680,25 @@ int gen_i16(Node *node) {
         printf("sub r%d,r%d\nltc r%d,r%d\nmov r%d,r%d\nmvi r%d,0\n", dst, src, dst + 1, src + 1, dst, dst + 1, dst + 1);
         break;
     case ND_GE:
-        printf("sub r%d,r%d\nltc r%d,r%d\nmvi r0,1\nlt r%d,r0\nmov r%d,r%d\nmvi r%d,0\n", dst, src, dst + 1, src + 1, dst + 1, dst, dst + 1, dst + 1);
+        printf("sub r%d,r%d\nltc r%d,r%d\nchz r%d,r%d\nmvi r%d,0\n", dst, src, dst + 1, src + 1, dst, dst + 1, dst + 1);
+        break;
+    case ND_BITWISE_AND:
+        printf("and r%d,r%d\nand r%d,r%d\n", dst, src, dst + 1, src + 1);
+        break;
+    case ND_BITWISE_OR:
+        printf("and r%d,r%d\nand r%d,r%d\n", dst, src, dst + 1, src + 1);
+        break;
+    case ND_BITWISE_XOR:
+        printf("and r%d,r%d\nand r%d,r%d\n", dst, src, dst + 1, src + 1);
+        break;
+    case ND_AND:
+        printf("or r%d,r%d\nor r%d,r%d\nchz r%d,r%d\nchz r%d,r%d\nor r%d,r%d\nchz r%d,r%d\nmvi r%d,0\n", dst, dst + 1, src, src + 1, dst, dst, src, src, dst, src, dst, dst, dst + 1);
+        break;
+    case ND_OR:
+        printf("or r%d,r%d\nor r%d,r%d\nchz r%d,r%d\nchz r%d,r%d\nand r%d,r%d\nchz r%d,r%d\nmvi r%d,0\n", dst, dst + 1, src, src + 1, dst, dst, src, src, dst, src, dst, dst, dst + 1);
+        break;
+    case ND_NOT:
+        printf("or r%d,r%d\nchz r%d,r%d\nmvi r%d,0\n", dst, dst + 1, dst, dst, dst + 1);
         break;
     default:
         error_at(node->loc, "Unknown node type");

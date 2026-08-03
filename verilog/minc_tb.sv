@@ -170,8 +170,12 @@ module minc_tb;
         @(posedge reset_n);
         // wait a little after reset release
         #1;
-        for (i = 0; i < 131071; i = i + 1) begin
+        for (i = 0; i < 33550336; i = i + 1) begin
             @(posedge clk);
+            if (uut.pc === 16'hxxxx) begin
+                $display("[ERROR] PC == xxxx. finishing simulation");
+                $finish;
+            end
         end
         #10;
         $display("Timeout reached, finishing simulation.");

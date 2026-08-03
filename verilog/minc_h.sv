@@ -115,7 +115,7 @@ module minc (
     // ADD/ADC/SUB/SBC/LT share one 8-bit adder: subop[3]|subop[1] selects
     // subtract (invert b, cin defaults to 1), subop[0] selects carry-in from
     // the flag (ADC/SBC). LT reads out the borrow instead of the sum.
-    wire       alu_do_sub = subop[3] | subop[1];
+    wire       alu_do_sub = subop[1];
     wire       alu_use_cf = subop[0];
     wire [7:0] alu_b      = alu_do_sub ? ~rb_val : rb_val;
     wire       alu_cin    = alu_use_cf ? carry_flag : alu_do_sub;
@@ -133,9 +133,9 @@ module minc (
                 alu_out = alu_sum;
                 carry_flag_next = alu_cout;
             end
-            4'b1000: begin alu_out = {7'b0, ~alu_cout}; carry_flag_next = 1'bx; end // LT (shares the subtractor above)
-            4'b1001: begin alu_out = {7'b0, ~alu_cout}; carry_flag_next = 1'bx; end// LTC
-            4'b1011: {alu_out, carry_flag_next} = rb_val >> 1 | (carry_flag << 7); // ROR
+            4'b1000: begin alu_out = {7'b0, ~|ra_val};  carry_flag_next = 1'bx; end // CHZ
+            4'b1010, 4'b1011: begin alu_out = {7'b0, ~alu_cout}; carry_flag_next = 1'bx; end // LT and LTC (shares the subtractor above)
+            4'b1100: {alu_out, carry_flag_next} = {carry_flag, rb_val >> 1}; // ROR
             4'b1110: begin alu_out = ra_val * rb_val; carry_flag_next = 1'bx; end // MUL
             4'b1111: begin alu_out = (ra_val * rb_val) >> 8; carry_flag_next = 1'bx; end // MULH
             default: begin alu_out = ra_val; carry_flag_next = 1'bx; end
@@ -179,7 +179,7 @@ module minc (
                                 irq_in[1] ? 3'd2 :
                                 irq_in[2] ? 3'd3 :
                                 irq_in[3] ? 3'd4 : 3'dx;
-    wire take_irq = ie && any_irq && (state == `S_FETCH);
+    wire take_irq = ie && any_irq;
     wire [15:0] irq_vector = {13'd0, irq_sel};
 
     // PC and ROM control

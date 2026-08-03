@@ -34,6 +34,8 @@ E2E_CASES = {
     "16bitval" : ("int main(){int a = 1234; int b = 5678; return b - a;}", 4444, {}), # 16-bit integer subtraction
     "if" : ("char main(){char hoge =3;char fuga= hoge +2;if (fuga==5) return 42;return 0;}", 42, {}),
     "ifs" : ("char main(){char hoge=2; char fuga = 3;if (hoge != 0) if (hoge+fuga > 3) return 2;else return 0;}", 2, {}),
+    "if16" : ("int main(){int hoge = 3000;int fuga = hoge + 2000;if (hoge == 3000 && fuga == 5000) return 42;return 0;}", 42, {}),
+    "ifs16" : ("int main(){int hoge = 3000;int fuga = hoge + 2000;if (hoge == 3001 && fuga == 5000) return 42; else if (hoge == 3000 && fuga == 5000) return 46;return 0;}", 46, {}),
     "for" : ("char main(){char sum=0;\nfor(char i=1;i<5;i=i+1) sum=sum+i;\nreturn sum;}", 10, {}),
     "while" : ("char main(){char i=0;\nwhile(i<3) i=i+1;\nreturn i;}", 3, {}),
     "returninwhile" : ("char main(){char i=0;\nwhile(i<10) {\n i=i+1;\n if (i==5) {\nreturn 20*i;\n}\n}\nreturn 0;}", 100, {}),
@@ -41,9 +43,10 @@ E2E_CASES = {
     "wtf" : ("char global_var=0;\nchar main(){while(global_var<21){for (char i=1;i<5;i=i+1) global_var=global_var+i;}\nreturn global_var;}", 30, {}),
     "betweenlocalandglobal" : ("char a=1;\nchar b=2;\nchar main(){char c=3;\nreturn a+b+c;}", 6, {}),
     "simplefunc" : ("char ret42(){return 42;}\nchar main(){return ret42();}", 42, {}),
-    "fac" : ("char arg=0;char fac(){char i=arg;if (i==0) return 1;arg=i-1;return fac()*i;}char main(){arg=5;return fac();}", 120, {"verbose" : True}),
-    "fib" : ("char fib(char i){if(i==0) return 0;if(i==1) return 1;char a=fib(i-1);char b=fib(i-2);return a+b;}char main(){return fib(11);}", 89, {"verbose" : False}),
-    "cast" : ("int add(char a, int b){int aa = a;return aa + b;}int main(){char a = 107; int b = 1032; return add(a, b);}", 1139, {"verbose" : True}),
+    "fac" : ("char arg=0;char fac(){char i=arg;if (i==0) return 1;arg=i-1;return fac()*i;}char main(){arg=5;return fac();}", 120, {}),
+    "fib" : ("char fib(char i){if(i==0) return 0;if(i==1) return 1;char a=fib(i-1);char b=fib(i-2);return a+b;}char main(){return fib(11);}", 89, {}),
+    # "superfib" : ("int fib(int i){if(i==0) return 0;if(i==1) return 1;int a=fib(i-1);int b=fib(i-2);return a+b;}int main(){int i = 20;return fib(i);}", 6765, {}),
+    "cast" : ("int add(char a, int b){int aa = a;return aa + b;}int main(){char a = 107; int b = 1032; return add(a, b);}", 1139, {}),
     "multipleargs" : ("char mac(char a,char b,char c){return a*b+c;}char main(){return mac(2,3,4);}", 10, {}),
     "scopecheck" : ("char main(){char j=0;for(char i=0;i<7;i=i+1){} char k=0; char i=i+5; return i;}", -1, {}),
     "attribute" : ("char [[address=0x04]] port_a_out;char [[address=0x05]] port_a_dir;char main(){port_a_dir = 0xFF;port_a_out=0x55; return 0;}", 0, {"porta": 0x55}),
@@ -54,7 +57,7 @@ E2E_CASES = {
     "assigninpointer" : ("char main(){char a = 3;char *b = &a;*b = 5;return a;}", 5, {}),
     "logicaland" : ("char main(){char a = 1;char b = 2;return ((a != b) && (a < b));}", 1, {}),
     "logicalor" : ("char main(){char a = 1;char b = 2;return ((a == b) || (a > b));}", 0, {}),
-    "logicalnot" : ("char main(){char a = 1;char b = 2;return !b == !a;}", 1, {}),
+    "logicalnot" : ("char main(){char a = 1;char b = 2;return (!b == 0) && (!a == 0);}", 1, {}),
 }
 
 

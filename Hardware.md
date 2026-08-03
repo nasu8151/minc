@@ -14,9 +14,10 @@
 | adc rd,rs  | 00000101 00 dddd ssss  | rd = rd + rs + c                            | carry   |
 | sub rd,rs  | 00000110 00 dddd ssss  | rd = rd - rs                                | !borrow |
 | sbc rd,rs  | 00000111 00 dddd ssss  | rd = rd - rs + c                            | !borrow |
-| lt rd,rs   | 00001000 00 dddd ssss  | rd = 1 if rd - rs < 0, otherwise rd = 0     | !borrow |
-| ltc rd,rs  | 00001001 00 dddd ssss  | rd = 1 if rd + rs + c < 0, otherwise rd = 0 | !borrow |
-| rr rd,rs   | 00001011 00 dddd ssss  | {rd, c} = {c, rs}                           | rs[0]   |
+| chz rd,rs  | 00001000 00 dddd ssss  | rd = (rs == 0) ? 1 : 0                      | x       |
+| lt rd,rs   | 00001010 00 dddd ssss  | rd = 1 if rd - rs < 0, otherwise rd = 0     | !borrow |
+| ltc rd,rs  | 00001011 00 dddd ssss  | rd = 1 if rd + rs + c < 0, otherwise rd = 0 | !borrow |
+| rr rd,rs   | 00001100 00 dddd ssss  | {rd, c} = {c, rs}                           | rs[0]   |
 | mul rd,rs  | 00001110 00 dddd ssss  | rd = \(rd * rs\)\[7:0\]                     | x       |
 | mulh rd,rs | 00001111 00 dddd ssss  | rd = \(rd * rs\)\[15:8\]                    | x       |
 |            |                        |                                             |         |
