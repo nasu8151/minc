@@ -23,7 +23,7 @@ def expect_fail(command:list[str] | str, input:Optional[str]):
 def test_e2e(code:str, expected_top:int, title : str, verbose:bool=False, porta = None, core:str = "minc_h.sv"):
     output = ""
 
-    asm = subprocess.run("./target/mincc", input=code, shell=True, capture_output=True, text=True)
+    asm = subprocess.run("./target/mincc", input=code, capture_output=True, text=True)
     if asm.returncode != 0:
         if verbose:
             print(f"Compiler output:\n{asm.stdout}")
@@ -31,7 +31,7 @@ def test_e2e(code:str, expected_top:int, title : str, verbose:bool=False, porta 
         print(f"test title: {title}")
         raise Exception(f"mincc failed with return code {asm.returncode}:\nStderr:\n{asm.stderr}")
     asm_code = asm.stdout
-    inst = subprocess.run("./target/mincasm", input=asm_code, shell=True, capture_output=True, text=True)
+    inst = subprocess.run("./target/mincasm", input=asm_code, capture_output=True, text=True)
     if inst.returncode != 0:
         if verbose:
             print(f"Assembly:\n{asm.stdout}")
@@ -40,7 +40,7 @@ def test_e2e(code:str, expected_top:int, title : str, verbose:bool=False, porta 
         raise Exception(f"mincasm failed with return code {inst.returncode}:\nStderr:\n{inst.stderr}")
     with open("verilog/test.hex", "w") as f:
         f.write(inst.stdout)
-    synsesis = subprocess.run(["iverilog", "-o", "__minc_test.out", core, "minc_tb.sv", "-g2012", "-DTEST", "-DVERBOSE", "-DSIM"], cwd="./verilog", capture_output=True, text=True)
+    synsesis = subprocess.run(["iverilog", "-o", "__minc_test.out", "-g2012", "-DTEST", "-DVERBOSE", "-DSIM", core, "minc_tb.sv"], cwd="./verilog", capture_output=True, text=True)
     if synsesis.returncode != 0:
         print(f"test title: {title}")
         raise Exception(f"Verilog synthesis failed with return code {synsesis.returncode}:\nStderr: {synsesis.stderr.strip()}")
@@ -99,15 +99,15 @@ def test_irq(asm_path: str, irq_cycle: int, expected_top: int, title: str,
     the pulse every irq_period cycles for the rest of the simulation."""
     with open(asm_path) as f:
         asm_code = f.read()
-    inst = subprocess.run("./target/mincasm", input=asm_code, shell=True, capture_output=True, text=True)
+    inst = subprocess.run("./target/mincasm", input=asm_code, capture_output=True, text=True)
     if inst.returncode != 0:
         print(f"test title: {title}")
         raise Exception(f"mincasm failed with return code {inst.returncode}:\nStderr:\n{inst.stderr}")
     with open("verilog/test.hex", "w") as f:
         f.write(inst.stdout)
     synthesis = subprocess.run(
-        ["iverilog", "-o", "__minc_irq_test.out", core, "minc_tb.sv",
-         "-g2012", "-DTEST", "-DVERBOSE", "-DSIM", "-DIRQ_TEST"],
+        ["iverilog", "-o", "__minc_irq_test.out", 
+         "-g2012", "-DTEST", "-DVERBOSE", "-DSIM", "-DIRQ_TEST", core, "minc_tb.sv"],
         cwd="./verilog", capture_output=True, text=True)
     if synthesis.returncode != 0:
         print(f"test title: {title}")
@@ -148,13 +148,13 @@ def test_irq_e2e(code: str, irq_cycle: int, expected_top: int, title: str,
     mincc -> mincasm -> minc_h.sv pipeline for a *compiled* ISR.
     irq_period=0 (default) fires a single one-shot pulse; irq_period>0 repeats
     the pulse every irq_period cycles for the rest of the simulation."""
-    asm = subprocess.run("./target/mincc", input=code, shell=True, capture_output=True, text=True)
+    asm = subprocess.run("./target/mincc", input=code, capture_output=True, text=True)
     if asm.returncode != 0:
         print(f"code:\n{code}")
         print(f"test title: {title}")
         raise Exception(f"mincc failed with return code {asm.returncode}:\nStderr:\n{asm.stderr}")
     asm_code = asm.stdout
-    inst = subprocess.run("./target/mincasm", input=asm_code, shell=True, capture_output=True, text=True)
+    inst = subprocess.run("./target/mincasm", input=asm_code, capture_output=True, text=True)
     if inst.returncode != 0:
         print(f"Assembly:\n{asm_code}")
         print(f"test title: {title}")
@@ -162,8 +162,8 @@ def test_irq_e2e(code: str, irq_cycle: int, expected_top: int, title: str,
     with open("verilog/test.hex", "w") as f:
         f.write(inst.stdout)
     synthesis = subprocess.run(
-        ["iverilog", "-o", "__minc_isr_e2e.out", core, "minc_tb.sv",
-         "-g2012", "-DTEST", "-DVERBOSE", "-DSIM", "-DIRQ_TEST"],
+        ["iverilog", "-o", "__minc_isr_e2e.out", 
+         "-g2012", "-DTEST", "-DVERBOSE", "-DSIM", "-DIRQ_TEST", core, "minc_tb.sv"],
         cwd="./verilog", capture_output=True, text=True)
     if synthesis.returncode != 0:
         print(f"test title: {title}")
