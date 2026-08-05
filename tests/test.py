@@ -48,7 +48,7 @@ E2E_CASES = {
     # "superfib" : ("int fib(int i){if(i==0) return 0;if(i==1) return 1;int a=fib(i-1);int b=fib(i-2);return a+b;}int main(){int i = 20;return fib(i);}", 6765, {}),
     "cast" : ("int add(char a, int b){int aa = a;return aa + b;}int main(){char a = 107; int b = 1032; return add(a, b);}", 1139, {}),
     "multipleargs" : ("char mac(char a,char b,char c){return a*b+c;}char main(){return mac(2,3,4);}", 10, {}),
-    "scopecheck" : ("char main(){char j=0;for(char i=0;i<7;i=i+1){} char k=0; char i=i+5; return i;}", -1, {}),
+    "scopecheck" : ("char main(){char j=0;for(char i=0;i<7;i=i+1){} char k=0; char i; i=i+5; return i;}", -1, {}),
     "attribute" : ("char [[address=0x04]] port_a_out;char [[address=0x05]] port_a_dir;char main(){port_a_dir = 0xFF;port_a_out=0x55; return 0;}", 0, {"porta": 0x55}),
     "break" : ("char main(){char i=0;while(1){if(i==5) break;i=i+1;}return i;}", 5, {}),
     "manyrepeations" : ("char [[address = 0x04]] b;char a;char addi(char s){a = a + s;return a;}char main(){a = 0;for(char i = 0;i < 254;i=i+1){while(addi(3) < 20){b = b;}}return 21;}", 21, {}),
@@ -145,52 +145,53 @@ return counter;
 
 if __name__ == "__main__":
     # MINCASM tests
-    # tf.expect("""echo "mov r0,r1\nadd r2,r3\nsub r4,r5\nlt r6,r7\nmul r7,r8\nor r8,r9\nand r9,r10\nxor r10,r11" | ./target/mincasm""",
+    # tf.expect("./target/mincasm", """mov r0,r1\nadd r2,r3\nsub r4,r5\nlt r6,r7\nmul r7,r8\nor r8,r9\nand r9,r10\nxor r10,r11""",
     #             "0001\n1023\n1845\n2067\n3878\n0489\n089A\n0CAB") # Arithmetic instructions
-    # tf.expect("""echo "push r0\nsts r0\npop r2\nlds r2" | ./target/mincasm""",
+    # tf.expect("./target/mincasm", """push r0\nsts r0\npop r2\nlds r2""",
     #             "7000\n7800\n7420\n7C20") # Stack and load/store instructions
-    # tf.expect("""echo "jz 10,r0\ncalr 20\njr -2\nret\nhalt" | ./target/mincasm""",
+    # tf.expect("./target/mincasm", """jz 10,r0\ncalr 20\njr -2\nret\nhalt""",
     #             "D00A\nE104\nFFFE\n7410\nFFFF") # Jump and calr instructions
     # tf.expect_fail("""echo foo | ./target/mincasm""") # Invalid instruction
-    # tf.expect_fail("""echo "mvi r0,256" | ./target/mincasm""") # Out of range immediate
+    # tf.expect_fail("./target/mincasm", """mvi r0,256""") # Out of range immediate
     # # MINCASM label tests (one-pass backpatch)
     # # Forward reference: label after use
-    # tf.expect("""echo "jz L1,r0\nmvi r0,1\nL1: ret" | ./target/mincasm""",
+    # tf.expect("./target/mincasm", """jz L1,r0\nmvi r0,1\nL1: ret""",
     #             "D001\nC001\n7410")
     # # Backward reference: label before use
-    # tf.expect("""echo "L0: mvi r0,1\njz L0,r0\nret" | ./target/mincasm""",
+    # tf.expect("./target/mincasm", """L0: mvi r0,1\njz L0,r0\nret""",
     #             "C001\nDF0E\n7410")
     # # calr to label
-    # tf.expect("""echo "calr MAIN\nFUNC: ret\nMAIN: calr FUNC\nhalt" | ./target/mincasm""",
+    # tf.expect("./target/mincasm", """calr MAIN\nFUNC: ret\nMAIN: calr FUNC\nhalt""",
     #             "E001\n7410\nEFFE\nFFFF")
     # Undefined label should fail
-    tf.expect_fail("""echo "jz NO_SUCH_LABEL,r0" | ./target/mincasm""")
+    tf.expect_fail("./target/mincasm", "jz NO_SUCH_LABEL,r0")
     # .org directive: forward org pads the gap with zero words, and labels
     # defined after an .org land at the new address.
-    tf.expect("""printf 'jr MAIN\\n.org 3\\nMAIN:\\n    halt\\n' | ./target/mincasm""",
-                "30002\n00000\n00000\n3FFFF")
+    tf.expect("""./target/mincasm""",
+                "jr MAIN\n.org 3\nMAIN:\n    halt\n", "30002\n00000\n00000\n3FFFF")
     # .org directive: an explicit vector-table style layout (jump to MAIN at
     # address 0, jump to ISR0 at address 1, code resuming at address 5).
-    tf.expect("""printf '.org 0\\njr MAIN\\n.org 1\\njr ISR0\\n.org 5\\nMAIN:\\n    halt\\nISR0:\\n    reti\\n' | ./target/mincasm""",
+    tf.expect("./target/mincasm", ".org 0\njr MAIN\n.org 1\njr ISR0\n.org 5\nMAIN:\n    halt\nISR0:\n    reti\n",
                 "30004\n30004\n00000\n00000\n00000\n3FFFF\n1E000")
     # .org directive: missing/out-of-range address should fail
-    tf.expect_fail("""echo ".org" | ./target/mincasm""")
-    tf.expect_fail("""echo ".org 70000" | ./target/mincasm""")
+    tf.expect_fail("./target/mincasm", ".org")
+    tf.expect_fail("./target/mincasm", ".org 70000")
     # MINCC tests
-    tf.expect_fail("""echo "char main(){1+}" | ./target/mincc""") # Incomplete expression
-    tf.expect_fail("""echo "char main(){a+1=5;}" | ./target/mincc""") # Invalid assignment
-    tf.expect_fail("""echo "char main(){i>=0;\nwhile(i<10) {\n i=i+1;\n if (i==5) {\nreturn 20*i;\n}\n\nreturn 0;}" | target/mincc """) # Missing closing brace
-    tf.expect_fail("""echo "char main(){char a = 3;int b = &a;return *b;}" | ./target/mincc""")
+    tf.expect_fail("./target/mincc", """char main(){1+}""") # Incomplete expression
+    tf.expect_fail("./target/mincc", """char main(){a+1=5;}""") # Invalid assignment
+    tf.expect_fail("./target/mincc", """char main(){int i=0;\nwhile(i<10) {\n i=i+1;\n if (i==5) {\nreturn 20*i;\n}\n\nreturn 0;}""") # Missing closing brace
+    tf.expect_fail("./target/mincc", """char main(){char a = 3;int b = &a;return *b;}""")
     # [[isr]]/[[isr=N]] validation
-    tf.expect_fail("""echo "void [[isr=0]] tick(){return 1;}" | ./target/mincc""") # return-with-value in ISR
-    tf.expect_fail("""echo "void [[isr=0]] tick(char x){}" | ./target/mincc""") # ISR with a parameter
-    tf.expect_fail("""echo "void [[isr=5]] tick(){}" | ./target/mincc""") # vector out of range
-    tf.expect_fail("""echo "void [[isr=0]] a(){}void [[isr=0]] b(){}char main(){return 0;}" | ./target/mincc""") # duplicate vector claim
-    tf.expect_fail("""echo "void [[isr=0]] tick(){}char main(){tick();return 0;}" | ./target/mincc""") # calling an ISR directly
+    tf.expect_fail("./target/mincc", """void [[isr=0]] tick(){return 1;}""") # return-with-value in ISR
+    tf.expect_fail("./target/mincc", """void [[isr=0]] tick(char x){}""") # ISR with a parameter
+    tf.expect_fail("./target/mincc", """void [[isr=5]] tick(){}""") # vector out of range
+    tf.expect_fail("./target/mincc", """void [[isr=0]] a(){}void [[isr=0]] b(){}char main(){return 0;}""") # duplicate vector claim
+    tf.expect_fail("./target/mincc", """void [[isr=0]] tick(){}char main(){tick();return 0;}""") # calling an ISR directly
 
     # E2E tests
     if (len(sys.argv) == 1):
         run_e2e_tests()
+        run_irq_tests()
 
     if (len(sys.argv) >= 2):
         if (sys.argv[1] == "irq"):

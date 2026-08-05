@@ -54,8 +54,6 @@ module minc (
 
     logic [17:0] instr;
 
-    logic [7:0] data_in_internal;
-
     // PSR: bit0 = carry, bit1 = ie (interrupt enable), bit2-7 reserved (read as 0).
     // Memory-mapped at 0x0002 (read/write via existing stm/ldm absolute addressing).
     logic [1:0] psr;
@@ -200,7 +198,7 @@ module minc (
                 end
                 `S_MA: begin
                     if (!servicing_irq && (is_ret || is_reti)) begin
-                        pc[7:0] <= data_in_internal;
+                        pc[7:0] <= data_in;
                     end
                 end
                 `S_WB: begin
@@ -209,7 +207,7 @@ module minc (
                     end else if (is_jz || is_jr || is_calr) begin
                         pc <= pc_next;
                     end else if (is_ret || is_reti) begin
-                        pc[15:8] <= data_in_internal;
+                        pc[15:8] <= data_in;
                     end
 `ifdef SIM
                     if (!servicing_irq && instr == 18'h3FFFF) $finish;
@@ -271,11 +269,6 @@ module minc (
                         (is_mem_grp) ? (addr_base + (is_addr_n ? {8'h00, imm8} : simm8)) :
                         (is_calr || is_push || is_pop || is_ret || is_reti) ? sp : 16'hxxxx;
 
-    assign data_in_internal =   aeq0 ? sp[7:0] :
-                                aeq1 ? sp[15:8] :
-                                aeq2 ? psr :
-                                aeq3 ? psr_shadow : data_in;
-
     always_ff @( posedge clk or negedge reset_n ) begin
         if (!reset_n) begin
             data_out <= 8'hxx;
@@ -295,7 +288,10 @@ module minc (
 
     wire [7:0] rw_next =    (is_alu) ? alu_out : 
                             (is_mvi) ? imm8 : 
-                            (is_pop || is_ldm) ? data_in_internal : ra_val;
+                            (is_pop || is_ldm) ? aeq0 ? sp[7:0] :
+                                aeq1 ? sp[15:8] :
+                                aeq2 ? psr :
+                                aeq3 ? psr_shadow : data_in : ra_val;
     // Register file
     
     // is_ldm_x||is_stm_x reduces to is_addr_x (is_ldm|is_stm == is_mem_grp,

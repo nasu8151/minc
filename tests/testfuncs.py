@@ -1,9 +1,10 @@
 import subprocess
+from typing import Optional
 
-def expect(command:str, expected_output:str):
+def expect(command:list[str] | str, input:Optional[str], expected_output:str):
     escaped_expected_output = expected_output.replace("\n", "\\n").replace("\r", "\\r")
     output = ""
-    result = subprocess.run(command, shell=True, capture_output=True, text=True)
+    result = subprocess.run(command, capture_output=True, text=True, input=input)
     output = result.stdout.strip()
     error  = result.stderr.strip()
 
@@ -11,9 +12,8 @@ def expect(command:str, expected_output:str):
     assert output == expected_output, f"""[FAIL] Expected: "{expected_output}", but got: "{output}"\nStderr: "{error}"""
     print(f"""[OK] "{command}" => "{output}" """)
 
-def expect_fail(command:str):
-
-    result = subprocess.run(command, shell=True, capture_output=True, text=True)
+def expect_fail(command:list[str] | str, input:Optional[str]):
+    result = subprocess.run(command, capture_output=True, text=True, input=input)
     output = result.stdout.strip()
     error  = result.stderr.strip()
 
@@ -202,6 +202,6 @@ def test_irq_e2e(code: str, irq_cycle: int, expected_top: int, title: str,
 
 
 if __name__ == "__main__":
-    expect("""echo "Hello World!" """, "Hello World!")
-    expect_fail("cat non_existent_file.txt")
+    expect(["echo", "Hello World!"], None, "Hello World!")
+    expect_fail(["cat non_existent_file.txt"], None)
     # test_e2e("1+2", 3, verbose=True)

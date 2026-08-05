@@ -29,30 +29,7 @@ long program() {
 
 Node *toplevel(char *l) {
     char *loc = l;
-    Type_t *type = calloc(1, sizeof(Type_t));
-    type->size = -1;
-    type->type = TY_INT;
-    if (consume_la("uint8_t", &loc) || consume_la("char", &loc)) {
-        type->size = 1; // Currently uint8_t, int and char mean the same (1 byte int) type.
-    } else if (consume_la("int", &loc)) {
-        type->size = 2;
-    } else if (consume_la("void", &loc)) {
-        type->size = 0; // void type has size 0
-    } else {
-        // Considers reference to variable or function if there is no type specifier
-    }
-    Type_t *cur = type;
-    while (consume_la("*", &loc)) {
-        Type_t *new_ptr = calloc(1, sizeof(Type_t));
-        if (!new_ptr) {
-            error("Memory allocation failed");
-        }
-        new_ptr->type = TY_PTR;
-        new_ptr->size = PTR_SIZE;
-        new_ptr->ptr_to = cur;
-        cur = new_ptr;
-    }
-    type = cur;
+    Type_t *type = check_type(&loc);
     long address = -1;
     long isr_vector = -1;
     if (consume_la("[", &loc)) {
@@ -91,17 +68,22 @@ Node *toplevel(char *l) {
         long arg_reg_count = 0;
         new_scope();
         while (!consume(")", &loc)) {
-            Node *arg = expr(loc);
-            int arg_size = (arg && arg->valtype) ? arg->valtype->size : 2;
-            if (arg_size != 1 && arg_size != 2) {
-                error_at(loc, "Invalid argument size: %d", arg_size);
+            Type_t *arg_type = check_type(&loc);
+            if (arg_type) { // declaration detected
+                Token *tok = token;
+                char *arg_name = expect_ident(&loc);
+                add_local_var(tok, arg_type);
+                Node *arg = new_ident_node(ND_LOCAL_VAR, arg_name, current->var_tail->offset, arg_type, loc);
+                if (!arg_name) {
+                    error_at(loc, "no name for a variable");
+                }
+                int arg_size = (arg && arg->valtype) ? arg->valtype->size : 2;
+                if (arg_size != 1 && arg_size != 2) {
+                    error_at(loc, "Invalid argument size: %d", arg_size);
+                }
+                arg_reg_count += arg_size;
+                nv = nodevec_push(nv, arg_count++, arg);
             }
-            // r2 is even, so odd reg count means odd register index
-            // if (arg_size == 2 && (arg_reg_count % 2) != 0) {
-            //     arg_reg_count += 1; // padding to even register boundary
-            // }
-            arg_reg_count += arg_size;
-            nv = nodevec_push(nv, arg_count++, arg);
             if (!consume(",", &loc)) {
                 expect(")", &loc);
                 break;
@@ -117,9 +99,10 @@ Node *toplevel(char *l) {
             isr_vector_owner[isr_vector] = name;
         }
         add_function(tok, type);
-        Node *node = new_func_node(ND_FUNC_DEF, name, nv, stmt(loc), arg_reg_count, type, loc);
+        expect("{", &loc);
+        Node *node = new_func_node(ND_FUNC_DEF, name, nv, close_brace(loc), arg_reg_count, type, loc);
         node->isr_vector = isr_vector;
-        end_scope();
+        node->lhs->arg_sf_size = end_scope();
         return node;
     } else {
         if (address != -1) {
@@ -134,6 +117,51 @@ Node *toplevel(char *l) {
         }
         expect(";", &loc);
         return new_ident_node(ND_GLOBAL_VAR, name, head->var_tail->address, type, loc);
+    }
+}
+
+Node *close_brace(char *l) {
+    Node *node;
+    char *loc = l;
+    node = new_block_node(loc);
+    Node **nv = calloc(1, sizeof(Node**));
+    if (!nv) error("Memory allocation failed");
+    size_t len = 0;
+    while (!consume("}", &loc)) {
+        Node *n = decr(loc);
+        if (n) {
+            nv = nodevec_push(nv, len++, n);
+        } else {
+            nv = nodevec_push(nv, len++, stmt(loc));
+        }
+    }
+    node->body = nv;
+    return node;
+}
+
+// [NOTE] if it didnt detect declaration, return NULL!!
+Node *decr(char *l) {
+    Node *node;
+    char *loc = l;
+    Type_t *type = check_type(&loc);
+    if (type) { // declaration detected
+        Token *tok = token;
+        char *var_name = expect_ident(&loc);
+        if (!var_name) {
+            error_at(loc, "no name for a variable");
+        }
+        add_local_var(tok, type);
+        fprintf(stderr, "Added local variable: %.*s at offset %ld\n", (int)tok->len, tok->str, current->var_tail->offset);
+        node = new_ident_node(ND_LOCAL_VAR, var_name, current->var_tail->offset, type, loc);
+        if (consume_la("=", &loc)) {
+            Node *rhs = expr(loc);
+            expect(";", &loc);
+            return new_node(ND_ASSIGN, node, rhs, loc);
+        }
+        expect(";", &loc);
+        return node;
+    } else {
+        return NULL;
     }
 }
 
@@ -166,8 +194,11 @@ Node *stmt(char *l) {
         Node *init = NULL;
         new_scope();
         if (!consume_la(";", &loc)) {
-            init = expr(loc);
-            expect(";", &loc);
+            init = decr(loc);
+            if (!init) {
+                init = expr(loc);
+                expect(";", &loc);
+            }
         }
         Node *cond = NULL;
         if (!consume_la(";", &loc)) {
@@ -193,14 +224,7 @@ Node *stmt(char *l) {
         node = new_node(ND_BREAK, NULL, NULL, loc);
     } else if (consume_la("{", &loc)) {
         new_scope();
-        node = new_block_node(loc);
-        Node **nv = calloc(1, sizeof(Node**));
-        if (!nv) error("Memory allocation failed");
-        size_t len = 0;
-        while (!consume("}", &loc)) {
-            nv = nodevec_push(nv, len++, stmt(loc));
-        }
-        node->body = nv;
+        node = close_brace(loc);
         node->arg_sf_size = end_scope();
     } else {
         node = expr(loc);
@@ -362,30 +386,6 @@ Node *primary(char *l) {       // primary = num | ident | "(" expr ")"
 
 Node *ident(char *l) {
     char *loc = l;
-    Type_t *type = calloc(1, sizeof(Type_t));
-    type->size = -1;
-    type->type = TY_INT;
-    if (consume_la("uint8_t", &loc) || consume_la("char", &loc)) {
-        type->size = 1; // Currently uint8_t, int and char mean the same (1 byte int) type.
-    } else if (consume_la("int", &loc)) {
-        type->size = 2;
-    } else if (consume_la("void", &loc)) {
-        type->size = 0; // void type has size 0
-    } else {
-        // Considers reference to variable or function if there is no type specifier
-    }
-    Type_t *cur = type;
-    while (consume_la("*", &loc)) {
-        Type_t *new_ptr = calloc(1, sizeof(Type_t));
-        if (!new_ptr) {
-            error("Memory allocation failed");
-        }
-        new_ptr->type = TY_PTR;
-        new_ptr->size = PTR_SIZE;
-        new_ptr->ptr_to = cur;
-        cur = new_ptr;
-    }
-    type = cur;
     Ident_Name *name = find_name(token);
     Token *tok = token;
     char *var_name = expect_ident(&loc);
@@ -407,7 +407,7 @@ Node *ident(char *l) {
         }
         return new_func_node(ND_FUNC_CALL, var_name, args, NULL, (long) argnum, name->valtype, loc);
     }
-    if (type->size == -1 && name) {
+    if (name) {
         if (name->type == VAR_GLOBAL_STATIC) {
             fprintf(stderr, "Found global variable: %.*s at address %ld\n", (int)tok->len, tok->str, name->address);
             return new_ident_node(ND_GLOBAL_VAR, var_name, name->address, name->valtype, loc);
@@ -415,12 +415,8 @@ Node *ident(char *l) {
             fprintf(stderr, "Found variable: %.*s at offset %ld\n", (int)tok->len, tok->str, name->offset);
             return new_ident_node(ND_LOCAL_VAR, var_name, name->offset, name->valtype, loc);
         }
-    } else if (type->size > 0) {
-        add_local_var(tok, type);
-        fprintf(stderr, "Added local variable: %.*s at offset %ld\n", (int)tok->len, tok->str, current->var_tail->offset);
-        return new_ident_node(ND_LOCAL_VAR, var_name, current->var_tail->offset, type, loc);
     }
-    error_at(loc, "Undefined or invalid variable: %.*s", (int)tok->len, tok->str);
+    error_at(loc, "Undefined or invalid identifyer: %.*s", (int)tok->len, tok->str);
 }
 
 Node *unary(char *l) {

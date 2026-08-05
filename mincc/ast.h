@@ -57,6 +57,8 @@ attr        = "address" "=" num | "isr" ("=" num)?  // isr=N (N: 0-3) auto-place
 long program();
 extern Node code[256];
 Node *toplevel(char *l);
+Node *close_brace(char *l);
+Node *decr(char *l);
 Node *stmt(char *l);
 Node *assign(char *l);
 Node *bitwise_or(char *l);

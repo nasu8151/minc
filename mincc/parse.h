@@ -29,6 +29,10 @@ bool consume_la(const char *op, char **loc);
 // Return true if matched, false otherwise
 // If reached EOF, throw an error
 bool consume(const char *op, char **loc);
+// Consume tokens if they match the valid type.
+// Returns Type_t* if mached, otherwise returns NULL.
+// If reached EOF, return NULL.
+Type_t *check_type(char **loc);
 // Consume a token if it matches the expected string
 // Otherwise, throw an error
 void expect(const char *op, char **loc);
