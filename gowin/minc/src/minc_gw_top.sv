@@ -7,6 +7,8 @@ module minc_gw_top (
     output logic [5:0]  address_out2,
     output logic        uart_tx,
     input  logic        uart_rx,
+    inout  logic        i2c_scl,
+    inout  logic        i2c_sda,
     output logic        wait_req_out,
     output logic        avma_out,
     output logic        we_out
@@ -18,12 +20,18 @@ module minc_gw_top (
 `define UART
 `define PORTA
 `define WAIT
+`define I2C
+`define TIMER8
 
     logic [15:0] sp_out;
     logic [7:0] data_in;
 
     logic [7:0] ram_data_out;
-    logic [7:0] uartc_data_out;
+    logic [7:0] uart_data_out;
+    logic [7:0] i2c_data_out;
+    logic [7:0] timer8_data_out;
+
+    logic [3:0] irq_line;
 
     logic [7:0] data_out;
     logic       we;
@@ -32,11 +40,12 @@ module minc_gw_top (
     logic       avma;
     logic [15:0] address;
     // logic       int_clk;
-    assign address_out = we ? data_out : data_in;
-    assign address_out2= ~address[5:0]; // For debugging: show address bits in reverse order
-    wire        ram_ce = address > 8'h0F ? 1'b1 : 1'b0; // RAM is enabled for addresses > 0x0F
+    assign address_out  = we ? data_out : data_in;
+    // assign address_out  = pc_out[7:0];
+    assign address_out2 = ~address[5:0]; // For debugging: show address bits in reverse order
+    wire        ram_ce  = address > 16'h00FF ? 1'b1 : 1'b0; // RAM is enabled for addresses > 0xFF
     assign wait_req_out = wait_req;
-    assign avma_out = avma;
+    assign avma_out = irq_line[0];
     assign we_out = we;
 
     logic [7:0] port_a_out;
@@ -46,7 +55,17 @@ module minc_gw_top (
 
     logic [3:0] int_cnt;
 
-    assign data_in = ram_ce ? ram_data_out : uartc_data_out; // Mux data from RAM or UART based on address
+    assign data_in =
+    `ifdef UART
+                        uart_ce ? uart_data_out :
+    `endif
+    `ifdef I2C
+                        i2c_ce ? i2c_data_out :
+    `endif
+    `ifdef TIMER8
+                        timer8_ce ? timer8_data_out :
+    `endif
+                        ram_ce ? ram_data_out : 8'hxx; // Mux data from RAM or UART based on address
 
     minc u_minc (
         .clk    (sys_clk),
@@ -58,7 +77,8 @@ module minc_gw_top (
         .we(we),
         .avma(avma),
         .data_in(data_in),
-        .wait_req(wait_req)
+        .wait_req(wait_req),
+        .irq_in(irq_line)
     );
 
     Gowin_SP ram(
@@ -73,15 +93,18 @@ module minc_gw_top (
     );
 
 `ifdef UART
+    localparam UART_ADDRESS_BASE = 16'h0008;
+    localparam UART_ADDRESS_LEN  = 3; // 2^3 = 8 bytes
+    wire uart_ce = (address[15:UART_ADDRESS_LEN] == UART_ADDRESS_BASE[15:UART_ADDRESS_LEN]) ? 1'b1 : 1'b0;
     UART_MASTER_Top uartc(
         .I_CLK(sys_clk), //input I_CLK
         .I_RESETN(sys_nrst), //input I_RESETN
-        .I_TX_EN(we && address[15:3] == 13'b00001 && wait_ma), //input I_TX_EN
+        .I_TX_EN(we && uart_ce && wait_ma), //input I_TX_EN
         .I_WADDR(address[2:0]), //input [2:0] I_WADDR
         .I_WDATA(data_out), //input [7:0] I_WDATA
-        .I_RX_EN(address[15:3] == 13'b00001 && wait_ma), //input I_RX_EN
+        .I_RX_EN(uart_ce && wait_ma), //input I_RX_EN
         .I_RADDR(address[2:0]), //input [2:0] I_RADDR
-        .O_RDATA(uartc_data_out), //output [7:0] O_RDATA
+        .O_RDATA(uart_data_out), //output [7:0] O_RDATA
         .SIN(uart_rx), //input SIN
         .RxRDYn(), //output RxRDYn
         .SOUT(uart_tx), //output SOUT
@@ -101,6 +124,7 @@ module minc_gw_top (
 `endif
 
 `ifdef PORTA
+localparam PORT_A_BASE = 16'h0004;
     always_ff @(posedge sys_clk or negedge sys_nrst) begin
         if (!sys_nrst) begin
             port_a_out <= 8'h00;
@@ -121,6 +145,46 @@ module minc_gw_top (
     end
 `endif
 
+`ifdef I2C
+    localparam I2C_ADDRESS_BASE = 16'h0010;
+    localparam I2C_ADDRESS_LEN  = 3; // 2^3 = 8 bytes
+    wire i2c_ce = (address[15:I2C_ADDRESS_LEN] == I2C_ADDRESS_BASE[15:I2C_ADDRESS_LEN]) ? 1'b1 : 1'b0;
+    I2C_MASTER_Top i2c(
+		.I_CLK(sys_clk), //input I_CLK
+		.I_RESETN(sys_nrst), //input I_RESETN
+		.I_TX_EN(i2c_ce && we && wait_ma), //input I_TX_EN
+		.I_WADDR(address[2:0]), //input [2:0] I_WADDR
+		.I_WDATA(data_out), //input [7:0] I_WDATA
+		.I_RX_EN(i2c_ce && wait_ma), //input I_RX_EN
+		.I_RADDR(address[2:0]), //input [2:0] I_RADDR
+		.O_RDATA(i2c_data_out), //output [7:0] O_RDATA
+		.O_IIC_INT(), //output O_IIC_INT
+		.SCL(i2c_scl), //inout SCL
+		.SDA(i2c_sda)  //inout SDA
+	);
+`endif
+
+`ifdef TIMER8
+    localparam TIMER8_ADDRESS_BASE = 16'h0018;
+    localparam TIMER8_ADDRESS_LEN  = 3; //2^3 = 8 bytes
+    wire timer8_ce =  (address[15:TIMER8_ADDRESS_LEN] == TIMER8_ADDRESS_BASE[15:TIMER8_ADDRESS_LEN]) ? 1'b1 : 1'b0;
+    TIMER8 timer8 (
+        .I_CLK     (sys_clk),
+        .I_RESETN  (sys_nrst),
+        .I_TX_EN   (timer8_ce && we && wait_ma),
+        .I_WADDR   (address[2:0]),
+        .I_WDATA   (data_out),
+        .I_RX_EN   (timer8_ce && wait_ma),
+        .I_RADDR   (address[2:0]),
+        .O_RDATA   (timer8_data_out),
+        .O_OVERFLOW(),
+        .O_COMPARE (),
+        .O_OVF_INT (irq_line[0]),
+        .O_CMP_INT ()
+    );
+
+`endif
+
 `ifdef WAIT
     // assign wait_req = 8'h10 > address ? 1'b1 : 1'b0;
     parameter WAITp4 = 8;
@@ -131,7 +195,7 @@ module minc_gw_top (
         if (!sys_nrst) begin
             wait_sr <= 'b1;
         end else begin
-            if ((address[15:3] == 13'b00001) && avma) begin
+            if ((!ram_ce) && avma) begin
                 {wait_sr[0], wait_sr[WAITp4:1]} <= wait_sr;
             end else
                 wait_sr <= 'b1;

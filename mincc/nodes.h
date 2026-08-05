@@ -44,7 +44,7 @@ typedef enum {
 struct NodeList_Member;
 
 typedef struct Type_t{
-    enum {TY_INT, TY_PTR} type;
+    enum {TY_INT, TY_PTR, TY_ISR} type;
     int size;
     struct Type_t *ptr_to;
 } Type_t;
@@ -57,11 +57,13 @@ typedef struct Node {
     struct Node *cond;  // Condition (for IF, WHILE, FOR statements)
     struct Node *inc;   // Increment (for FOR statement)
     struct Node *init;  // Initialization (for FOR statement)
-    struct Node **body; // Block body (for BLOCK, FUNC_DEF statements)
+    struct Node **body; // Block body or arguments (for BLOCK, FUNC_DEF statements)
     long val;           // Value (only for ND_NUM)
     struct Type_t *valtype;        // Type (only for ND_GLOBAL_VALUE and ND_LOCAL_VALUE)
     long ofs_addr;        // Offset from BP or Absolute address (only for ND_LOCAL_VAR, ND_GLOBAL_VAR)
     long arg_sf_size; // Stack frame size (only for ND_BLOCK used in FUNC_DEF) or number of arguments (only for ND_FUNC_DEF)
+    long isr_vector; // ISR IRQ vector slot (0-3) claimed via [[isr=N]]; -1 if unclaimed / not an ISR.
+                      // Only meaningful when valtype->type == TY_ISR (ND_FUNC_DEF only).
     unsigned long name_len; // Length of identifier name
     char *name;    // Identifier name (for ND_LOCAL_VAR, ND_GLOBAL_VAR, ND_FUNC_DEF, ND_FUNC_CALL)
     char *loc;

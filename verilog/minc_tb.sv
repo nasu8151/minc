@@ -41,13 +41,20 @@ module minc_tb;
     integer     irq_cycle;
     integer     irq_mask;
     integer     irq_len;
+    integer     irq_period; // 0 = single one-shot pulse (legacy behavior); >0 = pulse recurs every irq_period cycles
+    integer     irq_cur;
     logic       irq_test_active;
+    logic       fire;
     initial begin
         irq_test_active = $value$plusargs("irq_cycle=%d", irq_cycle);
         if (!$value$plusargs("irq_mask=%d", irq_mask)) irq_mask = 1;
         if (!$value$plusargs("irq_len=%d", irq_len)) irq_len = 6;
+        if (!$value$plusargs("irq_period=%d", irq_period)) irq_period = 0;
     end
-    assign irq_in = (irq_test_active && (cycle_count >= irq_cycle) && (cycle_count < irq_cycle + irq_len))
+    assign irq_in = (irq_test_active && (cycle_count >= irq_cycle) &&
+                     (irq_period > 0
+                        ? (((cycle_count - irq_cycle) % irq_period) < irq_len)
+                        : (cycle_count < irq_cycle + irq_len)))
                     ? irq_mask[3:0] : 4'b0000;
     `endif
 
@@ -172,6 +179,10 @@ module minc_tb;
         #1;
         for (i = 0; i < 131071; i = i + 1) begin
             @(posedge clk);
+            if (uut.pc === 16'hxxxx) begin
+                $display("[ERROR] PC == xxxx. finishing simulation");
+                $finish;
+            end
         end
         #10;
         $display("Timeout reached, finishing simulation.");

@@ -26,7 +26,7 @@ Variable list structure
 
 /***************************************************************
 program     = toplevel*
-toplevel    = type [[attr]]? ident "=" assign ";" | type ident "(" ((expr ",")* expr)? ")" stmt  <-- must be a block
+toplevel    = type [[attr ("," attr)*]]? ident "=" assign ";" | type [[attr ("," attr)*]]? ident "(" ((expr ",")* expr)? ")" stmt  <-- must be a block
 stmt        = expr ";"
             | "{" stmt* "}"
             | "return" expr ";"
@@ -48,12 +48,17 @@ unary       = ("+" | "-" | "~")? primary
 primary     = num | "(" expr ")" | ident
 type        = "uint8_t" | "void" | "int" | "char" "*"*  // Currently uint8_t, int and char mean the same (1 byte int) type.
 ident       = type? ("[[" attr "]]")? ident_name | ident_name "(" ((expr ",")* expr)? ")"
-attr        = ("address") "=" num
+attr        = "address" "=" num | "isr" ("=" num)?  // isr=N (N: 0-3) auto-places the function at
+                                                     // hardware IRQ vector N; bare isr compiles a
+                                                     // correctly-shaped handler without placement.
 ****************************************************************/
 
 // Syntax tree parsing functions
-void program();
+long program();
+extern Node code[256];
 Node *toplevel(char *l);
+Node *close_brace(char *l);
+Node *decr(char *l);
 Node *stmt(char *l);
 Node *assign(char *l);
 Node *bitwise_or(char *l);

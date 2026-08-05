@@ -1,18 +1,22 @@
-; mincasm has no ORG/fixed-address directive, so the "vector table" here is
-; just a convention this file follows by hand: word0 jumps over the 4 fixed
-; vector words (IRQ_VECTOR = 0x0001..0x0004 in minc_h.sv), words 1-4 are the
-; vectors themselves.
+; Vector table pinned to its fixed addresses (IRQ_VECTOR = 0x0001..0x0004 in
+; minc_h.sv) via .org, rather than relying on word-count convention.
 ;
 ; Tests: the interrupt fires mid-padding, the correct ISR (by vector number)
 ; runs, execution resumes exactly where it was interrupted, and RETI restores
 ; PSR from the shadow (0x0003) even though the ISR deliberately clobbers PSR
 ; to 0 before returning -- proving RETI actually restores rather than just
 ; leaving PSR untouched.
-jr MAIN         ; word 0
-jr ISR0         ; word 1 == IRQ_VECTOR for irq_in[0]
-jr ISR1         ; word 2 == IRQ_VECTOR for irq_in[1]
-jr ISR2         ; word 3 == IRQ_VECTOR for irq_in[2]
-jr ISR3         ; word 4 == IRQ_VECTOR for irq_in[3]
+.org 0x0000
+jr MAIN         ; reset vector
+.org 0x0001
+jr ISR0         ; IRQ_VECTOR for irq_in[0]
+.org 0x0002
+jr ISR1         ; IRQ_VECTOR for irq_in[1]
+.org 0x0003
+jr ISR2         ; IRQ_VECTOR for irq_in[2]
+.org 0x0004
+jr ISR3         ; IRQ_VECTOR for irq_in[3]
+.org 0x0005
 MAIN:
     mvi r1,3        ; PSR = 0b11 (IE=1, carry=1)
     stm 2,r1

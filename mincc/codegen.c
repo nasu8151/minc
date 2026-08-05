@@ -4,6 +4,7 @@ static int        nxt_regstack_top;
 static int        cur_regstack_max;
 static long       cur_arg_count;
 static int        cur_return_size;
+static bool       cur_is_isr;
 static const int  ast_min = 2;
 static const int  caller_max = 5;
 
@@ -48,15 +49,47 @@ char *get_break_label() {
 // returns current top
 // nxt_regstack_top will be set to next top
 int push_regstack(int size) {
-    if (cur_regstack_max < nxt_regstack_top) {
-        cur_regstack_max = nxt_regstack_top;
-        if (caller_max <= nxt_regstack_top) { // callee責任のレジスタは自分で退避
-            printf("push r%d\n", nxt_regstack_top);
+    if (cur_is_isr) {
+        // ISRs have no software caller to have protected r0-r5, so every register the
+        // regstack machine touches (not just >= caller_max) must be saved on first use.
+        int top = nxt_regstack_top + size - 1;
+        if (cur_regstack_max < top) {
+            int from = cur_regstack_max + 1;
+            if (from < ast_min) from = ast_min;
+            for (int r = from; r <= top; r++) {
+                printf("push r%d\n", r);
+            }
+            cur_regstack_max = top;
+        }
+    } else {
+        if (cur_regstack_max < nxt_regstack_top) {
+            cur_regstack_max = nxt_regstack_top;
+            if (caller_max <= nxt_regstack_top) { // callee責任のレジスタは自分で退避
+                printf("push r%d\n", nxt_regstack_top);
+            }
         }
     }
     int cur = nxt_regstack_top;
     nxt_regstack_top = nxt_regstack_top + size;
     return cur;
+}
+
+// Bracket the two registers used as the X-pointer (r12:r13) around any code that
+// clobbers them, but only inside an ISR -- an ISR has no software caller to have
+// protected these (they're reloaded fresh via mvi/mov on every global/deref access
+// and never expected to persist across other code otherwise).
+static void isr_x_save(void) {
+    if (cur_is_isr) {
+        printf("push r13\n");
+        printf("push r12\n");
+    }
+}
+
+static void isr_x_restore(void) {
+    if (cur_is_isr) {
+        printf("pop r12\n");
+        printf("pop r13\n");
+    }
 }
 
 // pop value from regstack
@@ -147,6 +180,44 @@ void generate_epilogue(long arg_count, int size, char *loc) {
     printf("ret\n");
 }
 
+// ISR prologue/epilogue: no arguments, no return value (validated at parse time),
+// r0/r1 saved unconditionally (the frame-size scratch arithmetic below clobbers
+// them immediately, before any reactive push_regstack protection could apply),
+// and reti instead of ret so PSR is restored from PSR_SHADOW (re-enabling IE).
+void generate_isr_prologue(long local_var_count) {
+    printf("push r1\n");
+    printf("push r0\n");
+    cur_arg_count = 0;
+    cur_regstack_max = ast_min - 1; // lets the first touch of r2 itself register as "new"
+    set_regstack(ast_min);
+    printf("push r15\n");
+    printf("push r14\n");
+    isr_x_save();
+    printf("ldm r14,0\n"); // SP
+    printf("ldm r15,1\n");
+
+    printf("mvi r0,%ld\n", ((-local_var_count) & 0xFF));
+    printf("mvi r1,%ld\n", ((-local_var_count) >> 8) & 0xFF);
+    printf("add r0,r14\n");
+    printf("adc r1,r15\n");
+    printf("stm 0,r0\n");
+    printf("stm 1,r1\n");
+}
+
+void generate_isr_epilogue(void) {
+    for (long i = cur_regstack_max; i >= ast_min; i--) {
+        printf("pop r%ld\n", i);
+    }
+    printf("stm 0,r14\n");
+    printf("stm 1,r15\n");
+    isr_x_restore();
+    printf("pop r14\n");
+    printf("pop r15\n");
+    printf("pop r0\n");
+    printf("pop r1\n");
+    printf("reti\n");
+}
+
 int generate(Node *node, int size) {
     if (!node) return size;
     switch (node->type) {
@@ -198,17 +269,38 @@ int generate(Node *node, int size) {
         int actual = node->valtype->size;
         int expected = (size == NO_EXPECTED_SIZE) ? actual : size;
 
-        printf("mvi r13,%ld\nmvi r12,%ld\n",
-            ((node->ofs_addr >> 8) & 0xFF), (node->ofs_addr & 0xFF));
-
-        if (actual == 1) {
-            int dst = push_regstack(1);
-            printf("ldm r%d,X+0\n", dst);
-        } else if (actual == 2) {
-            int dst = push_regstack(2);
-            printf("ldm r%d,X+0\nldm r%d,X+1\n", dst, dst + 1);
+        if (cur_is_isr) {
+            // Reserve the destination register (and its protective push, if any)
+            // BEFORE touching r12:r13, so the X-pointer save/restore below stays
+            // strictly nested around the address load -- a push_regstack-triggered
+            // push lives until the function epilogue, so it must never land
+            // between our push r13/r12 and our matching pop.
+            if (actual == 1) {
+                int dst = push_regstack(1);
+                printf("mvi r13,%ld\nmvi r12,%ld\n",
+                    ((node->ofs_addr >> 8) & 0xFF), (node->ofs_addr & 0xFF));
+                printf("ldm r%d,X+0\n", dst);
+            } else if (actual == 2) {
+                int dst = push_regstack(2);
+                printf("mvi r13,%ld\nmvi r12,%ld\n",
+                    ((node->ofs_addr >> 8) & 0xFF), (node->ofs_addr & 0xFF));
+                printf("ldm r%d,X+0\nldm r%d,X+1\n", dst, dst + 1);
+            } else {
+                error_at(node->loc, "Invalid size for global variable: %ld", node->valtype->size);
+            }
         } else {
-            error_at(node->loc, "Invalid size for global variable: %ld", node->valtype->size);
+            printf("mvi r13,%ld\nmvi r12,%ld\n",
+                ((node->ofs_addr >> 8) & 0xFF), (node->ofs_addr & 0xFF));
+
+            if (actual == 1) {
+                int dst = push_regstack(1);
+                printf("ldm r%d,X+0\n", dst);
+            } else if (actual == 2) {
+                int dst = push_regstack(2);
+                printf("ldm r%d,X+0\nldm r%d,X+1\n", dst, dst + 1);
+            } else {
+                error_at(node->loc, "Invalid size for global variable: %ld", node->valtype->size);
+            }
         }
 
         if (actual == 1 && expected == 2) {
@@ -235,7 +327,8 @@ int generate(Node *node, int size) {
             }
         } else if (node->lhs->type == ND_GLOBAL_VAR) {
             if (node->lhs->valtype->size == 1) {
-                printf("mvi r13,%ld\nmvi r12,%ld\nstm X+0,r%d\n", ((node->lhs->ofs_addr >> 8) & 0xFF), (node->lhs->ofs_addr & 0xFF), pop_regstack(1));
+                int src = pop_regstack(1);
+                printf("mvi r13,%ld\nmvi r12,%ld\nstm X+0,r%d\n", ((node->lhs->ofs_addr >> 8) & 0xFF), (node->lhs->ofs_addr & 0xFF), src);
             } else if (node->lhs->valtype->size == 2) {
                 int src = pop_regstack(2);
                 printf("mvi r13,%ld\nmvi r12,%ld\n", ((node->lhs->ofs_addr >> 8) & 0xFF), (node->lhs->ofs_addr & 0xFF));
@@ -265,11 +358,18 @@ int generate(Node *node, int size) {
         }
         return node->lhs->valtype->size;
     } case ND_RETURN: {
+        if (cur_is_isr && node->lhs) {
+            error_at(node->loc, "ISR functions cannot return a value");
+        }
         if (node->lhs) {
             generate(node->lhs, cur_return_size);
             // generate(node->lhs);
         }
-        generate_epilogue(cur_arg_count, cur_return_size, node->loc);
+        if (cur_is_isr) {
+            generate_isr_epilogue();
+        } else {
+            generate_epilogue(cur_arg_count, cur_return_size, node->loc);
+        }
         return cur_return_size;
     } case ND_IF: {
         // generate(node->cond);
@@ -359,14 +459,24 @@ int generate(Node *node, int size) {
         return 0;
     } case ND_FUNC_DEF: {
         cur_return_size = node->valtype->size;
+        cur_is_isr = (node->valtype->type == TY_ISR);
         printf("%s:\n", node->name);
         if (node->lhs->type != ND_BLOCK) {
             error_at(node->loc, "Function body must be a block");
         }
-        generate_prologue(node->body, node->arg_sf_size, node->lhs->arg_sf_size);
+        if (cur_is_isr) {
+            generate_isr_prologue(node->lhs->arg_sf_size);
+        } else {
+            generate_prologue(node->body, node->arg_sf_size, node->lhs->arg_sf_size);
+        }
         // generate(node->lhs); // function body
         generate(node->lhs, NO_EXPECTED_SIZE); // function body
-        generate_epilogue(cur_arg_count, cur_return_size, node->loc);
+        if (cur_is_isr) {
+            generate_isr_epilogue();
+        } else {
+            generate_epilogue(cur_arg_count, cur_return_size, node->loc);
+        }
+        cur_is_isr = false;
         return cur_return_size;
     } case ND_FUNC_CALL: {
         Node **arg = node->body;
@@ -456,7 +566,7 @@ int generate(Node *node, int size) {
     }
 
     int lhs_size = generate(node->lhs, NO_EXPECTED_SIZE);
-    int rhs_size = 0;
+    int rhs_size = lhs_size;
     if (node->rhs) {
         rhs_size = generate(node->rhs, lhs_size);
     }
@@ -503,16 +613,16 @@ int gen_i8(Node *node) {
         printf("mul r%d,r%d\n", dst, src);
         break;
     case ND_EQ:
-        printf("sub r%d,r%d\nmvi r0,1\nlt r%d,r0\n", dst, src, dst);
+        printf("sub r%d,r%d\nchz r%d,r%d\n", dst, src, dst, dst);
         break;
     case ND_NEQ:
-        printf("sub r%d,r%d\nmvi r0,0\nlt r0,r%d\nmov r%d,r0\n", dst, src, dst, dst);
+        printf("sub r%d,r%d\nchz r%d,r%d\nchz r%d,r%d\n", dst, src, dst, dst, dst, dst);
         break;
     case ND_LT:
         printf("lt r%d,r%d\n", dst, src);
         break;
     case ND_GE:
-        printf("lt r%d,r%d\nmvi r0,1\nlt r%d,r0\n", dst, src, dst);
+        printf("lt r%d,r%d\nchz r%d,r%d\n", dst, src, dst, dst);
         break;
     case ND_BITWISE_AND:
         printf("and r%d,r%d\n", dst, src);
@@ -524,13 +634,13 @@ int gen_i8(Node *node) {
         printf("xor r%d,r%d\n", dst, src);
         break;
     case ND_AND:
-        printf("mvi r0,0\nmvi r1,0\nlt r0,r%d\nlt r1,r%d\nand r0,r1\nmov r0,r%d\n", dst, src, dst);
+        printf("chz r%d,r%d\nchz r%d,r%d\nor r%d,r%d\nchz r%d,r%d\n", dst, dst, src, src, dst, src, dst, dst);
         break;
     case ND_OR:
-        printf("mvi r0,0\nmvi r1,0\nlt r0,r%d\nlt r1,r%d\nor r0,r1\nmov r0,r%d\n", dst, src, dst);
+        printf("chz r%d,r%d\nchz r%d,r%d\nand r%d,r%d\nchz r%d,r%d\n", dst, dst, src, src, dst, src, dst, dst);
         break;
     case ND_NOT:
-        printf("mvi r0,0\nlt r0,r%d\nmvi r%d,1\nxor r%d,r0\n", dst, dst, dst);
+        printf("chz r%d,r%d\n", dst, dst);
         break;
     default:
         error_at(node->loc, "Unknown node type");
@@ -549,6 +659,36 @@ int gen_i16(Node *node) {
         break;
     case ND_SUB:
         printf("sub r%d,r%d\nsbc r%d,r%d\n", dst, src, dst + 1, src + 1);
+        break;
+    case ND_EQ:
+        printf("sub r%d,r%d\nsbc r%d,r%d\nor r%d,r%d\nchz r%d,r%d\nmvi r%d,0\n", dst, src, dst + 1, src + 1, dst, dst + 1, dst, dst, dst + 1);
+        break;
+    case ND_NEQ:
+        printf("sub r%d,r%d\nsbc r%d,r%d\nor r%d,r%d\nmvi r%d,0\nlt r%d,r%d\n", dst, src, dst + 1, src + 1, dst + 1, dst, dst, dst, dst + 1);
+        break;
+    case ND_LT:
+        printf("sub r%d,r%d\nltc r%d,r%d\nmov r%d,r%d\nmvi r%d,0\n", dst, src, dst + 1, src + 1, dst, dst + 1, dst + 1);
+        break;
+    case ND_GE:
+        printf("sub r%d,r%d\nltc r%d,r%d\nchz r%d,r%d\nmvi r%d,0\n", dst, src, dst + 1, src + 1, dst, dst + 1, dst + 1);
+        break;
+    case ND_BITWISE_AND:
+        printf("and r%d,r%d\nand r%d,r%d\n", dst, src, dst + 1, src + 1);
+        break;
+    case ND_BITWISE_OR:
+        printf("and r%d,r%d\nand r%d,r%d\n", dst, src, dst + 1, src + 1);
+        break;
+    case ND_BITWISE_XOR:
+        printf("and r%d,r%d\nand r%d,r%d\n", dst, src, dst + 1, src + 1);
+        break;
+    case ND_AND:
+        printf("or r%d,r%d\nor r%d,r%d\nchz r%d,r%d\nchz r%d,r%d\nor r%d,r%d\nchz r%d,r%d\nmvi r%d,0\n", dst, dst + 1, src, src + 1, dst, dst, src, src, dst, src, dst, dst, dst + 1);
+        break;
+    case ND_OR:
+        printf("or r%d,r%d\nor r%d,r%d\nchz r%d,r%d\nchz r%d,r%d\nand r%d,r%d\nchz r%d,r%d\nmvi r%d,0\n", dst, dst + 1, src, src + 1, dst, dst, src, src, dst, src, dst, dst, dst + 1);
+        break;
+    case ND_NOT:
+        printf("or r%d,r%d\nchz r%d,r%d\nmvi r%d,0\n", dst, dst + 1, dst, dst, dst + 1);
         break;
     default:
         error_at(node->loc, "Unknown node type");

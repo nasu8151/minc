@@ -32,6 +32,38 @@ bool consume(const char *op, char **loc) {
     return true;
 }
 
+// Consume tokens if they match the valid type.
+// Returns Type_t* if mached, otherwise returns NULL.
+// If reached EOF, return NULL.
+Type_t *check_type(char **loc) {
+    Type_t *type = calloc(1, sizeof(Type_t));
+    type->size = -1;
+    type->type = TY_INT;
+    if (consume_la("uint8_t", loc) || consume_la("char", loc)) {
+        type->size = 1; // Currently uint8_t, int and char mean the same (1 byte int) type.
+    } else if (consume_la("int", loc)) {
+        type->size = 2;
+    } else if (consume_la("void", loc)) {
+        type->size = 0; // void type has size 0
+    } else {
+        free(type);
+        return NULL;
+    }
+    Type_t *cur = type;
+    while (consume_la("*", loc)) {
+        Type_t *new_ptr = calloc(1, sizeof(Type_t));
+        if (!new_ptr) {
+            error("Memory allocation failed");
+        }
+        new_ptr->type = TY_PTR;
+        new_ptr->size = PTR_SIZE;
+        new_ptr->ptr_to = cur;
+        cur = new_ptr;
+    }
+    type = cur;
+    return type;
+}
+
 // Consume a token if it matches the expected string
 // Otherwise, throw an error
 void expect(const char *op, char **loc) {
