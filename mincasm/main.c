@@ -11,7 +11,9 @@
 
 typedef enum {
     FIX_IMM8,
-    FIX_REL16
+    FIX_REL16,
+    FIX16_IMM8,  // minc-16 jz/jnz: [17:12]=op6, [11:4]=imm8, [3:0]=rs
+    FIX16_REL16  // minc-16 calr/jr: [17:16]=op2, [15:0]=off16 (contiguous)
 } FixKind;
 
 typedef struct {
@@ -57,7 +59,17 @@ typedef enum {
     INST_JZ,
     INST_REL16,
     INST_MEM_STORE,
-    INST_MEM_LOAD
+    INST_MEM_LOAD,
+    /* minc-16 (`mincasm -16`). Different ISA, so a separate spec table and a
+     * separate set of encoders -- see Hardware.md "### minc-16". */
+    INST16_ALU_RR,
+    INST16_IMM,
+    INST16_MEM_ST,
+    INST16_MEM_LD,
+    INST16_BR,
+    INST16_STK_REG,
+    INST16_FIXED,
+    INST16_REL16
 } InstKind;
 
 enum {
@@ -103,6 +115,47 @@ static const InstSpec g_inst_specs[] = {
     {"stm",  INST_MEM_STORE, 0x10, 0x12, 0x14, 0x00000, 0},
     {"ldm",  INST_MEM_LOAD,  0x11, 0x13, 0x15, 0x00000, 0},
 };
+
+/* minc-16 instruction table (selected by `mincasm -16`).
+ * opcode_a = subop / op6 / op2 / stack ext, depending on kind.
+ * opcode_b = byte(1) vs word(0) for the memory kinds. */
+static const InstSpec g_inst_specs16[] = {
+    {"mov",  INST16_ALU_RR,  0x00, 0x00, 0x00, 0x00000, 0},
+    {"or",   INST16_ALU_RR,  0x01, 0x00, 0x00, 0x00000, 0},
+    {"and",  INST16_ALU_RR,  0x02, 0x00, 0x00, 0x00000, 0},
+    {"xor",  INST16_ALU_RR,  0x03, 0x00, 0x00, 0x00000, 0},
+    {"add",  INST16_ALU_RR,  0x04, 0x00, 0x00, 0x00000, 0},
+    {"adc",  INST16_ALU_RR,  0x05, 0x00, 0x00, 0x00000, 0},
+    {"sub",  INST16_ALU_RR,  0x06, 0x00, 0x00, 0x00000, 0},
+    {"sbc",  INST16_ALU_RR,  0x07, 0x00, 0x00, 0x00000, 0},
+    {"chz",  INST16_ALU_RR,  0x08, 0x00, 0x00, 0x00000, 0},
+    {"sxb",  INST16_ALU_RR,  0x09, 0x00, 0x00, 0x00000, 0},
+    {"lt",   INST16_ALU_RR,  0x0A, 0x00, 0x00, 0x00000, 0},
+    {"ltc",  INST16_ALU_RR,  0x0B, 0x00, 0x00, 0x00000, 0},
+    {"rr",   INST16_ALU_RR,  0x0C, 0x00, 0x00, 0x00000, 0},
+    {"asr",  INST16_ALU_RR,  0x0D, 0x00, 0x00, 0x00000, 0},
+    {"mul",  INST16_ALU_RR,  0x0E, 0x00, 0x00, 0x00000, 0},
+    {"mulh", INST16_ALU_RR,  0x0F, 0x00, 0x00, 0x00000, 0},
+    {"mvi",  INST16_IMM,     0x00, 0x00, 0x00, 0x00000, 0},
+    {"mvih", INST16_IMM,     0x01, 0x00, 0x00, 0x00000, 0},
+    {"addi", INST16_IMM,     0x02, 0x00, 0x00, 0x00000, 0},
+    {"stw",  INST16_MEM_ST,  0x00, 0x00, 0x00, 0x00000, 0},
+    {"stb",  INST16_MEM_ST,  0x00, 0x01, 0x00, 0x00000, 0},
+    {"ldw",  INST16_MEM_LD,  0x00, 0x00, 0x00, 0x00000, 0},
+    {"ldb",  INST16_MEM_LD,  0x00, 0x01, 0x00, 0x00000, 0},
+    {"jz",   INST16_BR,      0x0C, 0x00, 0x00, 0x00000, 0},
+    {"jnz",  INST16_BR,      0x0D, 0x00, 0x00, 0x00000, 0},
+    {"push", INST16_STK_REG, 0x00, 0x00, 0x00, 0x00000, 0},
+    {"pop",  INST16_STK_REG, 0x01, 0x00, 0x00, 0x00000, 0},
+    {"ret",  INST16_FIXED,   0x00, 0x00, 0x00, 0x0E200, 0},
+    {"reti", INST16_FIXED,   0x00, 0x00, 0x00, 0x0E300, 0},
+    {"halt", INST16_FIXED,   0x00, 0x00, 0x00, 0x3FFFF, 0},
+    {"calr", INST16_REL16,   0x02, 0x00, 0x00, 0x00000, 0},
+    {"jr",   INST16_REL16,   0x03, 0x00, 0x00, 0x00000, 0},
+};
+
+/* 0 = minc-8 (default), 1 = minc-16 (`-16`). */
+static int g_m16 = 0;
 
 static int g_line_num;
 static char g_line[MAX_LINE];
@@ -325,11 +378,15 @@ static int labelmap_get(const HashMap *map, const char *name, size_t *address) {
 }
 
 static void instruction_map_init(HashMap *map) {
-    hashmap_init(map);
-    hashmap_rehash(map, sizeof(g_inst_specs) / sizeof(g_inst_specs[0]) * 2);
+    const InstSpec *table = g_m16 ? g_inst_specs16 : g_inst_specs;
+    size_t count = g_m16 ? sizeof(g_inst_specs16) / sizeof(g_inst_specs16[0])
+                         : sizeof(g_inst_specs)   / sizeof(g_inst_specs[0]);
 
-    for (size_t i = 0; i < sizeof(g_inst_specs) / sizeof(g_inst_specs[0]); i++) {
-        const InstSpec *spec = &g_inst_specs[i];
+    hashmap_init(map);
+    hashmap_rehash(map, count * 2);
+
+    for (size_t i = 0; i < count; i++) {
+        const InstSpec *spec = &table[i];
         uint64_t hash = hash_str(spec->mnemonic);
         if (hashmap_lookup_entry(map, spec->mnemonic, hash)) {
             fprintf(stderr, "Error: Duplicate mnemonic '%s'\n", spec->mnemonic);
@@ -430,6 +487,78 @@ static uint32_t enc_op2_rel16(uint8_t op2, uint32_t off16) {
          | ((uint32_t)n1 <<  8) | ((uint32_t)n2 <<  4) | n0;
 }
 
+/* ---- minc-16 encoders (see Hardware.md "#### 命令フォーマット") ---- */
+
+/* [17:14]=0000 [13:10]=subop [9:8]=00 [7:4]=rd [3:0]=rs */
+static uint32_t enc16_alu(uint8_t subop, uint8_t rd, uint8_t rs) {
+    return ((uint32_t)subop << 10) | ((uint32_t)rd << 4) | rs;
+}
+
+/* [17:14]=0001 [13:12]=subop [11:8]=n[7:4] [7:4]=rd [3:0]=n[3:0].
+ * The immediate is split so that rd stays at [7:4] -- `addi` reads rd as the
+ * ALU A operand, which must come off port A. */
+static uint32_t enc16_imm(uint8_t subop, uint8_t rd, uint8_t imm8) {
+    return (1u << 14) | ((uint32_t)subop << 12)
+         | ((uint32_t)(imm8 >> 4) << 8) | ((uint32_t)rd << 4) | (imm8 & 0x0F);
+}
+
+/* [17:14]=0010 [13]=ld [12]=byte [11:4]=abs8 [3:0]=reg */
+static uint32_t enc16_abs(int is_ld, int is_byte, uint8_t abs8, uint8_t reg) {
+    return (2u << 14) | ((uint32_t)(is_ld != 0) << 13) | ((uint32_t)(is_byte != 0) << 12)
+         | ((uint32_t)abs8 << 4) | reg;
+}
+
+/* [17:16]=01 [15]=ld [14]=byte [13:8]=simm6 [7:4]=base [3:0]=reg */
+static uint32_t enc16_disp(int is_ld, int is_byte, int disp, uint8_t base, uint8_t reg) {
+    return (1u << 16) | ((uint32_t)(is_ld != 0) << 15) | ((uint32_t)(is_byte != 0) << 14)
+         | ((uint32_t)(disp & 0x3F) << 8) | ((uint32_t)base << 4) | reg;
+}
+
+/* [17:12]=op6 [11:4]=imm8 [3:0]=rs */
+static uint32_t enc16_br(uint8_t op6, uint8_t imm8, uint8_t rs) {
+    return ((uint32_t)op6 << 12) | ((uint32_t)imm8 << 4) | rs;
+}
+
+/* [17:12]=001110 [11:8]=ext [7:4]=0000 [3:0]=reg */
+static uint32_t enc16_stk(uint8_t ext, uint8_t reg) {
+    return (0x0Eu << 12) | ((uint32_t)ext << 8) | reg;
+}
+
+/* [17:16]=op2 [15:0]=off16 (contiguous, unlike minc-8's scattered nibbles) */
+static uint32_t enc16_rel16(uint8_t op2, uint32_t off16) {
+    return ((uint32_t)op2 << 16) | (off16 & 0xFFFF);
+}
+
+/* minc-16 memory operand: "[rB+n]" / "[rB-n]" / "[rB]" -> displacement mode,
+ * a bare integer -> 8-bit absolute mode. No spaces allowed inside the brackets
+ * (next_token() splits on whitespace). */
+static void parse_memref16(char *tok, int *is_disp, int *base, int *disp) {
+    if (tok[0] == '[') {
+        char *end = strchr(tok, ']');
+        if (!end || end[1] != '\0') {
+            die_fmt("Malformed memory operand", tok);
+        }
+        *end = '\0';
+        char *inner = tok + 1;
+        char *sign = strpbrk(inner, "+-");
+        *is_disp = 1;
+        if (sign) {
+            char saved = *sign;
+            *sign = '\0';
+            *base = parse_reg(inner);
+            *sign = saved;
+            *disp = parse_int(sign, -32, 31);
+        } else {
+            *base = parse_reg(inner);
+            *disp = 0;
+        }
+        return;
+    }
+    *is_disp = 0;
+    *base = 0;
+    *disp = parse_int(tok, 0, 255);
+}
+
 static void parse_memref(char *tok, int *addr_mode, int *imm8) {
     if ((tok[0] == 'X' || tok[0] == 'x') && (tok[1] == '+' || tok[1] == '-')) {
         *addr_mode = 0;
@@ -481,12 +610,22 @@ static void emit_fixup(CodeVec *code, FixupVec *fixups, const char *name, int li
     fixupvec_push(fixups, addr, name, line_num, kind, reg_nibble, op_nibble);
 }
 
-int main(void) {
+int main(int argc, char **argv) {
     CodeVec code = {0};
     FixupVec fixups = {0};
     HashMap labels;
     HashMap inst_map;
     size_t cur_addr = 0;
+
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "-16") == 0 || strcmp(argv[i], "--m16") == 0) {
+            g_m16 = 1;
+        } else {
+            fprintf(stderr, "Usage: mincasm [-16] < input.asm > output.hex\n");
+            fprintf(stderr, "  -16, --m16   assemble for minc-16 instead of minc-8\n");
+            return EXIT_FAILURE;
+        }
+    }
 
     hashmap_init(&labels);
     instruction_map_init(&inst_map);
@@ -685,6 +824,113 @@ int main(void) {
                 word = enc_op6_reg_imm8(op, (uint8_t)rd, (uint8_t)iv);
                 break;
             }
+
+            case INST16_ALU_RR: {
+                char *r0 = next_token(&ctx);
+                if (!r0) {
+                    die("Missing register operand");
+                }
+                char *r1 = next_token(&ctx);
+                if (!r1) {
+                    die("Missing register operand");
+                }
+                word = enc16_alu(spec->opcode_a, (uint8_t)parse_reg(r0), (uint8_t)parse_reg(r1));
+                break;
+            }
+            case INST16_IMM: {
+                char *r = next_token(&ctx);
+                if (!r) {
+                    die("Missing register");
+                }
+                char *imm = next_token(&ctx);
+                if (!imm) {
+                    die("Missing immediate");
+                }
+                int rd = parse_reg(r);
+                int iv = parse_int(imm, -128, 255);
+                word = enc16_imm(spec->opcode_a, (uint8_t)rd, (uint8_t)iv);
+                break;
+            }
+            case INST16_MEM_ST: {
+                char *m = next_token(&ctx);
+                if (!m) {
+                    die("Missing memory operand");
+                }
+                char *r = next_token(&ctx);
+                if (!r) {
+                    die("Missing register operand");
+                }
+                int is_disp = 0, base = 0, dv = 0;
+                parse_memref16(m, &is_disp, &base, &dv);
+                int rs = parse_reg(r);
+                word = is_disp ? enc16_disp(0, spec->opcode_b, dv, (uint8_t)base, (uint8_t)rs)
+                               : enc16_abs(0, spec->opcode_b, (uint8_t)dv, (uint8_t)rs);
+                break;
+            }
+            case INST16_MEM_LD: {
+                char *r = next_token(&ctx);
+                if (!r) {
+                    die("Missing register operand");
+                }
+                char *m = next_token(&ctx);
+                if (!m) {
+                    die("Missing memory operand");
+                }
+                int is_disp = 0, base = 0, dv = 0;
+                parse_memref16(m, &is_disp, &base, &dv);
+                int rd = parse_reg(r);
+                word = is_disp ? enc16_disp(1, spec->opcode_b, dv, (uint8_t)base, (uint8_t)rd)
+                               : enc16_abs(1, spec->opcode_b, (uint8_t)dv, (uint8_t)rd);
+                break;
+            }
+            case INST16_BR: {
+                char *r = next_token(&ctx);
+                if (!r) {
+                    die("Missing register");
+                }
+                char *off = next_token(&ctx);
+                if (!off) {
+                    die("Missing offset");
+                }
+                int rs = parse_reg(r);
+
+                if (is_valid_label_name(off)) {
+                    emit_fixup(&code, &fixups, off, g_line_num, FIX16_IMM8, (uint8_t)rs,
+                               spec->opcode_a, enc16_br(spec->opcode_a, 0, (uint8_t)rs), cur_addr);
+                    emit = 0;
+                } else {
+                    int iv = parse_int(off, -128, 127);
+                    word = enc16_br(spec->opcode_a, (uint8_t)iv, (uint8_t)rs);
+                }
+                break;
+            }
+            case INST16_STK_REG: {
+                char *r = next_token(&ctx);
+                if (!r) {
+                    die("Missing register");
+                }
+                word = enc16_stk(spec->opcode_a, (uint8_t)parse_reg(r));
+                break;
+            }
+            case INST16_FIXED:
+                word = spec->fixed_word;
+                break;
+            case INST16_REL16: {
+                char *off = next_token(&ctx);
+                if (!off) {
+                    die("Missing offset");
+                }
+
+                if (is_valid_label_name(off)) {
+                    emit_fixup(&code, &fixups, off, g_line_num, FIX16_REL16, 0,
+                               spec->opcode_a, enc16_rel16(spec->opcode_a, 0), cur_addr);
+                    emit = 0;
+                } else {
+                    int iv = parse_int(off, -32768, 32767);
+                    word = enc16_rel16(spec->opcode_a, (uint32_t)iv);
+                }
+                break;
+            }
         }
 
         if (emit) {
@@ -710,6 +956,20 @@ int main(void) {
                 die("8-bit relative offset out of range");
             }
             code.data[f->index] = enc_op6_reg_imm8(f->op_nibble, f->reg_nibble, (uint8_t)rel);
+        } else if (f->kind == FIX16_IMM8) {
+            if (rel < -128 || rel > 127) {
+                g_line_num = f->line_num;
+                snprintf(g_line, sizeof(g_line), "%s", f->name);
+                die("8-bit relative offset out of range");
+            }
+            code.data[f->index] = enc16_br(f->op_nibble, (uint8_t)rel, f->reg_nibble);
+        } else if (f->kind == FIX16_REL16) {
+            if (rel < -32768 || rel > 32767) {
+                g_line_num = f->line_num;
+                snprintf(g_line, sizeof(g_line), "%s", f->name);
+                die("16-bit relative offset out of range");
+            }
+            code.data[f->index] = enc16_rel16(f->op_nibble, (uint32_t)rel);
         } else {
             if (rel < -32768 || rel > 32767) {
                 g_line_num = f->line_num;
