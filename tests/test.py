@@ -55,9 +55,27 @@ E2E_CASES = {
     "pointer" : ("char main(){char a = 3;char *b = &a;return *b;}", 3, {}),
     "poipoi" : ("int main(){int a = 1155; int *b = &a; int **c = &b; return **c;}", 1155, {}),
     "assigninpointer" : ("char main(){char a = 3;char *b = &a;*b = 5;return a;}", 5, {}),
+    # `*p = e` must evaluate e exactly once. Codegen used to emit the right-hand
+    # side twice (once up front, once inside the ND_DEREF arm), so a call with a
+    # side effect ran twice and every such store leaked a regstack slot.
+    # bump() called once => v=1, n=1 => 11; called twice => v=2, n=2 => 22.
+    "derefassign-once" : ("char n=0;char bump(){n=n+1;return n;}char main(){char v=0;char *p=&v;*p=bump();return v*10+n;}", 11, {}),
+    # Same check for a 2-byte store (no `*`: gen_i16 has no ND_MUL).
+    # once => v=301, n=301 => 602; twice => v=302, n=302 => 604.
+    "derefassign-once16" : ("int n=300;int bump(){n=n+1;return n;}int main(){int v=0;int *p=&v;*p=bump();return v+n;}", 602, {}),
     "logicaland" : ("char main(){char a = 1;char b = 2;return ((a != b) && (a < b));}", 1, {}),
     "logicalor" : ("char main(){char a = 1;char b = 2;return ((a == b) || (a > b));}", 0, {}),
     "logicalnot" : ("char main(){char a = 1;char b = 2;return (!b == 0) && (!a == 0);}", 1, {}),
+    # Inline assembly. Emitted verbatim, so these reach PORTA (0x04) directly
+    # rather than through any generated store.
+    "asm-single" : ("char [[address=0x05]] d;char main(){d=0xFF;asm(\"mvi r0,3\\nstm 4,r0\");return 0;}", 0, {"porta": 3}),
+    "asm-concat" : ("char [[address=0x05]] d;char main(){d=0xFF;asm(\"mvi r0,0x5A\\n\" \"stm 4,r0\\n\");return 0;}", 0, {"porta": 0x5A}),
+    # asm blocks may carry mincasm labels/comments and are not reordered around
+    # surrounding C statements.
+    "asm-label" : ("char [[address=0x05]] d;char main(){d=0xFF;asm(\"mvi r0,0\\n__asmloop:\\nadd r0,r0\\nmvi r1,8\\n\" \"or r0,r1 ; comment\\nstm 4,r0\\n\");return 0;}", 0, {"porta": 8}),
+    # `sei`/`cli` are builtins only while the name is otherwise undeclared, so a
+    # user's own variable of that name still wins.
+    "builtin-shadowed" : ("char main(){char cli = 5;char sei = 6;return cli + sei;}", 11, {}),
 }
 
 
@@ -142,6 +160,37 @@ return counter;
     tf.test_irq_e2e(ISR_PERIODIC_C_SRC, irq_cycle=200, irq_period=500, irq_len=6,
                         irq_mask=1, expected_top=10, title="isr-periodic-e2e")
 
+    # sei()/cli() builtins, checked in both directions against a *periodic*
+    # irq_in so neither can pass by accident:
+    #   - cli() broken (IE left set by the preceding sei()) -> a pulse lands
+    #     during the long for-loop and main returns the 0xEE sentinel.
+    #   - sei() broken (IE never set) -> the while below never observes counter
+    #     move and the simulation runs to its timeout instead of returning 42.
+    # `base` is sampled after cli() rather than compared against 0, so a pulse
+    # slipping through the few instructions between sei() and cli() can't make
+    # this flaky. Nothing here touches [[address=0x02]] psr: interrupts are
+    # masked out of reset, so sei() is the only thing that can arm them.
+    ISR_SEI_CLI_C_SRC = """
+int counter = 0;
+
+void [[isr=0]] tick() {
+counter = counter + 1;
+}
+
+char main() {
+sei();
+cli();
+int base = counter;
+for (char i = 0; i < 200; i = i + 1) {}
+if (counter != base) return 0xEE;
+sei();
+while (counter == base) {}
+return 42;
+}
+"""
+    tf.test_irq_e2e(ISR_SEI_CLI_C_SRC, irq_cycle=400, irq_period=800, irq_len=6,
+                        irq_mask=1, expected_top=42, title="isr-sei-cli-e2e")
+
 
 if __name__ == "__main__":
     # MINCASM tests
@@ -187,6 +236,13 @@ if __name__ == "__main__":
     tf.expect_fail("./target/mincc", """void [[isr=5]] tick(){}""") # vector out of range
     tf.expect_fail("./target/mincc", """void [[isr=0]] a(){}void [[isr=0]] b(){}char main(){return 0;}""") # duplicate vector claim
     tf.expect_fail("./target/mincc", """void [[isr=0]] tick(){}char main(){tick();return 0;}""") # calling an ISR directly
+    # asm() / builtin validation
+    tf.expect_fail("./target/mincc", """char main(){asm(1);}""") # asm operand must be a string literal
+    tf.expect_fail("./target/mincc", """char main(){asm("mvi r0,1\\n";}""") # missing closing paren
+    tf.expect_fail("./target/mincc", """char main(){asm("mvi r0,1);}""") # unterminated string literal
+    tf.expect_fail("./target/mincc", """char main(){asm("mvi r0,1\\p");}""") # unknown escape sequence
+    tf.expect_fail("./target/mincc", """char main(){char x = sei();return x;}""") # sei() has no value
+    tf.expect_fail("./target/mincc", """char main(){char x = asm("ret");return x;}""") # asm is a statement, not an expression
 
     # E2E tests
     if (len(sys.argv) == 1):

@@ -34,6 +34,7 @@ stmt        = expr ";"
             | "for" "(" expr? ";" expr? ";" expr? ")" stmt
             | "while" "(" expr ")" stmt
             | "break" ";"
+            | "asm" "(" string+ ")" ";"   // inline assembly, emitted verbatim
 expr        = assign
 assign      = equality ("=" assign)?
 bitwise_or     = bitwise_xor ("|" bitwise_xor)*
@@ -45,12 +46,17 @@ add         = mul ("+" mul | "-" mul)*
 mul         = unary ("*" unary)*
 unary       = ("+" | "-" | "~")? primary
             | ("*" | "&") unary
-primary     = num | "(" expr ")" | ident
+primary     = num | "(" expr ")" | ident | builtin
 type        = "uint8_t" | "void" | "int" | "char" "*"*  // Currently uint8_t, int and char mean the same (1 byte int) type.
 ident       = type? ("[[" attr "]]")? ident_name | ident_name "(" ((expr ",")* expr)? ")"
 attr        = "address" "=" num | "isr" ("=" num)?  // isr=N (N: 0-3) auto-places the function at
                                                      // hardware IRQ vector N; bare isr compiles a
                                                      // correctly-shaped handler without placement.
+builtin     = ("sei" | "cli") "(" ")"   // set/clear PSR.IE; expands to an ND_ASM node.
+                                         // Only recognized when the name is otherwise undeclared,
+                                         // so a user's own `sei`/`cli` still shadows the builtin.
+string      = '"' (escape | [^"\\\n])* '"'    // adjacent literals concatenate, as in C
+escape      = "\\" ["ntr\\\"']                // \0 is deliberately unsupported
 ****************************************************************/
 
 // Syntax tree parsing functions

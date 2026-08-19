@@ -222,6 +222,27 @@ Node *stmt(char *l) {
     } else if (consume_la("break", &loc)){
         expect(";", &loc);
         node = new_node(ND_BREAK, NULL, NULL, loc);
+    } else if (consume_la("asm", &loc)) {
+        expect("(", &loc);
+        // Adjacent string literals concatenate, exactly like in C, so a
+        // multi-instruction block can be written one instruction per line.
+        char *text = expect_string(&loc);
+        size_t len = strlen(text);
+        char *joined = mystrndup(text, len);
+        while (is_string_token()) {
+            char *more = expect_string(&loc);
+            size_t more_len = strlen(more);
+            char *grown = realloc(joined, len + more_len + 1);
+            if (!grown) {
+                error("Memory allocation failed");
+            }
+            joined = grown;
+            memcpy(joined + len, more, more_len + 1);
+            len += more_len;
+        }
+        expect(")", &loc);
+        expect(";", &loc);
+        node = new_asm_node(joined, loc);
     } else if (consume_la("{", &loc)) {
         new_scope();
         node = close_brace(loc);
@@ -384,10 +405,36 @@ Node *primary(char *l) {       // primary = num | ident | "(" expr ")"
     }
 }
 
+// sei()/cli(): flip just the IE bit (bit1) of PSR, which lives at data address
+// 0x0002 and is only reachable through stm/ldm -- the ISA's stf/clf mnemonics
+// are decoded by neither minc_h.sv nor the pipelined cores. Read-modify-write
+// rather than a blunt store so PSR bit0 (the carry flag) survives: the value
+// read back in r0 carries the old bit0 and is written straight back out.
+// r0/r1 are dead at every statement boundary (an ISR prologue saves both
+// unconditionally), so no caller-saved bookkeeping is needed here.
+#define SEI_ASM "ldm r0,2\nmvi r1,2\nor r0,r1\nstm 2,r0\n"
+#define CLI_ASM "ldm r0,2\nmvi r1,253\nand r0,r1\nstm 2,r0\n"
+
 Node *ident(char *l) {
     char *loc = l;
     Ident_Name *name = find_name(token);
     Token *tok = token;
+    // Builtins. Looked up only when nothing else claims the name, so a user
+    // declaration of `sei`/`cli` still shadows them.
+    if (!name && tok->type == TOKEN_IDENT) {
+        const char *builtin = NULL;
+        if (strcmp(tok->str, "sei") == 0) {
+            builtin = SEI_ASM;
+        } else if (strcmp(tok->str, "cli") == 0) {
+            builtin = CLI_ASM;
+        }
+        if (builtin) {
+            expect_ident(&loc);
+            expect("(", &loc);
+            expect(")", &loc);
+            return new_asm_node(mystrndup(builtin, strlen(builtin)), loc);
+        }
+    }
     char *var_name = expect_ident(&loc);
     if (name && name->type == FUNCTION && consume_la("(", &loc)) { // ident "(" ((expr ",")* expr)? ")" の部分（関数呼び出し）
         if (name->valtype && name->valtype->type == TY_ISR) {

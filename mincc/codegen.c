@@ -62,11 +62,14 @@ int push_regstack(int size) {
             cur_regstack_max = top;
         }
     } else {
-        if (cur_regstack_max < nxt_regstack_top) {
-            cur_regstack_max = nxt_regstack_top;
-            if (caller_max <= nxt_regstack_top) { // callee責任のレジスタは自分で退避
-                printf("push r%d\n", nxt_regstack_top);
+        int top = nxt_regstack_top + size - 1;
+        if (cur_regstack_max < top) {
+            int from = cur_regstack_max + 1;
+            if (from <= caller_max + 1) from = caller_max + 1;
+            for (int r = from; r <= top; r++) {
+                printf("push r%d\n", r);
             }
+            cur_regstack_max = top;
         }
     }
     int cur = nxt_regstack_top;
@@ -160,7 +163,7 @@ void generate_prologue(Node **args, long arg_reg_count, long local_var_count) {
 }
 
 void generate_epilogue(long arg_count, int size, char *loc) {
-    for (long i = cur_regstack_max; i >= ((caller_max > arg_count) ? caller_max : arg_count); i--) {
+    for (long i = cur_regstack_max; i >= caller_max; i--) {
         printf("pop r%ld\n", i);
     } // callee責任分（argの分は含まず）を回収する
     int dst = pop_regstack(size);
@@ -313,8 +316,20 @@ int generate(Node *node, int size) {
         }
         return actual;
     } case ND_ASSIGN: {
-        // generate(node->rhs);
-        generate(node->rhs, node->lhs->valtype->size);
+        int val_size = node->lhs->valtype->size;
+        // `*p = e` needs the destination address pushed *below* the value, since
+        // the ND_DEREF arm pops the value first. Emitting it here (rather than in
+        // that arm) keeps the right-hand side evaluated exactly once for every
+        // kind of destination -- generating it twice made `*p = f();` call f()
+        // twice and leaked a regstack slot on each store.
+        if (node->lhs->type == ND_DEREF) {
+            generate(node->lhs->lhs, PTR_SIZE); // 左辺値（デリファレンスして得たアドレス）
+        }
+        // A void right-hand side (asm(...), sei()/cli(), a void function call)
+        // pushes nothing onto the regstack, so the pops below would unbalance it.
+        if (generate(node->rhs, val_size) == 0) {
+            error_at(node->loc, "Cannot assign a value of size 0 (void)");
+        }
         if (node->lhs->type == ND_LOCAL_VAR) {
             if (node->lhs->valtype->size == 1) {
                 printf("stm Y%ld,r%d\n", node->lhs->ofs_addr, pop_regstack(1));
@@ -338,9 +353,7 @@ int generate(Node *node, int size) {
                 error_at(node->loc, "Invalid size for global variable: %ld", node->lhs->valtype->size);
             }
         } else if (node->lhs->type == ND_DEREF) {
-            generate(node->lhs->lhs, PTR_SIZE); // 左辺値（デリファレンスして得たアドレス）
-            int val_size = node->lhs->valtype->size;
-            generate(node->rhs, val_size);      // 右辺値（代入すべき値）
+            // 右辺値（代入すべき値）と左辺値（アドレス）は既に上で積んである
             int val = pop_regstack(val_size);
             int addr = pop_regstack(PTR_SIZE);
             printf("mov r13,r%d\nmov r12,r%d\n", addr + 1, addr);
@@ -560,6 +573,15 @@ int generate(Node *node, int size) {
             error_at(node->loc, "Invalid size for dereferenced value: %d", node->valtype->size);
         }
         return node->valtype->size;
+    } case ND_ASM: {
+        // Inline assembly is passed straight through to mincasm. The regstack is
+        // deliberately left untouched: preserving whatever registers the block
+        // clobbers is the author's responsibility (r0/r1 are always free here).
+        fputs(node->name, stdout);
+        if (node->name_len == 0 || node->name[node->name_len - 1] != '\n') {
+            printf("\n"); // mincasm is line-oriented, so never merge with the next instruction
+        }
+        return 0;
     }
     default:
         break;

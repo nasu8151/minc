@@ -123,6 +123,26 @@ Node *new_block_node(char *loc) {
     return node;
 }
 
+// Inline assembly. `text` is already escape-decoded and is emitted verbatim by
+// codegen, so the node carries no operands and yields no value (size 0).
+Node *new_asm_node(char *text, char *loc) {
+    Node *node = calloc(1, sizeof(Node));
+    if (!node) {
+        error("Memory allocation failed");
+    }
+    node->type = ND_ASM;
+    node->name = text; // ownership transferred
+    node->name_len = strlen(text);
+    node->loc = loc;
+    node->valtype = calloc(1, sizeof(Type_t));
+    if (!node->valtype) {
+        error("Memory allocation failed");
+    }
+    node->valtype->type = TY_INT;
+    node->valtype->size = 0;
+    return node;
+}
+
 Node **nodevec_push(Node **old_vec, size_t old_len, Node *node) {
     Node **new_nv = calloc(old_len + 2, sizeof(Node**));
     if (!new_nv) error("Memory allocation failed");
@@ -144,6 +164,8 @@ void print_node(Node *node) {
         fprintf(stderr, "(BODY:\n");
         print_node(node->lhs);
         fprintf(stderr, ")\n");
+    } else if (node->type == ND_ASM) {
+        fprintf(stderr, "ND_ASM: %s\n", node->name);
     } else if (node->type == ND_FUNC_CALL) {
         fprintf(stderr, "ND_FUNC_CALL\n");
         fprintf(stderr, "(ARG:");

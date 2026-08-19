@@ -229,6 +229,16 @@ module timer8_tb;
         repeat (16) @(posedge I_CLK);
         bus_read(3'h3, rdata);
         check(rdata >= 8'h03 && rdata <= 8'h06, "COUNTER advanced ~4 counts after 20 total clocks at /4 prescale");
+        bus_write(3'h1, 8'hFF); // put COMPARE out of reach so it doesn't interfere
+        bus_write(3'h2, 8'hFF); // put OVERFLOW out of reach so it doesn't interfere
+        bus_write(3'h0, 8'b1010_0_0_1); // [5:3]=1010(/1024), IE_CMP=0, IE_OVF=0, EN=1
+        bus_read(3'h3, rdata);
+        check(rdata == 8'h00, "COUNTER starts at 0 before prescale-/1024 measurement");
+        repeat (1024) @(posedge I_CLK);
+        bus_read(3'h3, rdata);
+        check(rdata <= 8'h01, "COUNTER has ticked at most once after 4 clocks at /1024 prescale");
+        repeat (4096) @(posedge I_CLK);
+        bus_read(3'h3, rdata);
 
         // 8. EN=0 freezes the counter
         bus_write(3'h0, 8'h00);
