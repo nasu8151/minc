@@ -135,7 +135,7 @@ module minc (
             4'b1010, 4'b1011: begin alu_out = {7'b0, ~alu_cout}; carry_flag_next = 1'bx; end // LT and LTC (shares the subtractor above)
             4'b1100: {alu_out, carry_flag_next} = {carry_flag, rb_val >> 1}; // ROR
             4'b1110: begin alu_out = ra_val * rb_val; carry_flag_next = 1'bx; end // MUL
-            4'b1111: begin alu_out = (ra_val * rb_val) >> 8; carry_flag_next = 1'bx; end // MULH
+            4'b1111: begin alu_out = (16'(ra_val * rb_val)) >> 8; carry_flag_next = 1'bx; end // MULH
             default: begin alu_out = ra_val; carry_flag_next = 1'bx; end
         endcase
     end

@@ -76,6 +76,15 @@ E2E_CASES = {
     # `sei`/`cli` are builtins only while the name is otherwise undeclared, so a
     # user's own variable of that name still wins.
     "builtin-shadowed" : ("char main(){char cli = 5;char sei = 6;return cli + sei;}", 11, {}),
+    # The callee-saved register saves must run exactly once per call, so they
+    # belong in the prologue. Emitting them at first use put them wherever that
+    # use landed -- here the first use of r6/r7 is inside the loop, so the push
+    # ran 10 times against a single pop and leaked 2 bytes per iteration. SP is
+    # memory-mapped at 0x0000, so the leak is read straight back out of C:
+    # 0 when balanced, 20 with the old lazy scheme. Note the epilogue restores
+    # SP from the frame pointer, which is why this has to be observed *inside*
+    # the function rather than through the harness's end-of-run SP check.
+    "regsave-hoisted" : ("char [[address=0x00]] sp_lo;int g=3;int add2(int x){return x+2;}char main(){char before=sp_lo;for(char i=0;i<10;i=i+1){if((add2(g)-g)>500){g=g;}}char after=sp_lo;return before-after;}", 0, {}),
 }
 
 

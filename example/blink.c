@@ -27,19 +27,32 @@ char main() {
     TIMER8_CONFIG = 0b00111011;
     PORTA_DIR = 0xFF;
     sei();
-    int i = 500;
     int previousMillis = millis();
+    int previousMillis2 = millis();
     char state = 0;
+    char state2 = 0;
+    char porta;
     while (1) {
-        if ((millis() - previousMillis) > 500) {
+        int curr = millis();
+        if ((curr - previousMillis) > 500) {
             state = !state;
-            previousMillis = millis();
+            previousMillis = curr;
+        }
+        if ((curr - previousMillis2) > 300) {
+            state2 = !state2;
+            previousMillis2 = curr;
         }
         if (state) {
-            PORTA_OUT = 0x01;
+            porta = porta | 0x10;
         } else {
-            PORTA_OUT = 0x10;
+            porta = porta & 0xEF;
         }
+        if (state2) {
+            porta = porta | 0x01;
+        } else {
+            porta = porta & 0xFE;
+        }
+        PORTA_OUT = porta;
         for (char i=0;i<50;i=i+1) {}
     }
     PORTA_OUT = 0xFF;
