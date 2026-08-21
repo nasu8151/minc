@@ -107,8 +107,27 @@ char *expect_ident(char **loc) {
     return name;
 }
 
+// Expect a string literal token and return its (escape-decoded) contents
+// Otherwise, throw an error
+char *expect_string(char **loc) {
+    if (token->type == TOKEN_EOF) {
+        error_at(token->loc, "Expected a string literal, but got EOF");
+    }
+    if (token->type != TOKEN_STRING) {
+        error_at(token->loc, "Expected a string literal, but got '%s'", token->str);
+    }
+    char *str = token->str;
+    *loc = token->loc;
+    token = token->next;
+    return str;
+}
+
 bool is_number_token() {
     return token->type == TOKEN_NUMBER;
+}
+
+bool is_string_token() {
+    return token->type == TOKEN_STRING;
 }
 
 // Check if the current token is EOF
@@ -144,6 +163,9 @@ void print_token_list(Token *head) {
                 break;
             case TOKEN_IDENT:
                 fprintf(stderr, "TOKEN_IDENT: %s\n", cur->str);
+                break;
+            case TOKEN_STRING:
+                fprintf(stderr, "TOKEN_STRING: \"%s\"\n", cur->str);
                 break;
             default:
                 fprintf(stderr, "Unknown token type\n");
@@ -199,8 +221,63 @@ const char* reserved_words[] = {
     "char",
     "void",
     "break",
+    "asm",
     NULL
 };
+
+/*****************************************************************
+string_literal = '"' (escape | [^"\\\n])* '"'
+escape         = "\\" ["ntr\\\"']
+
+Reads one string literal starting at *pp (which must point at the opening
+quote), returns the escape-decoded contents in a fresh buffer, and advances
+*pp past the closing quote. `\0` is deliberately unsupported: the result is
+handled as a NUL-terminated C string throughout, so an embedded NUL would
+silently truncate it.
+******************************************************************/
+char *read_string_literal(const char **pp) {
+    const char *open = *pp;
+    const char *p = open + 1; // skip the opening quote
+    size_t cap = 16, len = 0;
+    char *buf = malloc(cap);
+    if (!buf) {
+        error("Memory allocation failed");
+    }
+    while (*p != '"') {
+        char c;
+        if (*p == '\0' || *p == '\n') {
+            error_at((char *)open, "Unterminated string literal");
+        }
+        if (*p == '\\') {
+            p++;
+            switch (*p) {
+            case 'n':  c = '\n'; break;
+            case 't':  c = '\t'; break;
+            case 'r':  c = '\r'; break;
+            case '\\': c = '\\'; break;
+            case '"':  c = '"';  break;
+            case '\'': c = '\''; break;
+            default:
+                error_at((char *)p - 1, "Unknown escape sequence '\\%c'", *p);
+            }
+            p++;
+        } else {
+            c = *p++;
+        }
+        if (len + 1 >= cap) {
+            cap *= 2;
+            char *newbuf = realloc(buf, cap);
+            if (!newbuf) {
+                error("Memory allocation failed");
+            }
+            buf = newbuf;
+        }
+        buf[len++] = c;
+    }
+    buf[len] = '\0';
+    *pp = p + 1; // skip the closing quote
+    return buf;
+}
 
 Token *tokenize(const char *p){
     Token head;
@@ -227,6 +304,14 @@ Token *tokenize(const char *p){
             rp++;
         }
         if (matched) {
+            continue;
+        }
+
+        if (*p == '"') {
+            char *loc = (char *)p;
+            char *str = read_string_literal(&p);
+            cur = new_token(TOKEN_STRING, cur, str, strlen(str), 0, loc);
+            free(str); // new_token keeps its own copy
             continue;
         }
 

@@ -75,7 +75,10 @@ int main() {
         }
         printf(".org 0x0005\n");
         printf("__crt0_start:\n");
-        printf("mvi r2,2\nstm 2,r2\n"); //enable the interrupts (temporary code. PLEASE change later.)
+        // Interrupts stay masked out of reset. A program that wants them must
+        // say so with sei(), the same way it would on any other target -- crt0
+        // used to force PSR.IE on here, which made it impossible to start up
+        // with interrupts off.
         print_default_crt0();
     }
 
