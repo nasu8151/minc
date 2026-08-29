@@ -102,10 +102,11 @@ module minc (
     wire is_addr_x  = is_mem_grp && (op6[2:1] == 2'b00);
     wire is_addr_y  = is_mem_grp && (op6[2:1] == 2'b01);
     wire is_addr_n  = is_mem_grp && (op6[2:1] == 2'b10);
-    wire is_push   = (op6 == 6'b011100);
-    wire is_pop    = (op6 == 6'b011101);
-    wire is_ret    = (op6 == 6'b011111);
-    wire is_reti   = (op6 == 6'b011110);
+    wire is_stack_grp = (op6[5:3] == 3'b011);
+    wire is_push      = is_stack_grp && (op6[2:0] == 3'b100);
+    wire is_pop       = is_stack_grp && (op6[2:0] == 3'b101);
+    wire is_ret_insn  = is_stack_grp && (op6[2:1] == 2'b11);
+    wire is_reti      = is_stack_grp && (op6[2:0] == 3'b110);
     wire is_calr   = (op2 == 2'b10);
     wire is_jr     = (op2 == 2'b11);
 
@@ -113,30 +114,54 @@ module minc (
     // ADD/ADC/SUB/SBC/LT share one 8-bit adder: subop[3]|subop[1] selects
     // subtract (invert b, cin defaults to 1), subop[0] selects carry-in from
     // the flag (ADC/SBC). LT reads out the borrow instead of the sum.
-    wire       alu_do_sub = subop[1];
-    wire       alu_use_cf = subop[0];
-    wire [7:0] alu_b      = alu_do_sub ? ~rb_val : rb_val;
-    wire       alu_cin    = alu_use_cf ? carry_flag : alu_do_sub;
-    wire       alu_cout;
-    wire [7:0] alu_sum;
-    assign {alu_cout, alu_sum} = ra_val + alu_b + alu_cin;
+    wire        alu_do_sub = subop[1];
+    wire        alu_use_cf = subop[0];
+    wire  [7:0] alu_b      = alu_do_sub ? ~rb_val : rb_val;
+    wire        alu_cin    = alu_use_cf ? carry_flag : alu_do_sub;
+    wire        alu_cout;
+    logic [7:0] group1;
+    assign {alu_cout, group1} = ra_val + alu_b + alu_cin;
 
+    logic [7:0] group0;
+    logic [7:0] group2;
+    logic [7:0] group3;
+
+    generate
+        for (genvar i=0;i<8;i++) begin
+            assign group0[i] =  (subop[1:0] == 2'b00) ? rb_val[i] :
+                                (subop[1:0] == 2'b01) ? ra_val[i] | rb_val[i] :
+                                (subop[1:0] == 2'b10) ? ra_val[i] & rb_val[i] :
+                                (subop[1:0] == 2'b11) ? ra_val[i] ^ rb_val[i] : 1'bx;
+        end
+    endgenerate
+
+    assign group2 = (subop[1] == 1'b0) ? {carry_flag, rb_val} :
+                    (subop[1] == 1'b1) ? {7'b0, ~alu_cout}  : 8'hxx;
+
+    assign group3 = (subop[1:0] == 2'b00) ? {7'b0, ~|ra_val} :
+                    (subop[1:0] == 2'b10) ? ra_val * rb_val  :
+                    (subop[1:0] == 2'b11) ? (16'(ra_val * rb_val)) >> 8 : 8'hxx;
+
+    wire rb_val_0 = rb_val[0];
+    wire [1:0] subop_hi2 = subop[3:2];
     always_comb begin
-        case (subop)
-            4'b0000: begin alu_out = rb_val; carry_flag_next = 1'bx; end // MOV
-            4'b0001: begin alu_out = ra_val | rb_val; carry_flag_next = 1'bx; end // OR
-            4'b0010: begin alu_out = ra_val & rb_val; carry_flag_next = 1'bx; end // AND
-            4'b0011: begin alu_out = ra_val ^ rb_val; carry_flag_next = 1'bx; end // XOR
-            4'b0100, 4'b0101, 4'b0110, 4'b0111: begin // ADD, ADC, SUB, SBC
-                alu_out = alu_sum;
+        case (subop_hi2)
+            2'b00: begin
+                alu_out = group0; carry_flag_next = 1'bx; 
+            end // MOV, OR, XOR, AND
+            2'b01: begin // ADD, ADC, SUB, SBC
+                alu_out = group1;
                 carry_flag_next = alu_cout;
             end
-            4'b1000: begin alu_out = {7'b0, ~|ra_val};  carry_flag_next = 1'bx; end // CHZ
-            4'b1010, 4'b1011: begin alu_out = {7'b0, ~alu_cout}; carry_flag_next = 1'bx; end // LT and LTC (shares the subtractor above)
-            4'b1100: {alu_out, carry_flag_next} = {carry_flag, rb_val >> 1}; // ROR
-            4'b1110: begin alu_out = ra_val * rb_val; carry_flag_next = 1'bx; end // MUL
-            4'b1111: begin alu_out = (16'(ra_val * rb_val)) >> 8; carry_flag_next = 1'bx; end // MULH
-            default: begin alu_out = ra_val; carry_flag_next = 1'bx; end
+            2'b10: begin 
+                alu_out = group2;
+                carry_flag_next = rb_val_0;
+            end // LT and LTC (shares the subtractor above) and CHZ
+            2'b11: begin 
+                alu_out = group3;
+                carry_flag_next = 1'bx;
+            end // CHZ, MUL, MULH
+            default: begin alu_out = 8'hxx; carry_flag_next = 1'bx; end
         endcase
     end
 
@@ -171,7 +196,7 @@ module minc (
 
     // Interrupt entry: 4 level-triggered request lines, fixed priority (irq_in[0] highest).
     // Vectors live in PC-space (rom[]/pc), entirely separate from the 0x0002/0x0003 data-space
-    // MMIO addresses used by PSR/psr_shadow below, despite the similar-looking numbers.
+    // MMIO addresses used by PSR/psr_shadow below.
     wire any_irq = |irq_in;
     wire [2:0] irq_sel_next =   irq_in[0] ? 3'd1 :
                                 irq_in[1] ? 3'd2 :
@@ -197,7 +222,7 @@ module minc (
                     pc <= pc_next;
                 end
                 `S_MA: begin
-                    if (!servicing_irq && (is_ret || is_reti)) begin
+                    if (!servicing_irq && (is_ret_insn)) begin
                         pc[7:0] <= data_in;
                     end
                 end
@@ -206,7 +231,7 @@ module minc (
                         pc <= irq_vector;
                     end else if (is_jz || is_jr || is_calr) begin
                         pc <= pc_next;
-                    end else if (is_ret || is_reti) begin
+                    end else if (is_ret_insn) begin
                         pc[15:8] <= data_in;
                     end
 `ifdef SIM
@@ -219,13 +244,11 @@ module minc (
 
     // SP and AGU
     logic [15:0] addr_base;
-    logic aeq0;
-    logic aeq1;
-    logic aeq2;
-    logic aeq3;
-    wire [15:0] delta_sp = servicing_irq ? -16'd1 :
+    logic        cpu_mmio_hit;
+    logic [7:0]  cpu_mmio_data;
+    wire [15:0]  delta_sp = servicing_irq ? -16'd1 :
                         (is_calr || is_push) ? -16'd1 :
-                        (is_pop || is_ret || is_reti) ? 16'd1 : 16'hxxxx;
+                        (is_pop || is_ret_insn) ? 16'd1 : 16'hxxxx;
     wire [15:0] sp_next = sp + delta_sp;
     always_ff @(posedge clk or negedge reset_n) begin
         if (!reset_n) begin
@@ -239,27 +262,24 @@ module minc (
                     irq_sel <= irq_sel_next;
                 end
                 `S_DECEXEC: begin
-                    if (servicing_irq || is_calr || is_ret || is_reti) begin
+                    if (servicing_irq || is_calr || is_ret_insn) begin
                         sp <= sp_next;
                     end
                 end
                 `S_MA: begin
-                    if (servicing_irq || is_push || is_calr || is_pop || is_ret || is_reti) begin
+                    if (servicing_irq || is_stack_grp || is_calr) begin
                         sp <= sp_next;
                     end
                 end
                 `S_WB: begin
-                    if (we && (address == 16'h0000))
+                    if (we && cpu_mmio_hit && (address[1:0] == 2'b00))
                         sp[7:0] <= data_out;
-                    else if (we && (address == 16'h0001))
+                    else if (we && cpu_mmio_hit && (address[1:0] == 2'b01))
                         sp[15:8] <= data_out;
                 end
                 default: ;
             endcase
-            aeq0 <= (address == 16'h0000) ? 1'b1 : 1'b0;
-            aeq1 <= (address == 16'h0001) ? 1'b1 : 1'b0;
-            aeq2 <= (address == 16'h0002) ? 1'b1 : 1'b0;
-            aeq3 <= (address == 16'h0003) ? 1'b1 : 1'b0;
+            cpu_mmio_hit <= (address[15:2] == 14'h0000) ? 1'b1 : 1'b0;
         end
     end
     assign addr_base =  (is_addr_x) ? {reg13, reg12} :
@@ -267,7 +287,7 @@ module minc (
                         (is_addr_n) ? 16'h0000 : 16'hxxxx;
     assign address =    servicing_irq ? sp :
                         (is_mem_grp) ? (addr_base + (is_addr_n ? {8'h00, imm8} : simm8)) :
-                        (is_calr || is_push || is_pop || is_ret || is_reti) ? sp : 16'hxxxx;
+                        (is_stack_grp || is_calr) ? sp : 16'hxxxx;
 
     always_ff @( posedge clk or negedge reset_n ) begin
         if (!reset_n) begin
@@ -286,12 +306,16 @@ module minc (
         end
     end
 
+    assign cpu_mmio_data =  (address[1:0] == 2'b00) ? sp[7:0]    :
+                            (address[1:0] == 2'b01) ? sp[15:8]   :
+                            (address[1:0] == 2'b10) ? psr        :
+                            (address[1:0] == 2'b11) ? psr_shadow : 8'hxx;
+
     wire [7:0] rw_next =    (is_alu) ? alu_out : 
                             (is_mvi) ? imm8 : 
-                            (is_pop || is_ldm) ? aeq0 ? sp[7:0] :
-                                aeq1 ? sp[15:8] :
-                                aeq2 ? psr :
-                                aeq3 ? psr_shadow : data_in : ra_val;
+                            (is_pop || is_ldm) ?
+                                (cpu_mmio_hit ? cpu_mmio_data : data_in) 
+                                : ra_val;
     // Register file
     
     // is_ldm_x||is_stm_x reduces to is_addr_x (is_ldm|is_stm == is_mem_grp,
@@ -331,9 +355,9 @@ module minc (
                     if (!servicing_irq) begin
                         if (is_reti) begin
                             psr <= psr_shadow;
-                        end else if (we && address == 16'h0002) begin
+                        end else if (we && cpu_mmio_hit && (address[1:0] == 2'b10)) begin
                             psr[1:0] <= data_out[1:0];
-                        end else if (we && address == 16'h0003) begin
+                        end else if (we && cpu_mmio_hit && (address[1:0] == 2'b11)) begin
                             psr_shadow[1:0] <= data_out[1:0];
                         end else if (is_alu) begin
                             psr[0] <= carry_flag_next;

@@ -17,11 +17,11 @@ module minc_gw_top (
 //    logic [23:0] presc_cnt;
 //    logic        int_clk;
 
-`define UART
-`define PORTA
-`define WAIT
-`define I2C
-`define TIMER8
+// `define UART
+// `define PORTA
+// `define WAIT
+// `define I2C
+// `define TIMER8
 
     logic [15:0] sp_out;
     logic [7:0] data_in;
@@ -52,8 +52,6 @@ module minc_gw_top (
     logic [7:0] port_a_in;
     logic [7:0] port_a_dir; // 1 = output, 0 = input
     assign port_a = port_a_out;
-
-    logic [3:0] int_cnt;
 
     assign data_in =
     `ifdef UART
@@ -162,6 +160,9 @@ localparam PORT_A_BASE = 16'h0004;
 		.SCL(i2c_scl), //inout SCL
 		.SDA(i2c_sda)  //inout SDA
 	);
+`ifndef WAIT
+`define WAIT
+`endif
 `endif
 
 `ifdef TIMER8

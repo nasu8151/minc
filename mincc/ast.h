@@ -26,15 +26,16 @@ Variable list structure
 
 /***************************************************************
 program     = toplevel*
-toplevel    = type [[attr ("," attr)*]]? ident "=" assign ";" | type [[attr ("," attr)*]]? ident "(" ((expr ",")* expr)? ")" stmt  <-- must be a block
+toplevel    = type [[attr ("," attr)*]]? ident "=" assign ";" | type [[attr ("," attr)*]]? ident "(" ((expr ",")* expr)? ")" "{" block
+block = (stmt | decr)* "}"
 stmt        = expr ";"
-            | "{" stmt* "}"
             | "return" expr ";"
             | "if" "(" expr ")" stmt ("else" stmt)?
-            | "for" "(" expr? ";" expr? ";" expr? ")" stmt
+            | "for" "(" (decr | stmt)? ";" expr? ";" expr? ")" stmt
             | "while" "(" expr ")" stmt
             | "break" ";"
             | "asm" "(" string+ ")" ";"   // inline assembly, emitted verbatim
+            | "{" block
 expr        = assign
 assign      = equality ("=" assign)?
 bitwise_or     = bitwise_xor ("|" bitwise_xor)*
@@ -47,9 +48,12 @@ mul         = unary ("*" unary)*
 unary       = ("+" | "-" | "~")? primary
             | ("*" | "&") unary
 primary     = num | "(" expr ")" | ident | builtin
-type        = "uint8_t" | "void" | "int" | "char" "*"*  // Currently uint8_t, int and char mean the same (1 byte int) type.
-ident       = type? ("[[" attr "]]")? ident_name | ident_name "(" ((expr ",")* expr)? ")"
-attr        = "address" "=" num | "isr" ("=" num)?  // isr=N (N: 0-3) auto-places the function at
+type        = "uint8_t" | "void" | "int" | "char" "*"*  
+                                    // Currently uint8_t and char mean the same (1 byte int) type,
+                                    // and int and pointer has 2 bytes.
+ident       = ident_name | (ident_name "(" ((expr ",")* expr)? ")")
+decr        = type ("[[" attr "]]")? ident_name
+attr        = ("address" "=" num | "isr" ("=" num))?  // isr=N (N: 0-3) auto-places the function at
                                                      // hardware IRQ vector N; bare isr compiles a
                                                      // correctly-shaped handler without placement.
 builtin     = ("sei" | "cli") "(" ")"   // set/clear PSR.IE; expands to an ND_ASM node.
@@ -63,7 +67,7 @@ escape      = "\\" ["ntr\\\"']                // \0 is deliberately unsupported
 long program();
 extern Node code[256];
 Node *toplevel(char *l);
-Node *close_brace(char *l);
+Node *block(char *l);
 Node *decr(char *l);
 Node *stmt(char *l);
 Node *assign(char *l);

@@ -38,6 +38,44 @@
 | calr rn    | 10rrrr nnnn rrrr nnnn  | (----SP) = PC + 1;PC = PC + {r, n} + 1      |         |
 | jr rn      | 11rrrr nnnn rrrr nnnn  | PC = PC + {r, n} + 1                        |         |
 
+| Mnemonic    | Machine code            | Description                                 | c flag  |
+|-------------|-------------------------|---------------------------------------------|---------|
+| mov rd,rs   | 00000000 00 dddd ssss   | rd = rs                                     | x       |
+| or rd,rs    | 00000001 00 dddd ssss   | rd = rd \ rs                                | x       |
+| and rd,rs   | 00000010 00 dddd ssss   | rd = rd & rs                                | x       |
+| xor rd,rs   | 00000011 00 dddd ssss   | rd = rd ^ rs                                | x       |
+| add rd,rs   | 00000100 00 dddd ssss   | rd = rd + rs                                | carry   |
+| adc rd,rs   | 00000101 00 dddd ssss   | rd = rd + rs + c                            | carry   |
+| sub rd,rs   | 00000110 00 dddd ssss   | rd = rd - rs                                | !borrow |
+| sbc rd,rs   | 00000111 00 dddd ssss   | rd = rd - rs + c                            | !borrow |
+| chz rd,rs   | 00001000 00 dddd ssss   | rd = (rs == 0) ? 1 : 0                      | x       |
+| lt rd,rs    | 00001010 00 dddd ssss   | rd = 1 if rd - rs < 0, otherwise rd = 0     | !borrow |
+| ltc rd,rs   | 00001011 00 dddd ssss   | rd = 1 if rd + rs + c < 0, otherwise rd = 0 | !borrow |
+| rr rd,rs    | 00001100 00 dddd ssss   | {rd, c} = {c, rs}                           | rs[0]   |
+| mul rd,rs   | 00001110 00 dddd ssss   | rd = \(rd * rs\)\[7:0\]                     | x       |
+| mulh rd,rs  | 00001111 00 dddd ssss   | rd = \(rd * rs\)\[15:8\]                    | x       |
+|             |                         |                                             |         |
+| jz n,rs     | 001000 nnnn ssss nnnn   | PC = PC + n if rd == 0                      |         |
+| ret rd      | 001100 0000 dddd 0000                 |                                             |         |
+| reti rd      | 001101 0000 dddd 0000                 |                                             |         |
+| push rs     | 001011 0000 ssss 0000                  |                                             |         |
+| pop rd      | 001111 0000 dddd 0000                 |                                             |         |
+|             |                         |                                             |         |
+| mvi rd,n    | 001101 nnnn dddd nnnn   | rd = n                                      |         |
+| adi rd,n    | 001100 nnnn dddd nnnn   | rd = rd + n                                 |         |
+| adic rd,n   | 001110 nnnn dddd nnnn   | rd = rd + n + c                             |         |
+|             |                         |                                             |         |
+| stm rp+n,rs | 01 00 nn nnnn ssss ppp0 | (rp + signed'n) = rs                        |         |
+| ldm rd,rp+n | 01 01 nn nnnn dddd ppp0 | rd = (rp + signed'n)                        |         |
+| stm n, rs   | 01 10 nn nnnn ssss mmmm | ({m, n}) = rs                               |         |
+| ldm rd, n   | 01 11 nn nnnn dddd mmmm | rd = ({m, n})                               |         |
+|             |                         |                                             |         |
+| calr rn     | 10 rrrr nnnn rrrr nnnn  | (----SP) = PC + 1;PC = PC + {r, n} + 1      |         |
+| jr rn       | 11 rrrr nnnn rrrr nnnn  | PC = PC + {r, n} + 1                        |         |
+| halt        | 11 1111 1111 1111 1111  | stops the CPU. (equiv. with `jr -1`)        |         |
+
+- `rp` means register pair. (e.g. rp14 means {r15, r14})
+
 ## 割り込み
 
 `minc_h.sv` は4本のレベルトリガ割り込み要求線 `irq_in[3:0]`(`irq_in[0]` が最優先、固定優先度、多重割り込み・ネストは非対応・1段のみ)を持つ。命令セット上は新規追加された `reti` 以外に変更はなく、割り込みの有効化・状態確認は既存の `stm`/`ldm` 絶対アドレスモードでメモリマップされたレジスタを読み書きするだけで行う。

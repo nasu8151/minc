@@ -9,6 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **`mincc/`** — a C compiler (subset of C) that emits `minc` assembly
 - **`mincasm/`** — an assembler that turns that assembly into hex machine code
 - **`verilog/`** — the CPU RTL, testbench, and memory models that execute the hex
+- **`temp/`** - if you need temporary files, you **MUST** use this directory.
 
 Because the ISA, compiler, and hardware are developed together, changing the instruction set touches all three: `mincc/codegen.c` (what asm it emits), `mincasm/main.c` (`g_inst_specs` table — mnemonic → encoding), and `verilog/minc_h.sv` (decode logic), plus `Hardware.md` (instruction table docs).
 

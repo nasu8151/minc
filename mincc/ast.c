@@ -100,7 +100,7 @@ Node *toplevel(char *l) {
         }
         add_function(tok, type);
         expect("{", &loc);
-        Node *node = new_func_node(ND_FUNC_DEF, name, nv, close_brace(loc), arg_reg_count, type, loc);
+        Node *node = new_func_node(ND_FUNC_DEF, name, nv, block(loc), arg_reg_count, type, loc);
         node->isr_vector = isr_vector;
         node->lhs->arg_sf_size = end_scope();
         return node;
@@ -120,7 +120,7 @@ Node *toplevel(char *l) {
     }
 }
 
-Node *close_brace(char *l) {
+Node *block(char *l) {
     Node *node;
     char *loc = l;
     node = new_block_node(loc);
@@ -245,7 +245,7 @@ Node *stmt(char *l) {
         node = new_asm_node(joined, loc);
     } else if (consume_la("{", &loc)) {
         new_scope();
-        node = close_brace(loc);
+        node = block(loc);
         node->arg_sf_size = end_scope();
     } else {
         node = expr(loc);
