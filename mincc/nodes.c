@@ -4,6 +4,21 @@ Vars_List *head = NULL;
 Vars_List *current = NULL;
 Vars_List *tail = NULL;
 
+int g_m16 = 0; // see nodes.h
+
+// minc-16 keeps every stack and global slot word-aligned: its 16-bit loads and
+// stores ignore address bit 0, so an `int` sitting at an odd offset would read
+// and write the wrong word entirely. Padding each slot to an even size costs at
+// most one byte per `char` and is the only allocation difference between the two
+// targets -- minc-8 stays byte-packed, so its output does not move.
+long var_slot_size(Type_t *type) {
+    long size = type->size;
+    if (g_m16) {
+        size = (size + 1) & ~1L;
+    }
+    return size;
+}
+
 Node *new_node(NodeType type, Node *lhs, Node *rhs, char *loc) {
     Node *node = calloc(1, sizeof(Node));
     if (!node) {
@@ -260,7 +275,7 @@ void add_local_var(Token *tok, Type_t *type) {
         cur->var_tail->next = var;
         cur->var_tail = var;
     }
-    cur->max_var_bytes += type->size; // 変数のサイズを現在のスコープの最大変数バイト数に加算
+    cur->max_var_bytes += var_slot_size(type); // 変数のサイズを現在のスコープの最大変数バイト数に加算
     var->offset = 0 - sizeof_local_vars(); // スタック上のオフセットを設定
 }
 
@@ -282,7 +297,7 @@ void add_global_var(Token *tok, long address, Type_t *type) {
         head->var_tail = var;
     }
     var->offset = 0;  // グローバル変数のオフセットは0に設定
-    head->max_var_bytes += type->size; // 変数のサイズをグローバルスコープの最大変数バイト数に加算
+    head->max_var_bytes += var_slot_size(type); // 変数のサイズをグローバルスコープの最大変数バイト数に加算
     var->address = address; // グローバル変数のアドレスを設定
     var->valtype = type;    // グローバル変数の型を設定
     fprintf(stderr, "Adding global variable: %.*s at address %ld\n", (int)tok->len, tok->str, var->address);
@@ -329,7 +344,7 @@ long sizeof_local_vars() {
     while (cur) {
         Ident_Name *var = cur->var_head;
         while (var) {
-            byte += var->valtype->size; // 変数のサイズを加算
+            byte += var_slot_size(var->valtype); // 変数のサイズを加算
             var = var->next;
         }
         cur = cur->child;

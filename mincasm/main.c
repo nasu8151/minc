@@ -51,25 +51,24 @@ typedef struct {
 } HashMap;
 
 typedef enum {
-    INST_ALU_RR,
-    INST_REG,
-    INST_FIXED,
-    INST_FLAG_IMM,
-    INST_MVI,
-    INST_JZ,
-    INST_REL16,
-    INST_MEM_STORE,
-    INST_MEM_LOAD,
+    INST_8_ALU_RR,
+    INST_8_REG,
+    INST_8_FIXED,
+    INST_8_MVI,
+    INST_8_JZ,
+    INST_8_REL16,
+    INST_8_MEM_STORE,
+    INST_8_MEM_LOAD,
     /* minc-16 (`mincasm -16`). Different ISA, so a separate spec table and a
      * separate set of encoders -- see Hardware.md "### minc-16". */
-    INST16_ALU_RR,
-    INST16_IMM,
-    INST16_MEM_ST,
-    INST16_MEM_LD,
-    INST16_BR,
-    INST16_STK_REG,
-    INST16_FIXED,
-    INST16_REL16
+    INST_16_ALU_RR,
+    INST_16_IMM,
+    INST_16_MEM_ST,
+    INST_16_MEM_LD,
+    INST_16_BR,
+    INST_16_STK_REG,
+    INST_16_FIXED,
+    INST_16_REL16
 } InstKind;
 
 enum {
@@ -87,71 +86,69 @@ typedef struct {
 } InstSpec;
 
 static const InstSpec g_inst_specs[] = {
-    {"mov",  INST_ALU_RR,    0x00, 0x00, 0x00, 0x00000, 0},
-    {"or",   INST_ALU_RR,    0x01, 0x00, 0x00, 0x00000, 0},
-    {"and",  INST_ALU_RR,    0x02, 0x00, 0x00, 0x00000, 0},
-    {"xor",  INST_ALU_RR,    0x03, 0x00, 0x00, 0x00000, 0},
-    {"add",  INST_ALU_RR,    0x04, 0x00, 0x00, 0x00000, 0},
-    {"adc",  INST_ALU_RR,    0x05, 0x00, 0x00, 0x00000, 0},
-    {"sub",  INST_ALU_RR,    0x06, 0x00, 0x00, 0x00000, 0},
-    {"sbc",  INST_ALU_RR,    0x07, 0x00, 0x00, 0x00000, 0},
-    {"chz",  INST_ALU_RR,    0x08, 0x00, 0x00, 0x00000, 0},
-    {"lt",   INST_ALU_RR,    0x0A, 0x00, 0x00, 0x00000, 0},
-    {"ltc",  INST_ALU_RR,    0x0B, 0x00, 0x00, 0x00000, 0},
-    {"rr",   INST_ALU_RR,    0x0C, 0x00, 0x00, 0x00000, 0},
-    {"mul",  INST_ALU_RR,    0x0E, 0x00, 0x00, 0x00000, 0},
-    {"mulh", INST_ALU_RR,    0x0F, 0x00, 0x00, 0x00000, 0},
-    {"stf",  INST_FLAG_IMM,  0x08, 0x00, 0x00, 0x00000, 0},
-    {"clf",  INST_FLAG_IMM,  0x09, 0x00, 0x00, 0x00000, 0},
-    {"push", INST_REG,       0x1C, 0x00, 0x00, 0x00000, 0},
-    {"pop",  INST_REG,       0x1D, 0x00, 0x00, 0x00000, 0},
-    {"ret",  INST_FIXED,     0x00, 0x00, 0x00, 0x1F000, 0},
-    {"reti", INST_FIXED,     0x00, 0x00, 0x00, 0x1E000, 0},
-    {"halt", INST_FIXED,     0x00, 0x00, 0x00, 0x3FFFF, 0},
-    {"mvi",  INST_MVI,       0x0E, 0x00, 0x00, 0x00000, 0},
-    {"jz",   INST_JZ,        0x0C, 0x00, 0x00, 0x00000, 0},
-    {"calr", INST_REL16,     0x02, 0x00, 0x00, 0x00000, 0},
-    {"jr",   INST_REL16,     0x03, 0x00, 0x00, 0x00000, 0},
-    {"stm",  INST_MEM_STORE, 0x10, 0x12, 0x14, 0x00000, 0},
-    {"ldm",  INST_MEM_LOAD,  0x11, 0x13, 0x15, 0x00000, 0},
+    {"mov",  INST_8_ALU_RR,    0x00, 0x00, 0x00, 0x00000, 0},
+    {"or",   INST_8_ALU_RR,    0x01, 0x00, 0x00, 0x00000, 0},
+    {"and",  INST_8_ALU_RR,    0x02, 0x00, 0x00, 0x00000, 0},
+    {"xor",  INST_8_ALU_RR,    0x03, 0x00, 0x00, 0x00000, 0},
+    {"add",  INST_8_ALU_RR,    0x04, 0x00, 0x00, 0x00000, 0},
+    {"adc",  INST_8_ALU_RR,    0x05, 0x00, 0x00, 0x00000, 0},
+    {"sub",  INST_8_ALU_RR,    0x06, 0x00, 0x00, 0x00000, 0},
+    {"sbc",  INST_8_ALU_RR,    0x07, 0x00, 0x00, 0x00000, 0},
+    {"chz",  INST_8_ALU_RR,    0x08, 0x00, 0x00, 0x00000, 0},
+    {"lt",   INST_8_ALU_RR,    0x0A, 0x00, 0x00, 0x00000, 0},
+    {"ltc",  INST_8_ALU_RR,    0x0B, 0x00, 0x00, 0x00000, 0},
+    {"rr",   INST_8_ALU_RR,    0x0C, 0x00, 0x00, 0x00000, 0},
+    {"mul",  INST_8_ALU_RR,    0x0E, 0x00, 0x00, 0x00000, 0},
+    {"mulh", INST_8_ALU_RR,    0x0F, 0x00, 0x00, 0x00000, 0},
+    {"push", INST_8_REG,       0x1C, 0x00, 0x00, 0x00000, 0},
+    {"pop",  INST_8_REG,       0x1D, 0x00, 0x00, 0x00000, 0},
+    {"ret",  INST_8_FIXED,     0x00, 0x00, 0x00, 0x1F000, 0},
+    {"reti", INST_8_FIXED,     0x00, 0x00, 0x00, 0x1E000, 0},
+    {"halt", INST_8_FIXED,     0x00, 0x00, 0x00, 0x3FFFF, 0},
+    {"mvi",  INST_8_MVI,       0x0E, 0x00, 0x00, 0x00000, 0},
+    {"jz",   INST_8_JZ,        0x0C, 0x00, 0x00, 0x00000, 0},
+    {"calr", INST_8_REL16,     0x02, 0x00, 0x00, 0x00000, 0},
+    {"jr",   INST_8_REL16,     0x03, 0x00, 0x00, 0x00000, 0},
+    {"stm",  INST_8_MEM_STORE, 0x10, 0x12, 0x14, 0x00000, 0},
+    {"ldm",  INST_8_MEM_LOAD,  0x11, 0x13, 0x15, 0x00000, 0},
 };
 
 /* minc-16 instruction table (selected by `mincasm -16`).
  * opcode_a = subop / op6 / op2 / stack ext, depending on kind.
  * opcode_b = byte(1) vs word(0) for the memory kinds. */
 static const InstSpec g_inst_specs16[] = {
-    {"mov",  INST16_ALU_RR,  0x00, 0x00, 0x00, 0x00000, 0},
-    {"or",   INST16_ALU_RR,  0x01, 0x00, 0x00, 0x00000, 0},
-    {"and",  INST16_ALU_RR,  0x02, 0x00, 0x00, 0x00000, 0},
-    {"xor",  INST16_ALU_RR,  0x03, 0x00, 0x00, 0x00000, 0},
-    {"add",  INST16_ALU_RR,  0x04, 0x00, 0x00, 0x00000, 0},
-    {"adc",  INST16_ALU_RR,  0x05, 0x00, 0x00, 0x00000, 0},
-    {"sub",  INST16_ALU_RR,  0x06, 0x00, 0x00, 0x00000, 0},
-    {"sbc",  INST16_ALU_RR,  0x07, 0x00, 0x00, 0x00000, 0},
-    {"chz",  INST16_ALU_RR,  0x08, 0x00, 0x00, 0x00000, 0},
-    {"sxb",  INST16_ALU_RR,  0x09, 0x00, 0x00, 0x00000, 0},
-    {"lt",   INST16_ALU_RR,  0x0A, 0x00, 0x00, 0x00000, 0},
-    {"ltc",  INST16_ALU_RR,  0x0B, 0x00, 0x00, 0x00000, 0},
-    {"rr",   INST16_ALU_RR,  0x0C, 0x00, 0x00, 0x00000, 0},
-    {"asr",  INST16_ALU_RR,  0x0D, 0x00, 0x00, 0x00000, 0},
-    {"mul",  INST16_ALU_RR,  0x0E, 0x00, 0x00, 0x00000, 0},
-    {"mulh", INST16_ALU_RR,  0x0F, 0x00, 0x00, 0x00000, 0},
-    {"mvi",  INST16_IMM,     0x00, 0x00, 0x00, 0x00000, 0},
-    {"mvih", INST16_IMM,     0x01, 0x00, 0x00, 0x00000, 0},
-    {"addi", INST16_IMM,     0x02, 0x00, 0x00, 0x00000, 0},
-    {"stw",  INST16_MEM_ST,  0x00, 0x00, 0x00, 0x00000, 0},
-    {"stb",  INST16_MEM_ST,  0x00, 0x01, 0x00, 0x00000, 0},
-    {"ldw",  INST16_MEM_LD,  0x00, 0x00, 0x00, 0x00000, 0},
-    {"ldb",  INST16_MEM_LD,  0x00, 0x01, 0x00, 0x00000, 0},
-    {"jz",   INST16_BR,      0x0C, 0x00, 0x00, 0x00000, 0},
-    {"jnz",  INST16_BR,      0x0D, 0x00, 0x00, 0x00000, 0},
-    {"push", INST16_STK_REG, 0x00, 0x00, 0x00, 0x00000, 0},
-    {"pop",  INST16_STK_REG, 0x01, 0x00, 0x00, 0x00000, 0},
-    {"ret",  INST16_FIXED,   0x00, 0x00, 0x00, 0x0E200, 0},
-    {"reti", INST16_FIXED,   0x00, 0x00, 0x00, 0x0E300, 0},
-    {"halt", INST16_FIXED,   0x00, 0x00, 0x00, 0x3FFFF, 0},
-    {"calr", INST16_REL16,   0x02, 0x00, 0x00, 0x00000, 0},
-    {"jr",   INST16_REL16,   0x03, 0x00, 0x00, 0x00000, 0},
+    {"mov",  INST_16_ALU_RR,  0x00, 0x00, 0x00, 0x00000, 0},
+    {"or",   INST_16_ALU_RR,  0x01, 0x00, 0x00, 0x00000, 0},
+    {"and",  INST_16_ALU_RR,  0x02, 0x00, 0x00, 0x00000, 0},
+    {"xor",  INST_16_ALU_RR,  0x03, 0x00, 0x00, 0x00000, 0},
+    {"add",  INST_16_ALU_RR,  0x04, 0x00, 0x00, 0x00000, 0},
+    {"adc",  INST_16_ALU_RR,  0x05, 0x00, 0x00, 0x00000, 0},
+    {"sub",  INST_16_ALU_RR,  0x06, 0x00, 0x00, 0x00000, 0},
+    {"sbc",  INST_16_ALU_RR,  0x07, 0x00, 0x00, 0x00000, 0},
+    {"chz",  INST_16_ALU_RR,  0x08, 0x00, 0x00, 0x00000, 0},
+    {"sxb",  INST_16_ALU_RR,  0x09, 0x00, 0x00, 0x00000, 0},
+    {"lt",   INST_16_ALU_RR,  0x0A, 0x00, 0x00, 0x00000, 0},
+    {"ltc",  INST_16_ALU_RR,  0x0B, 0x00, 0x00, 0x00000, 0},
+    {"rr",   INST_16_ALU_RR,  0x0C, 0x00, 0x00, 0x00000, 0},
+    {"asr",  INST_16_ALU_RR,  0x0D, 0x00, 0x00, 0x00000, 0},
+    {"mul",  INST_16_ALU_RR,  0x0E, 0x00, 0x00, 0x00000, 0},
+    {"mulh", INST_16_ALU_RR,  0x0F, 0x00, 0x00, 0x00000, 0},
+    {"mvi",  INST_16_IMM,     0x00, 0x00, 0x00, 0x00000, 0},
+    {"mvih", INST_16_IMM,     0x01, 0x00, 0x00, 0x00000, 0},
+    {"addi", INST_16_IMM,     0x02, 0x00, 0x00, 0x00000, 0},
+    {"stw",  INST_16_MEM_ST,  0x00, 0x00, 0x00, 0x00000, 0},
+    {"stb",  INST_16_MEM_ST,  0x00, 0x01, 0x00, 0x00000, 0},
+    {"ldw",  INST_16_MEM_LD,  0x00, 0x00, 0x00, 0x00000, 0},
+    {"ldb",  INST_16_MEM_LD,  0x00, 0x01, 0x00, 0x00000, 0},
+    {"jz",   INST_16_BR,      0x0C, 0x00, 0x00, 0x00000, 0},
+    {"jnz",  INST_16_BR,      0x0D, 0x00, 0x00, 0x00000, 0},
+    {"push", INST_16_STK_REG, 0x00, 0x00, 0x00, 0x00000, 0},
+    {"pop",  INST_16_STK_REG, 0x01, 0x00, 0x00, 0x00000, 0},
+    {"ret",  INST_16_FIXED,   0x00, 0x00, 0x00, 0x0E200, 0},
+    {"reti", INST_16_FIXED,   0x00, 0x00, 0x00, 0x0E300, 0},
+    {"halt", INST_16_FIXED,   0x00, 0x00, 0x00, 0x3FFFF, 0},
+    {"calr", INST_16_REL16,   0x02, 0x00, 0x00, 0x00000, 0},
+    {"jr",   INST_16_REL16,   0x03, 0x00, 0x00, 0x00000, 0},
 };
 
 /* 0 = minc-8 (default), 1 = minc-16 (`-16`). */
@@ -694,7 +691,7 @@ int main(int argc, char **argv) {
         int emit = 1;
 
         switch (spec->kind) {
-            case INST_ALU_RR: {
+            case INST_8_ALU_RR: {
                 char *r0 = next_token(&ctx);
                 if (!r0) {
                     die("Missing first operand");
@@ -709,7 +706,7 @@ int main(int argc, char **argv) {
                 word = enc_op6_rr(spec->opcode_a, (uint8_t)rd, (uint8_t)rs);
                 break;
             }
-            case INST_REG: {
+            case INST_8_REG: {
                 char *r = next_token(&ctx);
                 if (!r) {
                     die("Missing operand");
@@ -722,22 +719,10 @@ int main(int argc, char **argv) {
                 word = enc_op6_rd(spec->opcode_a, (uint8_t)rd);
                 break;
             }
-            case INST_FIXED:
+            case INST_8_FIXED:
                 word = spec->fixed_word;
                 break;
-            case INST_FLAG_IMM: {
-                char *imm = next_token(&ctx);
-                if (!imm) {
-                    die("Missing immediate for stf/clf");
-                }
-                if (imm[0] == '#') {
-                    imm++;
-                }
-                int c = parse_int(imm, 0, 1);
-                word = (uint32_t)(((uint32_t)spec->opcode_a << 12) | (uint32_t)c);
-                break;
-            }
-            case INST_MVI: {
+            case INST_8_MVI: {
                 char *r = next_token(&ctx);
                 if (!r) {
                     die("Missing register");
@@ -751,7 +736,7 @@ int main(int argc, char **argv) {
                 word = enc_op6_reg_imm8(spec->opcode_a, (uint8_t)rd, (uint8_t)iv);
                 break;
             }
-            case INST_JZ: {
+            case INST_8_JZ: {
                 char *off = next_token(&ctx);
                 if (!off) {
                     die("Missing offset");
@@ -771,7 +756,7 @@ int main(int argc, char **argv) {
                 }
                 break;
             }
-            case INST_REL16: {
+            case INST_8_REL16: {
                 char *off = next_token(&ctx);
                 if (!off) {
                     die("Missing offset");
@@ -786,7 +771,7 @@ int main(int argc, char **argv) {
                 }
                 break;
             }
-            case INST_MEM_STORE: {
+            case INST_8_MEM_STORE: {
                 char *m = next_token(&ctx);
                 if (!m) {
                     die("Missing memory operand");
@@ -805,7 +790,7 @@ int main(int argc, char **argv) {
                 word = enc_op6_reg_imm8(op, (uint8_t)rs, (uint8_t)iv);
                 break;
             }
-            case INST_MEM_LOAD: {
+            case INST_8_MEM_LOAD: {
                 char *r = next_token(&ctx);
                 if (!r) {
                     die("Missing register operand");
@@ -825,7 +810,7 @@ int main(int argc, char **argv) {
                 break;
             }
 
-            case INST16_ALU_RR: {
+            case INST_16_ALU_RR: {
                 char *r0 = next_token(&ctx);
                 if (!r0) {
                     die("Missing register operand");
@@ -837,7 +822,7 @@ int main(int argc, char **argv) {
                 word = enc16_alu(spec->opcode_a, (uint8_t)parse_reg(r0), (uint8_t)parse_reg(r1));
                 break;
             }
-            case INST16_IMM: {
+            case INST_16_IMM: {
                 char *r = next_token(&ctx);
                 if (!r) {
                     die("Missing register");
@@ -851,7 +836,7 @@ int main(int argc, char **argv) {
                 word = enc16_imm(spec->opcode_a, (uint8_t)rd, (uint8_t)iv);
                 break;
             }
-            case INST16_MEM_ST: {
+            case INST_16_MEM_ST: {
                 char *m = next_token(&ctx);
                 if (!m) {
                     die("Missing memory operand");
@@ -867,7 +852,7 @@ int main(int argc, char **argv) {
                                : enc16_abs(0, spec->opcode_b, (uint8_t)dv, (uint8_t)rs);
                 break;
             }
-            case INST16_MEM_LD: {
+            case INST_16_MEM_LD: {
                 char *r = next_token(&ctx);
                 if (!r) {
                     die("Missing register operand");
@@ -883,7 +868,7 @@ int main(int argc, char **argv) {
                                : enc16_abs(1, spec->opcode_b, (uint8_t)dv, (uint8_t)rd);
                 break;
             }
-            case INST16_BR: {
+            case INST_16_BR: {
                 char *r = next_token(&ctx);
                 if (!r) {
                     die("Missing register");
@@ -904,7 +889,7 @@ int main(int argc, char **argv) {
                 }
                 break;
             }
-            case INST16_STK_REG: {
+            case INST_16_STK_REG: {
                 char *r = next_token(&ctx);
                 if (!r) {
                     die("Missing register");
@@ -912,10 +897,10 @@ int main(int argc, char **argv) {
                 word = enc16_stk(spec->opcode_a, (uint8_t)parse_reg(r));
                 break;
             }
-            case INST16_FIXED:
+            case INST_16_FIXED:
                 word = spec->fixed_word;
                 break;
-            case INST16_REL16: {
+            case INST_16_REL16: {
                 char *off = next_token(&ctx);
                 if (!off) {
                     die("Missing offset");

@@ -6,6 +6,12 @@
 
 #define PTR_SIZE 2
 
+// Set by `mincc -16`: emit minc-16 assembly instead of minc-8. It reaches the
+// front end (not just codegen) because a few parse-time decisions differ --
+// stack/global slot alignment and the sei()/cli() expansion. Everything guarded
+// by it leaves minc-8's output byte-for-byte unchanged when it is 0.
+extern int g_m16;
+
 typedef enum {
     ND_ADD,
     ND_SUB,
@@ -136,6 +142,9 @@ void add_global_var(Token *tok, long address, Type_t *type);
 void add_function(Token *tok, Type_t *type);
 // Count local variables from current funciton scope
 long sizeof_local_vars();
+// Bytes one variable of `type` occupies in a frame / in the global area. Equal to
+// type->size on minc-8; rounded up to a word under -16 (see the definition).
+long var_slot_size(Type_t *type);
 
 Ident_Name *find_name(Token *tok);
 

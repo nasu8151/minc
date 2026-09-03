@@ -8,6 +8,7 @@
 #include "parse.h"
 #include "ast.h"
 #include "codegen.h"
+#include "codegen_16.h"
 #include "errorhandle.h"
 
 static void print_default_crt0(void) {
@@ -20,11 +21,37 @@ static void print_default_crt0(void) {
     printf("halt\n");
 }
 
-int main() {
-    // if (argc != 2) {
-    //     fprintf(stderr, "Usage : <code>\n");
-    //     return EXIT_FAILURE;
-    // }
+// minc-16 crt0. SP is the general-purpose r15 here (not a memory-mapped register
+// pair), so zeroing it is a plain mvi and the first push lands at 0xFFFE; r14 is
+// the frame pointer. main's result is one register, hence a single push.
+static void print_default_crt0_16(void) {
+    printf("mvi r15,0\n");
+    printf("mvi r14,0\n");
+    printf("calr __on_entry\n");
+    printf("calr main\n");
+    printf("push r0\n");
+    printf("halt\n");
+}
+
+static void print_crt0(void) {
+    if (g_m16) {
+        print_default_crt0_16();
+    } else {
+        print_default_crt0();
+    }
+}
+
+int main(int argc, char **argv) {
+    for (int i = 1; i < argc; i++) {
+        if (strcmp(argv[i], "-16") == 0 || strcmp(argv[i], "--m16") == 0) {
+            g_m16 = 1;
+        } else {
+            fprintf(stderr, "Usage: mincc [-16] < input.c > output.asm\n");
+            fprintf(stderr, "  -16, --m16   generate minc-16 assembly instead of minc-8\n");
+            return EXIT_FAILURE;
+        }
+    }
+
     char line[256];
     char *code_src = calloc(1, 1); // renamed from `code` -- that name now collides with the global Node code[256]
     if (!code_src) {
@@ -61,7 +88,7 @@ int main() {
     }
 
     if (!have_isr_vector) {
-        print_default_crt0(); // byte-for-byte identical to the previous unconditional crt0
+        print_crt0(); // byte-for-byte identical to the previous unconditional crt0
     } else {
         printf(".org 0x0000\n");
         printf("jr __crt0_start\n");
@@ -79,10 +106,16 @@ int main() {
         // say so with sei(), the same way it would on any other target -- crt0
         // used to force PSR.IE on here, which made it impossible to start up
         // with interrupts off.
-        print_default_crt0();
+        print_crt0();
     }
 
-    generate_top(code, node_count);
+    // minc-16 is a different ISA, not a mode of the minc-8 back end, so it has
+    // its own code generator (mincc/codegen_16.c).
+    if (g_m16) {
+        m16_generate_top(code, node_count);
+    } else {
+        generate_top(code, node_count);
+    }
 
     return EXIT_SUCCESS;
 }

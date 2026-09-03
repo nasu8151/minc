@@ -618,7 +618,7 @@ int generate(Node *node, int size) {
             return PTR_SIZE;
         }
         int dst = push_regstack(PTR_SIZE);
-        emit("mvi r%d,%ld\nmvi r%d, %ld", dst + 1, ((node->lhs->ofs_addr >> 8) & 0xFF), dst, (node->lhs->ofs_addr & 0xFF));
+        emit("mvi r%d,%ld\nmvi r%d,%ld\n", dst + 1, ((node->lhs->ofs_addr >> 8) & 0xFF), dst, (node->lhs->ofs_addr & 0xFF));
         return PTR_SIZE;
     } case ND_DEREF: {
         // オペランドを評価してポインタを得る

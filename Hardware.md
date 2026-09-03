@@ -38,11 +38,40 @@
 | calr rn    | 10rrrr nnnn rrrr nnnn  | (----SP) = PC + 1;PC = PC + {r, n} + 1      |         |
 | jr rn      | 11rrrr nnnn rrrr nnnn  | PC = PC + {r, n} + 1                        |         |
 
+|  Mnemonic  |      Machine code      |                 Description                 | c flag  |
+| ---------- | ---------------------- | ------------------------------------------- | ------- |
+| mov rd,rs  | 0000 0000 00 dddd ssss  | rd = rs                                     | x       |
+| or rd,rs   | 0000 0001 00 dddd ssss  | rd = rd \ rs                                | x       |
+| and rd,rs  | 0000 0010 00 dddd ssss  | rd = rd & rs                                | x       |
+| xor rd,rs  | 0000 0011 00 dddd ssss  | rd = rd ^ rs                                | x       |
+| add rd,rs  | 0000 0100 00 dddd ssss  | rd = rd + rs                                | carry   |
+| sub rd,rs  | 0000 0101 00 dddd ssss  | rd = rd - rs                                | !borrow |
+| lt rd,rs   | 0000 0110 00 dddd ssss  | rd = 1 if rd - rs < 0, otherwise rd = 0     | !borrow |
+| adc rd,rs  | 0000 1100 00 dddd ssss  | rd = rd + rs + c                            | carry   |
+| sbc rd,rs  | 0000 1101 00 dddd ssss  | rd = rd - rs + c                            | !borrow |
+| ltc rd,rs  | 0000 1110 00 dddd ssss  | rd = 1 if rd + rs + c < 0, otherwise rd = 0 | !borrow |
+| rr rd,rs   | 0000 1111 00 dddd ssss  | {rd, c} = {c, rs}                           | rs[0]   |
+| mul rd,rs  | 0000 1000 00 dddd ssss  | rd = \(rd * rs\)\[7:0\]                     | x       |
+| mulh rd,rs | 0000 1001 00 dddd ssss  | rd = \(rd * rs\)\[15:8\]                    | x       |
+| chz rd,rs  | 0000 1010 00 dddd ssss  | rd = (rs == 0) ? 1 : 0                      | x       |
+|            |                        |                                             |         |
+| mvi rd,n   | 0010 01 nnnn dddd nnnn  | rd = n                                      |         |
+| adi rd,n   | 0010 00 nnnn dddd nnnn  | rd = rd + n                                      |         |
+| adic rd,n   | 0010 10 nnnn dddd nnnn  | rd = rd + n + c                                      |         |
+|            |                        |                                             |         |
+| stm rp+n,rs | 0100 nn nnnn ssss ppp0  | ({rp + 1, rp} + signed'n) = rs                |         |
+| ldm rd,rp+n | 0101 nn nnnn dddd ppp0  | rd = ({rp + 1, rp} + signed'n)                |         |
+| stm n, rs  | 0110 nn nnnn ssss nnnn    |                                             |         |
+| ldm rd, n  | 0111 nn nnnn dddd nnnn   |                                             |         |
+|            |                        |                                             |         |
+| calr rn    | 10rrrr nnnn rrrr nnnn  | (----SP) = PC + 1;PC = PC + {r, n} + 1      |         |
+| jr rn      | 11rrrr nnnn rrrr nnnn  | PC = PC + {r, n} + 1                        |         |
+
 ### minc-16
 
-実装は `verilog/minc_16.sv`(モジュール名は `minc16` — バス幅が違うので `minc_tb.sv` にdrop-inできない)、テストベンチは `verilog/minc16_tb.sv` + `verilog/ssram16.sv`。アセンブラは `mincasm -16`。テストは `python3 tests/test_m16.py`(ケースは `tests/fixtures/m16/*.asm`)。
+実装は `verilog/minc_16.sv`(モジュール名は `minc16` — バス幅が違うので `minc_tb.sv` にdrop-inできない)、テストベンチは `verilog/minc16_tb.sv` + `verilog/ssram16.sv`。アセンブラは `mincasm -16`、コンパイラは `mincc -16`。テストは `python3 tests/test_m16.py`(手書きアセンブラのケースが `tests/fixtures/m16/*.asm`、Cのラウンドトリップが同ファイル内の `C_CASES`)。
 
-minc-8 とはバイナリ互換ではない別ISA。**mincc はまだ minc-16 を出力しない**ので、現状の利用は手書きアセンブラのみ。設計の背景・トレードオフは「minc-16 設計メモ」節を参照。
+minc-8 とはバイナリ互換ではない別ISA。設計の背景・トレードオフは「minc-16 設計メモ」節を参照。
 
 #### レジスタとABI
 
@@ -52,11 +81,16 @@ minc-8 とはバイナリ互換ではない別ISA。**mincc はまだ minc-16 �
 | --- | --- | --- |
 | r15 | SP (スタックポインタ) | **ハードウェア**。`push`/`pop`/`calr`/`ret`/`reti`/割り込み受付が暗黙に更新する |
 | r14 | BP (フレームポインタ) | ソフトウェア規約のみ |
-| r13 | X (汎用ポインタ・スクラッチ) | ソフトウェア規約のみ |
-| r0 | 戻り値 | ソフトウェア規約のみ |
-| r2- | 引数 / 式評価スタック | ソフトウェア規約のみ |
+| r0 | 戻り値 / アドレス計算用スクラッチ | ソフトウェア規約のみ |
+| r1- | 引数 / 式評価スタック | ソフトウェア規約のみ |
 
-r0-r5 は caller-saved、r6-r12 は callee-saved(minc-8 の規約を踏襲)。minc-8 の SP はデータ空間 `0x0000`/`0x0001` にメモリマップされた専用レジスタだったが、minc-16 では **r15 そのもの**なので `add r15,rN` / `addi r15,-n` でスタックを直接操作できる。`0x0000`/`0x0001` は解放。
+r1-r5 は caller-saved、r6-r13 は callee-saved。minc-8 の SP はデータ空間 `0x0000`/`0x0001` にメモリマップされた専用レジスタだったが、minc-16 では **r15 そのもの**なので `add r15,rN` / `addi r15,-n` でスタックを直接操作できる。`0x0000`/`0x0001` は解放。
+
+minc-8 との違いは r0/r1 の扱い。minc-8 は戻り値が r0:r1 のペアだったので式評価スタックは r2 から始まったが、minc-16 では戻り値が r0 一本で済むため r1 が空き、式評価スタックの底になる。空いた r0 は `mincc` がアドレス計算のスクラッチとして使う — 変位が6bitに収まらないフレームオフセットや、8bit絶対アドレスで届かないグローバル(自動割り当ては `0x0100` から)のアドレスをここで組み立てる。どの文の境界でも死んでいるので退避は不要(ISR のプロローグだけは r0/r1 を無条件に退避する。`sei()`/`cli()` とインラインアセンブラが両方を壊すため)。minc-8 が X ポインタ用に r12:r13 を予約していたのに対し、minc-16 はポインタが1レジスタに収まるので専用のポインタレジスタを持たない。
+
+`mincc -16` のスタックフレームは**常にワードアライン**される。16bitのロード/ストアはアドレスbit0を無視するので、`char` を1バイトに詰めると後続の `int` が奇数オフセットに落ちて別のワードを読んでしまう。そのため `char` のスロットも2バイトを占める(グローバル領域も同様)。minc-8 側のバイト詰めレイアウトは変更していない。
+
+型のセマンティクスも1点だけ minc-8 と違う。**`char` が8bitなのはメモリ上だけ**で、レジスタに載った時点で16bitへゼロ拡張され、次のバイトストアまで切り詰められない(Cの整数昇格と同じ)。`-(2+3)*4` は minc-8 なら `0xEC` に丸まるが minc-16 では `0xFFEC` になる。16bitマシンで演算のたびに8bitへ丸めると、`and` 用のマスク定数を毎回ロードすることになるため。
 
 #### メモリモデル
 
@@ -234,7 +268,8 @@ minc-16 の増減を測るときのベースライン。`gowin/minc/impl/pnr/min
 ### 未解決
 
 - **文字列リテラル / 初期化済みデータの置き場が無い**。mincasm のディレクティブは `.org` だけ([mincasm/main.c:540](mincasm/main.c#L540))、グローバル変数はバンプポインタでアドレスを配るだけ([ast.c:111](mincc/ast.c#L111))、初期化子は `__on_entry` 内のランタイムストアに展開される([ast.c:116](mincc/ast.c#L116))。このまま文字列を載せると ROM 36bit/文字かかる。ROM常駐のread-onlyデータ経路(18bitワードに2バイト詰めれば9bit/文字)が必要で、`S_MA` では命令ROMポートが空いているので2ポート化せずに AVR の `LPM` 相当を実装できるはず
-- **mincc が minc-16 を出力できない**。現状 minc-16 のテストは全部手書きアセンブラ(`tests/fixtures/m16/`)。ABI(BP中央配置を含む)とサイズ非依存化した codegen が必要
+- **`mincc -16` の式評価スタックにはスピルが無い**。r1-r13 を使い切る深さの式はコンパイルエラーになる(r14/r15 を踏むと黙ってフレームが壊れるので、そこで止めている)。実用上は13段で足りるはずだが、足りなくなったらフレームへの退避が要る
+- **`jz`/`jnz` の相対オフセットが8bit**なので、`if`/ループの本体が128命令を超えるとアセンブル時に "8-bit relative offset out of range" で落ちる。`jnz` + `jr` の2命令に展開すれば16bitに伸ばせる
 - パイプライン版(`minc_p2.sv`/`minc_p5.sv`)を minc-16 に追従させるか
 - 合成してリソースを実測していない。minc-8 の 513 LUT / 83 FF / DSP 0.25 に対してどう動くかは未確認
 
@@ -261,6 +296,13 @@ ISR関数は戻り値・引数を持てず(`return式;`はコンパイルエラ�
 ```c
 sei();  // ldm r0,2 / mvi r1,2   / or  r0,r1 / stm 2,r0   -- IE(bit1)を立てる
 cli();  // ldm r0,2 / mvi r1,253 / and r0,r1 / stm 2,r0   -- IE(bit1)を落とす
+```
+
+`mincc -16` では同じ形のまま `ldb`/`stb` に置き換わる。minc-16 の `PSR` は `PSR_SHADOW` と同じワードの下位バイト(バイトアドレス `0x0002`)なので、`ldw`/`stw` で触るとシャドウまで巻き込む。
+
+```c
+sei();  // ldb r0,2 / mvi r1,2   / or  r0,r1 / stb 2,r0
+cli();  // ldb r0,2 / mvi r1,253 / and r0,r1 / stb 2,r0
 ```
 
 `[[address=0x02]] psr`を宣言して`psr = 2;`と直接書く従来の方法と違い、読んだ値をそのまま書き戻すので`PSR`のbit0(キャリーフラグ)が保存される。使用するr0/r1はどの文の境界でも死んでいる(ISR内ではプロローグが無条件に退避する)ため、呼び出し側で退避する必要はない。

@@ -108,7 +108,12 @@ Node *toplevel(char *l) {
         if (address != -1) {
             add_global_var(tok, address, type);
         } else {
-            add_global_var(tok, head->var_alloc_ptr++, type);
+            // minc-8 advances one byte per global whatever its size, so two
+            // `int`s overlap. minc-16 cannot live with that (it also needs the
+            // word alignment), so under -16 the cursor moves by the real slot
+            // size; minc-8's allocation is left exactly as it was.
+            add_global_var(tok, head->var_alloc_ptr, type);
+            head->var_alloc_ptr += g_m16 ? var_slot_size(type) : 1;
         }
         if (consume_la("=", &loc)) {
             Node *rhs = assign(loc);
@@ -414,6 +419,10 @@ Node *primary(char *l) {       // primary = num | ident | "(" expr ")"
 // unconditionally), so no caller-saved bookkeeping is needed here.
 #define SEI_ASM "ldm r0,2\nmvi r1,2\nor r0,r1\nstm 2,r0\n"
 #define CLI_ASM "ldm r0,2\nmvi r1,253\nand r0,r1\nstm 2,r0\n"
+// Same read-modify-write on minc-16, where PSR is byte 0x0002 of a word it shares
+// with PSR_SHADOW -- so it must be reached with the *byte* forms, not ldw/stw.
+#define SEI_ASM16 "ldb r0,2\nmvi r1,2\nor r0,r1\nstb 2,r0\n"
+#define CLI_ASM16 "ldb r0,2\nmvi r1,253\nand r0,r1\nstb 2,r0\n"
 
 Node *ident(char *l) {
     char *loc = l;
@@ -424,9 +433,9 @@ Node *ident(char *l) {
     if (!name && tok->type == TOKEN_IDENT) {
         const char *builtin = NULL;
         if (strcmp(tok->str, "sei") == 0) {
-            builtin = SEI_ASM;
+            builtin = g_m16 ? SEI_ASM16 : SEI_ASM;
         } else if (strcmp(tok->str, "cli") == 0) {
-            builtin = CLI_ASM;
+            builtin = g_m16 ? CLI_ASM16 : CLI_ASM;
         }
         if (builtin) {
             expect_ident(&loc);
