@@ -303,37 +303,46 @@ module minc16 (
 
     wire [15:0] mem_word  = psr_sel ? psr_word : data_in;
     wire [7:0]  mem_byte  = address[0] ? mem_word[15:8] : mem_word[7:0];
-    wire [15:0] mem_rdata = mem_is_b ? {8'd0, mem_byte} : mem_word;
+    // The byte narrowing is gated on is_load so that `pop` can share this path:
+    // pop is a ctl-group instruction, so is_mem/psr_sel are 0 and mem_word falls
+    // through to data_in -- exactly what pop needs -- but mem_is_b would otherwise
+    // be a stray decode of instr[15] and could truncate the popped word.
+    wire [15:0] mem_rdata = (is_load && mem_is_b) ? {8'd0, mem_byte} : mem_word;
 
     wire [15:0] imm_out = (imm_subop == 2'b00) ? simm8 :                    // mvi
                           (imm_subop == 2'b01) ? {imm8, pa_val[7:0]} :      // mvih
                                                  alu_out;                   // addi
 
+    // 3-way, not 4-way: pop rides the load path (see mem_rdata above). Folding the
+    // two memory sources together is worth ~50 LUT on GW1N -- this mux is 16 bits
+    // wide and sits on top of the already-deep alu_out cone.
     wire [15:0] rw_next = is_alu  ? alu_out :
-                          is_imm  ? imm_out :
-                          is_pop  ? data_in :
-                          is_load ? mem_rdata : alu_out;
+                          is_imm  ? imm_out : mem_rdata;
 
     // Only the ALU and immediate groups write [7:4]; loads and pop write [3:0].
     wire [3:0] wb_idx = (is_alu || is_imm) ? instr[7:4] : instr[3:0];
     wire       wb_en  = is_alu || is_imm || is_load || is_pop;
 
-    always_ff @(posedge clk or negedge reset_n) begin
-        if (!reset_n) begin
-            regs[15] <= 16'd0;
-        end else begin
-            case (state)
-                `S_MA: begin
-                    // SP update. Single write port is enough because pop's data
-                    // writeback happens one state later, in S_WB.
-                    if (is_sp_op) regs[15] <= alu_out;
-                end
-                `S_WB: begin
-                    if (!servicing_irq && wb_en) regs[wb_idx] <= rw_next;
-                end
-                default: ;
-            endcase
-        end
+    // The two writers -- the SP update in S_MA and the destination writeback in
+    // S_WB -- are flattened into ONE unconditional write port with no reset, and
+    // that shape is load-bearing: it is what lets GowinSynthesis infer 8 RAM16SDP4
+    // (distributed RAM) for `regs`. Split into two `case (state)` arms, or given an
+    // async reset on regs[15], the array falls back to 256 flip-flops plus two
+    // 16:1x16-bit LUT mux trees for pa_val/pb_val -- 256 of the core's ~714 LUT.
+    // Keep it a single `if (rf_we) regs[rf_widx] <= rf_wdat;` when touching this.
+    //
+    // The two enables are mutually exclusive by state, so rf_we_ma wins the muxes
+    // for free. SP therefore has no hardware reset value any more: the program must
+    // set r15 itself before the first push (every fixture under tests/fixtures/m16
+    // already does).
+    wire        rf_we_ma = (state == `S_MA) && is_sp_op;
+    wire        rf_we_wb = (state == `S_WB) && !servicing_irq && wb_en;
+    wire        rf_we    = rf_we_ma || rf_we_wb;
+    wire [3:0]  rf_widx  = rf_we_ma ? 4'd15 : wb_idx;
+    wire [15:0] rf_wdat  = rf_we_ma ? alu_out : rw_next;
+
+    always_ff @(posedge clk) begin
+        if (rf_we) regs[rf_widx] <= rf_wdat;
     end
 
     /* ------------------------------------------------------------------ *

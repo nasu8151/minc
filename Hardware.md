@@ -86,6 +86,8 @@ minc-8 とはバイナリ互換ではない別ISA。設計の背景・トレー�
 
 r1-r5 は caller-saved、r6-r13 は callee-saved。minc-8 の SP はデータ空間 `0x0000`/`0x0001` にメモリマップされた専用レジスタだったが、minc-16 では **r15 そのもの**なので `add r15,rN` / `addi r15,-n` でスタックを直接操作できる。`0x0000`/`0x0001` は解放。
 
+**リセット時の SP は不定**。レジスタファイルは分散RAM(`RAM16SDP4`)に落ちていてリセット端子を持たないので、r15 を含め `regs` 全体がリセットで初期化されない。最初の `push`/`calr` より前にプログラムが `mvi r15,0` 相当で SP を張ること — `mincc -16` の crt0 は先頭で `mvi r15,0` を出すので C から使う分には意識不要、手書き `.asm` だけの注意点(`tests/fixtures/m16/*.asm` もいずれも先頭でこれをやっている)。この制約と引き換えに 256FF + 2本の 16:1×16bit LUTマルチプレクサツリーが消えている — 詳細は下の「レジスタファイルは分散RAMに落とすこと」を参照。
+
 minc-8 との違いは r0/r1 の扱い。minc-8 は戻り値が r0:r1 のペアだったので式評価スタックは r2 から始まったが、minc-16 では戻り値が r0 一本で済むため r1 が空き、式評価スタックの底になる。空いた r0 は `mincc` がアドレス計算のスクラッチとして使う — 変位が6bitに収まらないフレームオフセットや、8bit絶対アドレスで届かないグローバル(自動割り当ては `0x0100` から)のアドレスをここで組み立てる。どの文の境界でも死んでいるので退避は不要(ISR のプロローグだけは r0/r1 を無条件に退避する。`sei()`/`cli()` とインラインアセンブラが両方を壊すため)。minc-8 が X ポインタ用に r12:r13 を予約していたのに対し、minc-16 はポインタが1レジスタに収まるので専用のポインタレジスタを持たない。
 
 `mincc -16` のスタックフレームは**常にワードアライン**される。16bitのロード/ストアはアドレスbit0を無視するので、`char` を1バイトに詰めると後続の `int` が奇数オフセットに落ちて別のワードを読んでしまう。そのため `char` のスロットも2バイトを占める(グローバル領域も同様)。minc-8 側のバイト詰めレイアウトは変更していない。
@@ -124,49 +126,49 @@ minc-8 との違いは r0/r1 の扱い。minc-8 は戻り値が r0:r1 のペア�
 
 `d`=デスティネーション/ベース、`s`=ソース、`n`=即値。`c flag` 列の `x` は不定(変化しない扱い)。
 
-|   Mnemonic    |      Machine code       |                  Description                   | c flag  |     |
-| ------------- | ----------------------- | ---------------------------------------------- | ------- | --- |
-| mov rd,rs     | 00 00 0000 00 dddd ssss | rd = rs                                        | x       |     |
-| or rd,rs      | 00 00 0001 00 dddd ssss | rd = rd \                                      | rs      | x   |
-| and rd,rs     | 00 00 0010 00 dddd ssss | rd = rd & rs                                   | x       |     |
-| xor rd,rs     | 00 00 0011 00 dddd ssss | rd = rd ^ rs                                   | x       |     |
-| add rd,rs     | 00 00 0100 00 dddd ssss | rd = rd + rs                                   | carry   |     |
-| adc rd,rs     | 00 00 0101 00 dddd ssss | rd = rd + rs + c                               | carry   |     |
-| sub rd,rs     | 00 00 0110 00 dddd ssss | rd = rd - rs                                   | !borrow |     |
-| sbc rd,rs     | 00 00 0111 00 dddd ssss | rd = rd - rs + c                               | !borrow |     |
-| chz rd,rs     | 00 00 1000 00 dddd ssss | rd = (rd == 0) ? 1 : 0                         | x       |     |
-| sxb rd,rs     | 00 00 1001 00 dddd ssss | rd = 符号拡張(rs[7:0])                         | x       |     |
-| lt rd,rs      | 00 00 1010 00 dddd ssss | rd = (rd < rs) ? 1 : 0 (符号なし16bit)         | !borrow |     |
-| ltc rd,rs     | 00 00 1011 00 dddd ssss | rd = (rd - rs - !c < 0) ? 1 : 0                | !borrow |     |
-| rr rd,rs      | 00 00 1100 00 dddd ssss | {rd, c} = {c, rs >> 1}                         | rs[0]   |     |
-| asr rd,rs     | 00 00 1101 00 dddd ssss | rd = rs >>> 1 (算術シフト)                     | rs[0]   |     |
-| mul rd,rs     | 00 00 1110 00 dddd ssss | rd = \(rd * rs\)\[15:0\]                       | x       |     |
-| mulh rd,rs    | 00 00 1111 00 dddd ssss | rd = \(rd * rs\)\[31:16\]                      | x       |     |
-|               |                         |                                                |         |     |
-| mvi rd,n      | 00 01 00 nnnn dddd nnnn | rd = 符号拡張(n8)                              | x       |     |
-| mvih rd,n     | 00 01 01 nnnn dddd nnnn | rd[15:8] = n8 (下位は保持)                     | x       |     |
-| addi rd,n     | 00 01 10 nnnn dddd nnnn | rd = rd + 符号拡張(n8)                         | carry   |     |
-|               |                         |                                                |         |     |
-| stw n,rs      | 00 10 0 0 nnnnnnnn ssss | mem16[n8] = rs                                 | x       |     |
-| stb n,rs      | 00 10 0 1 nnnnnnnn ssss | mem8[n8] = rs[7:0]                             | x       |     |
-| ldw rd,n      | 00 10 1 0 nnnnnnnn dddd | rd = mem16[n8]                                 | x       |     |
-| ldb rd,n      | 00 10 1 1 nnnnnnnn dddd | rd = {8'b0, mem8[n8]}                          | x       |     |
-|               |                         |                                                |         |     |
-| jz rs,n       | 00 11 00 nnnnnnnn ssss  | PC = PC + 符号付きn8 + 1 if rs == 0            | x       |     |
-| jnz rs,n      | 00 11 01 nnnnnnnn ssss  | PC = PC + 符号付きn8 + 1 if rs != 0            | x       |     |
-| push rs       | 00 11 10 0000 0000 ssss | SP -= 2; mem16[SP] = rs                        | x       |     |
-| pop rd        | 00 11 10 0001 0000 dddd | rd = mem16[SP]; SP += 2                        | x       |     |
-| ret           | 00 11 10 0010 0000 0000 | PC = mem16[SP]; SP += 2                        | x       |     |
-| reti          | 00 11 10 0011 0000 0000 | PC = mem16[SP]; SP += 2; PSR = PSR_SHADOW      | 復元    |     |
-|               |                         |                                                |         |     |
-| stw [rd+n],rs | 01 0 0 nnnnnn dddd ssss | mem16[rd + 符号付きn6] = rs                    | x       |     |
-| stb [rd+n],rs | 01 0 1 nnnnnn dddd ssss | mem8[rd + 符号付きn6] = rs[7:0]                | x       |     |
-| ldw rs,[rd+n] | 01 1 0 nnnnnn dddd ssss | rs = mem16[rd + 符号付きn6]                    | x       |     |
-| ldb rs,[rd+n] | 01 1 1 nnnnnn dddd ssss | rs = {8'b0, mem8[rd + 符号付きn6]}             | x       |     |
-|               |                         |                                                |         |     |
-| calr n        | 10 nnnnnnnnnnnnnnnn     | SP -= 2; mem16[SP] = PC + 1; PC = PC + n16 + 1 | x       |     |
-| jr n          | 11 nnnnnnnnnnnnnnnn     | PC = PC + n16 + 1                              | x       |     |
-| halt          | 11 1111111111111111     | `jr -1`(自己ループ)。`SIM` 定義時は `$finish`  | x       |     |
+| Mnemonic      | Machine code            | Description                                        | c flag  |
+|---------------|-------------------------|----------------------------------------------------|---------|
+| mov rd,rs     | 00 00 0000 00 dddd ssss | rd = rs                                            | x       |
+| or rd,rs      | 00 00 0001 00 dddd ssss | rd = rd \                                       rs | x       |
+| and rd,rs     | 00 00 0010 00 dddd ssss | rd = rd & rs                                       | x       |
+| xor rd,rs     | 00 00 0011 00 dddd ssss | rd = rd ^ rs                                       | x       |
+| add rd,rs     | 00 00 0100 00 dddd ssss | rd = rd + rs                                       | carry   |
+| adc rd,rs     | 00 00 0101 00 dddd ssss | rd = rd + rs + c                                   | carry   |
+| sub rd,rs     | 00 00 0110 00 dddd ssss | rd = rd - rs                                       | !borrow |
+| sbc rd,rs     | 00 00 0111 00 dddd ssss | rd = rd - rs + c                                   | !borrow |
+| chz rd,rs     | 00 00 1000 00 dddd ssss | rd = (rd == 0) ? 1 : 0                             | x       |
+| sxb rd,rs     | 00 00 1001 00 dddd ssss | rd = 符号拡張(rs[7:0])                             | x       |
+| lt rd,rs      | 00 00 1010 00 dddd ssss | rd = (rd < rs) ? 1 : 0 (符号なし16bit)               | !borrow |
+| ltc rd,rs     | 00 00 1011 00 dddd ssss | rd = (rd - rs - !c < 0) ? 1 : 0                    | !borrow |
+| rr rd,rs      | 00 00 1100 00 dddd ssss | {rd, c} = {c, rs >> 1}                             | rs[0]   |
+| asr rd,rs     | 00 00 1101 00 dddd ssss | rd = rs >>> 1 (算術シフト)                            | rs[0]   |
+| mul rd,rs     | 00 00 1110 00 dddd ssss | rd = \(rd * rs\)\[15:0\]                           | x       |
+| mulh rd,rs    | 00 00 1111 00 dddd ssss | rd = \(rd * rs\)\[31:16\]                          | x       |
+|               |                         |                                                    |         |
+| mvi rd,n      | 00 01 00 nnnn dddd nnnn | rd = 符号拡張(n8)                                  | x       |
+| mvih rd,n     | 00 01 01 nnnn dddd nnnn | rd[15:8] = n8 (下位は保持)                          | x       |
+| addi rd,n     | 00 01 10 nnnn dddd nnnn | rd = rd + 符号拡張(n8)                             | carry   |
+|               |                         |                                                    |         |
+| stw n,rs      | 00 10 0 0 nnnnnnnn ssss | mem16[n8] = rs                                     | x       |
+| stb n,rs      | 00 10 0 1 nnnnnnnn ssss | mem8[n8] = rs[7:0]                                 | x       |
+| ldw rd,n      | 00 10 1 0 nnnnnnnn dddd | rd = mem16[n8]                                     | x       |
+| ldb rd,n      | 00 10 1 1 nnnnnnnn dddd | rd = {8'b0, mem8[n8]}                              | x       |
+|               |                         |                                                    |         |
+| jz rs,n       | 00 11 00 nnnnnnnn ssss  | PC = PC + 符号付きn8 + 1 if rs == 0                 | x       |
+| jnz rs,n      | 00 11 01 nnnnnnnn ssss  | PC = PC + 符号付きn8 + 1 if rs != 0                 | x       |
+| push rs       | 00 11 10 0000 0000 ssss | SP -= 2; mem16[SP] = rs                            | x       |
+| pop rd        | 00 11 10 0001 0000 dddd | rd = mem16[SP]; SP += 2                            | x       |
+| ret           | 00 11 10 0010 0000 0000 | PC = mem16[SP]; SP += 2                            | x       |
+| reti          | 00 11 10 0011 0000 0000 | PC = mem16[SP]; SP += 2; PSR = PSR_SHADOW          | 復元    |
+|               |                         |                                                    |         |
+| stw [rd+n],rs | 01 0 0 nnnnnn dddd ssss | mem16[rd + 符号付きn6] = rs                         | x       |
+| stb [rd+n],rs | 01 0 1 nnnnnn dddd ssss | mem8[rd + 符号付きn6] = rs[7:0]                     | x       |
+| ldw rs,[rd+n] | 01 1 0 nnnnnn dddd ssss | rs = mem16[rd + 符号付きn6]                         | x       |
+| ldb rs,[rd+n] | 01 1 1 nnnnnn dddd ssss | rs = {8'b0, mem8[rd + 符号付きn6]}                  | x       |
+|               |                         |                                                    |         |
+| calr n        | 10 nnnnnnnnnnnnnnnn     | SP -= 2; mem16[SP] = PC + 1; PC = PC + n16 + 1     | x       |
+| jr n          | 11 nnnnnnnnnnnnnnnn     | PC = PC + n16 + 1                                  | x       |
+| halt          | 11 1111111111111111     | `jr -1`(自己ループ)。`SIM` 定義時は `$finish`           | x       |
 
 未使用: ALU subop `0000 1001` 以外の空きは無し(sxb/asr で埋めた)。即値群 `[13:12]=11`、制御群 `[13:12]=11`、制御群 ext `0100`-`1111` が予約。
 
@@ -252,7 +254,35 @@ mincc はローカル変数を **BP(minc-8ではY=r14:r15)相対の負オフセ�
 
 `impl/pnr/minc.rpt.txt` によれば minc-8 の 8×8 乗算はすでに DSP 0.25/10 を使っている。GW1NR-9C には DSP が10個あるので 16×16 化しても DSP 1個程度で収まり、LUT の問題にはならない。DSP を持たないデバイスに載せる場合のみ `mul`/`mulh` をソフトウェアルーチンに落とすことを再検討する。
 
-### 現状の実測リソース(minc-8 @ GW1NR-9C)
+### レジスタファイルは分散RAMに落とすこと
+
+**minc-16 の LUT を決めているのはレジスタファイルの読み出しポート**で、これを外すか外さないかで全体が倍近く動く。`regs[pa_idx]` / `regs[pb_idx]` は非同期リードの2ポートなので、素直に書くと **16:1×16bit のLUTマルチプレクサツリー2本 = 256 LUT**(ネットリスト上は1bitあたり `LUT4`×8 + `MUX2_LUT5`×4 + `MUX2_LUT6`×2 + `MUX2_LUT7`×1)と 256FF に落ちる。合成レポートの `--SSRAM(RAM16) | 0` がその状態のサイン。
+
+Gowin が `RAM16SDP4`(16×4bit、同期ライト/非同期リード)を推論する条件は厳しく、[minc_16.sv](verilog/minc_16.sv) の書き戻しは **リセット無し・書き込みポート1本・`if (we) regs[idx] <= dat;` の1文**という形を保たないと即座にFF+マルチプレクサへ落ちる。具体的には次の2つが地雷:
+
+- `regs[15]` に非同期リセットを付ける(→ 分散RAMにリセット端子が無いので推論が消える)
+- SP更新(`S_MA`)と書き戻し(`S_WB`)を `case (state)` の別アームに分けて書く(→ ライトポート2本と見なされる)
+
+したがって `rf_we` / `rf_widx` / `rf_wdat` で両者をマルチプレクサに畳んでから1文で書く。2つのイネーブルはステートで排他なので、優先度エンコードのコストはゼロ。代償はリセット時のSPが不定になることだけ(上の「レジスタとABI」参照)。`-enable_dsrm 1` を付けても推論条件は緩まないので、オプションではなく記述で対応すること。
+
+同じ理由で **`pop` は `is_load` と同じ読み出しパスに合流させてある**。`pop` は ctl グループなので `is_mem`/`psr_sel` が 0 になり `mem_rdata` は `data_in` 素通しになる — 書き戻しマルチプレクサが4:1から3:1に減り、`alu_out` の深いコーンの上に乗っている16bit幅のマルチプレクサが1段減るので約50 LUT効く。
+
+### 現状の実測リソース(minc-16 @ GW1NR-9C)
+
+`gowin/minc_16/impl/pnr/minc_16.rpt.txt` 相当(周辺IPは `UART`/`PORTA`/`WAIT`/`TIMER8`/`I2C` すべて無効=CPU単体の数字)。分散RAM化の前後を同一フロー(`gw_sh` + `minc.cst`/`minc.sdc`)で回した比較。
+
+| リソース | レジスタファイル=FF | レジスタファイル=分散RAM |
+| --- | --- | --- |
+| Logic 合計 | 835 | **514** |
+| LUT,ALU | 800 LUT + 35 ALU | 431 LUT + 35 ALU |
+| SSRAM(RAM16) | 0 | 8 |
+| Register | 294 | **38** |
+| CLS | 635 | **277** |
+| Fmax (制約27MHz) | 28.5 MHz (15段) | **34.8 MHz** (13段) |
+
+LUTコーン別の内訳(分散RAM化後の 431 LUT):`rw_next`(ALU出力16分岐 + `imm_out` + `mem_rdata` + 書き戻し)が約130、`address` マルチプレクサが約66、`alu_b` マルチプレクサが約54、`delta_pc` が約26。**残りもほぼ全部マルチプレクサ**で、ALU本体(加算器2本 = 32 ALUセル)と乗算器(DSP 1個)は誤差の範囲。次に削るなら `mul`/`mulh` を落とすのが最大(約58 LUT、DSPも解放)だが、ISAを削ることになるので要判断。
+
+### ベースライン(minc-8 @ GW1NR-9C)
 
 minc-16 の増減を測るときのベースライン。`gowin/minc/impl/pnr/minc.rpt.txt` より。
 
@@ -271,7 +301,7 @@ minc-16 の増減を測るときのベースライン。`gowin/minc/impl/pnr/min
 - **`mincc -16` の式評価スタックにはスピルが無い**。r1-r13 を使い切る深さの式はコンパイルエラーになる(r14/r15 を踏むと黙ってフレームが壊れるので、そこで止めている)。実用上は13段で足りるはずだが、足りなくなったらフレームへの退避が要る
 - **`jz`/`jnz` の相対オフセットが8bit**なので、`if`/ループの本体が128命令を超えるとアセンブル時に "8-bit relative offset out of range" で落ちる。`jnz` + `jr` の2命令に展開すれば16bitに伸ばせる
 - パイプライン版(`minc_p2.sv`/`minc_p5.sv`)を minc-16 に追従させるか
-- 合成してリソースを実測していない。minc-8 の 513 LUT / 83 FF / DSP 0.25 に対してどう動くかは未確認
+- **LUT は 431、目標の ~400 まであと少し**。上の内訳の通り残っているのはマルチプレクサばかりで、`address`(66)と `alu_b`(54)がまだ厚い。`abs` モードをALU経由にして `address` を2:1に潰す、`mul`/`mulh` を落とす(-58)、`address[0]`/`psr_sel` を `S_MA` でラッチしてロードパスを短くする(-19)あたりが次の候補
 
 ## 割り込み
 
