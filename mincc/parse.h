@@ -43,7 +43,11 @@ long expect_number(char **loc);
 // If reached EOF, throw an error
 // Otherwise, throw NULL
 char *expect_ident(char **loc);
+// Expect a string literal token and return its escape-decoded contents
+// Otherwise, throw an error
+char *expect_string(char **loc);
 bool is_number_token();
+bool is_string_token();
 bool at_eof();
 
 #endif // MINCC_PARSE_H

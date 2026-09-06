@@ -37,6 +37,7 @@ typedef enum {
     ND_NOT,
     ND_AND,
     ND_OR,
+    ND_ASM, // Inline assembly: node->name holds the text to emit verbatim.
 
     ND_EOF
 } NodeType;
@@ -90,6 +91,7 @@ typedef enum {
     TOKEN_NUMBER,
     TOKEN_RESERVED,
     TOKEN_IDENT,
+    TOKEN_STRING, // string literal, already escape-decoded by the tokenizer
 } TokenType;
 
 typedef struct Token {
@@ -120,6 +122,8 @@ Node *new_for_node(Node *cond, Node *inc, Node *init, Node *body, char *loc);
 Node *new_while_node(Node *cond, Node *body, char *loc);
 Node *new_func_node(NodeType type, char *name, Node **args, Node *body, long arg_sf_size, Type_t *rettype, char *loc);
 Node *new_block_node(char *loc);
+// Inline assembly node. Takes ownership of `text` (emitted verbatim by codegen).
+Node *new_asm_node(char *text, char *loc);
 
 Node **nodevec_push(Node **old_vec, size_t old_len, Node *node);
 

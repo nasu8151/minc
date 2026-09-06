@@ -44,9 +44,12 @@ int gen_i8(Node *node);
 int gen_i16(Node *node);
 int cast_i8_to_i16();
 int cast_i16_to_i8();
-void generate_prologue(Node **args, long arg_reg_count, long local_var_count);
-void generate_epilogue(long arg_count, int size, char *loc);
-void generate_isr_prologue(long local_var_count);
+// reg_high_water = highest register index the body touches, measured by the
+// dry-run pass in ND_FUNC_DEF. The prologue pushes r<callee_save_lo()>..r<that>
+// and the epilogue pops the same range back.
+void generate_prologue(Node **args, long arg_reg_count, long local_var_count, int reg_high_water);
+void generate_epilogue(int size, char *loc);
+void generate_isr_prologue(long local_var_count, int reg_high_water);
 void generate_isr_epilogue(void);
 
 #endif // MINCC_CODEGEN_H

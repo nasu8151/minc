@@ -17,7 +17,7 @@ module TIMER8 (
 );
 
     // Register map (I_WADDR/I_RADDR, 3 bits):
-    //   0 CONFIG   RW  bit0=EN, bit1=IE_OVF, bit2=IE_CMP, bit[5:3]=prescale select (/1,/2,/4,.../128)
+    //   0 CONFIG   RW  bit0=EN, bit1=IE_OVF, bit2=IE_CMP, bit[6:3]=prescale select (/1,/2,/4,.../1024)
     //   1 COMPARE  RW  compare threshold
     //   2 OVERFLOW RW  period (TOP) threshold; COUNTER reloads to 0 on reaching this value
     //   3 COUNTER  RW  current count, software-presettable
@@ -38,7 +38,7 @@ module TIMER8 (
     wire en                    = config_reg[0];
     wire ie_ovf                = config_reg[1];
     wire ie_cmp                = config_reg[2];
-    wire [2:0] prescale_sel    = config_reg[5:3];
+    wire [3:0] prescale_sel    = config_reg[6:3];
 
     assign O_OVF_INT = status_reg[0] & ie_ovf;
     assign O_CMP_INT = status_reg[1] & ie_cmp;
@@ -50,19 +50,19 @@ module TIMER8 (
     wire write_status   = I_TX_EN && (I_WADDR == ADDR_STATUS);
 
     // prescaler: generates one `tick` every 2^prescale_sel clocks while EN
-    logic [7:0] prescale_cnt;
-    wire [7:0] prescale_max = (8'h1 << prescale_sel) - 8'h1;
+    logic [9:0] prescale_cnt;
+    wire [9:0] prescale_max = (10'h1 << prescale_sel) - 10'h1;
     wire tick = en && (prescale_cnt == prescale_max);
 
     always_ff @(posedge I_CLK or negedge I_RESETN) begin
         if (!I_RESETN) begin
-            prescale_cnt <= 8'h0;
+            prescale_cnt <= 10'h0;
         end else if (!en) begin
-            prescale_cnt <= 8'h0;
+            prescale_cnt <= 10'h0;
         end else if (tick) begin
-            prescale_cnt <= 8'h0;
+            prescale_cnt <= 10'h0;
         end else begin
-            prescale_cnt <= prescale_cnt + 8'h1;
+            prescale_cnt <= prescale_cnt + 10'h1;
         end
     end
 
