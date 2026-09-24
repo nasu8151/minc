@@ -4,40 +4,6 @@
 
 ### minc-8
 
-|  Mnemonic  |      Machine code      |                 Description                 | c flag  |
-| ---------- | ---------------------- | ------------------------------------------- | ------- |
-| mov rd,rs  | 00000000 00 dddd ssss  | rd = rs                                     | x       |
-| or rd,rs   | 00000001 00 dddd ssss  | rd = rd \ rs                                | x       |
-| and rd,rs  | 00000010 00 dddd ssss  | rd = rd & rs                                | x       |
-| xor rd,rs  | 00000011 00 dddd ssss  | rd = rd ^ rs                                | x       |
-| add rd,rs  | 00000100 00 dddd ssss  | rd = rd + rs                                | carry   |
-| adc rd,rs  | 00000101 00 dddd ssss  | rd = rd + rs + c                            | carry   |
-| sub rd,rs  | 00000110 00 dddd ssss  | rd = rd - rs                                | !borrow |
-| sbc rd,rs  | 00000111 00 dddd ssss  | rd = rd - rs + c                            | !borrow |
-| chz rd,rs  | 00001000 00 dddd ssss  | rd = (rs == 0) ? 1 : 0                      | x       |
-| lt rd,rs   | 00001010 00 dddd ssss  | rd = 1 if rd - rs < 0, otherwise rd = 0     | !borrow |
-| ltc rd,rs  | 00001011 00 dddd ssss  | rd = 1 if rd + rs + c < 0, otherwise rd = 0 | !borrow |
-| rr rd,rs   | 00001100 00 dddd ssss  | {rd, c} = {c, rs}                           | rs[0]   |
-| mul rd,rs  | 00001110 00 dddd ssss  | rd = \(rd * rs\)\[7:0\]                     | x       |
-| mulh rd,rs | 00001111 00 dddd ssss  | rd = \(rd * rs\)\[15:8\]                    | x       |
-|            |                        |                                             |         |
-| jz n,rs    | 001100 nnnn ssss nnnn  | PC = n if rd == 0                           |         |
-| mvi rd,n   | 001110 nnnn dddd nnnn  | rd = n                                      |         |
-|            |                        |                                             |         |
-| stm X+n,rs | 010000 nnnn ssss nnnn  | ({r13, r12} + signed'n) = rs                |         |
-| ldm rd,X+n | 010001 nnnn dddd nnnn  | rd = ({r13, r12} + signed'n)                |         |
-| stm Y+n,rs | 010010 nnnn ssss nnnn  | ({r15, r14} + signed'n) = rs                |         |
-| ldm rd,Y+n | 010011 nnnn dddd nnnn  | rd = ({r15, r14} + signed'n)                |         |
-| stm n, rs  | 010100 nnnn ssss nnnn  |                                             |         |
-| ldm rd, n  | 010101 nnnn dddd nnnn  |                                             |         |
-| push rs    | 011100 00 00 ssss 0000 | (--SP) = rs;                                |         |
-| pop rd     | 011101 00 00 dddd 0000 | rd = (SP++);                                |         |
-| ret        | 011111 00 00 0000 0000 | PC = (SP++++);                              |         |
-| reti       | 011110 00 00 0000 0000 | PC = (SP++++); PSR = PSR_SHADOW             |         |
-|            |                        |                                             |         |
-| calr rn    | 10rrrr nnnn rrrr nnnn  | (----SP) = PC + 1;PC = PC + {r, n} + 1      |         |
-| jr rn      | 11rrrr nnnn rrrr nnnn  | PC = PC + {r, n} + 1                        |         |
-
 | Mnemonic    | Machine code            | Description                                 | c flag  |
 |-------------|-------------------------|---------------------------------------------|---------|
 | mov rd,rs   | 00000000 00 dddd ssss   | rd = rs                                     | x       |
@@ -48,22 +14,21 @@
 | adc rd,rs   | 00000101 00 dddd ssss   | rd = rd + rs + c                            | carry   |
 | sub rd,rs   | 00000110 00 dddd ssss   | rd = rd - rs                                | !borrow |
 | sbc rd,rs   | 00000111 00 dddd ssss   | rd = rd - rs + c                            | !borrow |
-| chz rd,rs   | 00001000 00 dddd ssss   | rd = (rs == 0) ? 1 : 0                      | x       |
+| rr rd,rs    | 00001000 00 dddd ssss   | {rd, c} = {c, rs}                           | rs[0]   |
 | lt rd,rs    | 00001010 00 dddd ssss   | rd = 1 if rd - rs < 0, otherwise rd = 0     | !borrow |
 | ltc rd,rs   | 00001011 00 dddd ssss   | rd = 1 if rd + rs + c < 0, otherwise rd = 0 | !borrow |
-| rr rd,rs    | 00001100 00 dddd ssss   | {rd, c} = {c, rs}                           | rs[0]   |
+| chz rd,rs   | 00001100 00 dddd ssss   | rd = (rs == 0) ? 1 : 0                      | x       |
 | mul rd,rs   | 00001110 00 dddd ssss   | rd = \(rd * rs\)\[7:0\]                     | x       |
 | mulh rd,rs  | 00001111 00 dddd ssss   | rd = \(rd * rs\)\[15:8\]                    | x       |
 |             |                         |                                             |         |
-| jz n,rs     | 001000 nnnn ssss nnnn   | PC = PC + n if rd == 0                      |         |
-| ret rd      | 001100 0000 dddd 0000                 |                                             |         |
-| reti rd      | 001101 0000 dddd 0000                 |                                             |         |
-| push rs     | 001011 0000 ssss 0000                  |                                             |         |
-| pop rd      | 001111 0000 dddd 0000                 |                                             |         |
+| mvi rd,n    | 001000 nnnn dddd nnnn   | rd = n                                      |         |
+| decs n      | 001001 nnnn 0000 nnnn   | SP = SP - n  (n は符号無し8bit)             |         |
+| jz n,rs     | 001010 nnnn ssss nnnn   | PC = PC + n if rs == 0                      |         |
 |             |                         |                                             |         |
-| mvi rd,n    | 001101 nnnn dddd nnnn   | rd = n                                      |         |
-| adi rd,n    | 001100 nnnn dddd nnnn   | rd = rd + n                                 |         |
-| adic rd,n   | 001110 nnnn dddd nnnn   | rd = rd + n + c                             |         |
+| ret         | 001100 0000 0000 0000   | PC = (SP++++)                               |         |
+| reti        | 001101 0000 0000 0000   | PC = (SP++++); PSR = PSR_SHADOW             |         |
+| push rs     | 001110 0000 ssss 0000   | (--SP) = rs                                 |         |
+| pop rd      | 001111 0000 dddd 0000   | rd = (SP++)                                 |         |
 |             |                         |                                             |         |
 | stm rp+n,rs | 01 00 nn nnnn ssss ppp0 | (rp + signed'n) = rs                        |         |
 | ldm rd,rp+n | 01 01 nn nnnn dddd ppp0 | rd = (rp + signed'n)                        |         |
@@ -75,6 +40,42 @@
 | halt        | 11 1111 1111 1111 1111  | stops the CPU. (equiv. with `jr -1`)        |         |
 
 - `rp` means register pair. (e.g. rp14 means {r15, r14})
+- `decs n` の機械語フィールド `nnnn nnnn` に入るのは **`~n`(nのビット反転)** であって `n` そのものではない。CPUは `SP + {8'hFF, field} + 1` を計算するので、`field = ~n` のとき `SP - n` になる。8bitのインバータをデータパス(共有加算器のB入力)に置くとLUTを食うため、反転は`mincasm`側で行っている。`.asm`には従来どおり `decs 10` と書けばよい。
+
+### オペコード空間
+
+上位ビットだけで命令クラスが決まるので、デコーダはニモニックごとの6bit比較器を持たずに済む。
+
+`instr[17:16]` で4つに割れる。
+
+- `00` — さらに `instr[15:14]` で:
+  - `0000xx` ALU群(サブオペコードは `instr[13:10]`)
+  - `0001xx` **空き**
+  - `0010xx` 即値群: `001000` mvi / `001001` decs / `001010` jz / `001011` **空き**
+  - `0011xx` スタック群: `001100` ret / `001101` reti / `001110` push / `001111` pop
+- `01` — メモリ群。`instr[15]` = 0:`rp`相対 / 1:絶対、`instr[14]` = 0:store / 1:load
+- `10` — `calr`
+- `11` — `jr`(`jr -1` = `halt`)
+
+### アドレッシング
+
+`stm`/`ldm` は2種類のモードを持つ。
+
+- **レジスタペア相対 `rp+n`**: ベースは `{r(p+1), r(p)}`(`p`は偶数、`instr[3:0]`の最下位ビットは0)。8組すべてのペアが使える。変位 `n` は `instr[13:8]` の**符号付き6bit(-32..+31)**。`mincasm` は `X+n`(=`rp12+n`)/ `Y+n`(=`rp14+n`)という従来の別名も受け付ける。
+  - `p` が奇数の場合の動作は未定義(RTLはベース下位に奇数レジスタをそのまま読む)。`mincasm` が偶数を強制する。
+- **絶対 `n`**: アドレスは `{m, n}` = `{instr[3:0], instr[13:8]}` の**10bit(0..1023)**。`m` が上位ニブルであることに注意。負のリテラルは10bit空間へ折り返す。
+
+CPUは `regs_hi`(奇数レジスタのミラー)を持つ。`instr[3:0]` が `ppp0` である性質を使い、ペア下位は通常の `rs` 読み出しポートから、上位は `regs_hi[instr[3:1]]` から1サイクルで同時に読む(レジスタファイルに3本目の読み出しポートを足さずに済む)。
+
+**6bit変位の制約**: ローカル変数フレーム全体がYから `-32..+31` に収まる必要がある。`mincc` は範囲外のオフセットを生成しようとした時点でコンパイルエラーにし、`mincasm` も `stm Y-40,r2` のような直書きを拒否する(暗黙の切り詰めはしない)。グローバル変数は `mvi` でXへ16bitアドレスを組み立ててから `X+0` でアクセスするので、この制限も10bit絶対番地の制限も受けない。
+
+### ALU/AGU 加算器の共有
+
+`minc_h.sv` はALUの8bit加算と、AGU(アドレス生成 / SP増減 / `decs`)の16bit加算を**1本のキャリーチェーン**で処理する。4ステート非パイプラインなので、ALU群(`op4==0000`)はメモリにもSPにも触れず、メモリ/スタック/コール群はALUを使わない — 両方を同時に必要とする命令が存在しないため、命令クラスで入力をmuxするだけで共有できる。加算器はbit7で2段に分けてあり、ALUは下段のキャリーアウトを`c`フラグとして取り出し、AGUは16bitの和をそのまま使う。
+
+PC加算器のみ独立している(`calr`は同一ステートで`PC+1`と`SP-1`の両方を必要とするため)。
+
+割り込み受付中(`servicing_irq`)は`instr`に「実行されない命令」が載っているので、各muxは`servicing_irq`を最優先アームに置いている。
 
 ## 割り込み
 
@@ -127,7 +128,8 @@ char main() {
 ### 既知の制約
 
 - 汎用レジスタ(r0-r15)の自動退避は無い。手書き`.asm`でISRを書く場合は使うレジスタを既存の`push`/`pop`で退避すること(`mincc`の`[[isr]]`はこれを自動で行う — 上記参照)。
-- `stf`/`clf`(フラグ操作命令、op6=`001000`/`001001`)は`mincasm`のニモニック表には存在するが、`minc_h.sv`ではデコーダがコメントアウトされており**実装されていない**(`minc_p2.sv`/`minc_p5.sv`も同様)。アセンブルは通るが実行しても何も起こらない(`rw_next`が`ra_val`にフォールスルーし、`rd`へ自分自身を書き戻すだけのno-opになる)ので使わないこと。フラグ操作は`PSR`(`0x0002`)への`stm`/`ldm`、または`mincc`の`sei()`/`cli()`で行う。
+- `stf`/`clf`(フラグ操作命令)は**`mincasm`のニモニック表から削除された**。どのコアでも実装されたことが無く、かつ新オペコードマップでは旧エンコーディングの`001000`/`001001`がそれぞれ`mvi`/`decs`なので、残しておくと「無害なno-op」ではなく**別の命令として実行されてしまう**。復活させないこと。フラグ操作は`PSR`(`0x0002`)への`stm`/`ldm`、または`mincc`の`sei()`/`cli()`で行う。
+- `lt`/`ltc`のキャリー出力は命令表の`!borrow`ではなく`rs[0]`になっている。同じオペコードグループの`rr`(キャリー出力が`rs[0]`)とキャリー生成回路を共有しているため。`mincc`は`lt`/`ltc`の直後にキャリーを読まない(`sub`→`ltc`は`ltc`が*入力*としてキャリーを使うだけ)ので実害は無いが、手書き`.asm`で`lt`の後に`adc`などを置かないこと。
 - `irq_in`に同期化(シンクロナイザ)は無い。CPUと同一クロックドメインである前提。
 - レベルトリガ+自動マスクのため、割り込み要因をISR側でクリアする前に`PSR`の`IE`を(`reti`経由であれ`stm`直書きであれ)再び1にすると、即座に再突入するリトリガーループになりうる。
 - `minc_p2.sv`/`minc_p5.sv`(パイプライン版)・`gowin/minc/src/minc_gw_top.sv`のUART `INTR`ピン配線は未対応。
