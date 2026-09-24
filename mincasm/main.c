@@ -52,7 +52,7 @@ typedef enum {
     INST_ALU_RR,
     INST_REG,
     INST_FIXED,
-    INST_FLAG_IMM,
+    INST_DECS,
     INST_MVI,
     INST_JZ,
     INST_REL16,
@@ -69,39 +69,45 @@ typedef struct {
     InstKind kind;
     uint8_t opcode_a;
     uint8_t opcode_b;
-    uint8_t opcode_c;
     uint32_t fixed_word;
     uint8_t flags;
 } InstSpec;
 
+// opcode_a/opcode_b hold the instruction's leading opcode field, whose width
+// depends on the kind: instr[17:10] for INST_ALU_RR, instr[17:12] for the
+// register/immediate/jz kinds, instr[17:16] for INST_REL16, and instr[17:14]
+// for the memory kinds (opcode_a = register-pair form, opcode_b = absolute).
+//
+// stf/clf are deliberately absent: they were never implemented by any core, and
+// under this opcode map their old encodings (0x08/0x09) are mvi and decs, so an
+// accidental use would no longer be a silent no-op but a different instruction.
 static const InstSpec g_inst_specs[] = {
-    {"mov",  INST_ALU_RR,    0x00, 0x00, 0x00, 0x00000, 0},
-    {"or",   INST_ALU_RR,    0x01, 0x00, 0x00, 0x00000, 0},
-    {"and",  INST_ALU_RR,    0x02, 0x00, 0x00, 0x00000, 0},
-    {"xor",  INST_ALU_RR,    0x03, 0x00, 0x00, 0x00000, 0},
-    {"add",  INST_ALU_RR,    0x04, 0x00, 0x00, 0x00000, 0},
-    {"adc",  INST_ALU_RR,    0x05, 0x00, 0x00, 0x00000, 0},
-    {"sub",  INST_ALU_RR,    0x06, 0x00, 0x00, 0x00000, 0},
-    {"sbc",  INST_ALU_RR,    0x07, 0x00, 0x00, 0x00000, 0},
-    {"chz",  INST_ALU_RR,    0x0C, 0x00, 0x00, 0x00000, 0},
-    {"lt",   INST_ALU_RR,    0x0A, 0x00, 0x00, 0x00000, 0},
-    {"ltc",  INST_ALU_RR,    0x0B, 0x00, 0x00, 0x00000, 0},
-    {"rr",   INST_ALU_RR,    0x0A, 0x00, 0x00, 0x00000, 0},
-    {"mul",  INST_ALU_RR,    0x0E, 0x00, 0x00, 0x00000, 0},
-    {"mulh", INST_ALU_RR,    0x0F, 0x00, 0x00, 0x00000, 0},
-    {"stf",  INST_FLAG_IMM,  0x08, 0x00, 0x00, 0x00000, 0},
-    {"clf",  INST_FLAG_IMM,  0x09, 0x00, 0x00, 0x00000, 0},
-    {"push", INST_REG,       0x1C, 0x00, 0x00, 0x00000, 0},
-    {"pop",  INST_REG,       0x1D, 0x00, 0x00, 0x00000, 0},
-    {"ret",  INST_FIXED,     0x00, 0x00, 0x00, 0x1F000, 0},
-    {"reti", INST_FIXED,     0x00, 0x00, 0x00, 0x1E000, 0},
-    {"halt", INST_FIXED,     0x00, 0x00, 0x00, 0x3FFFF, 0},
-    {"mvi",  INST_MVI,       0x0E, 0x00, 0x00, 0x00000, 0},
-    {"jz",   INST_JZ,        0x0C, 0x00, 0x00, 0x00000, 0},
-    {"calr", INST_REL16,     0x02, 0x00, 0x00, 0x00000, 0},
-    {"jr",   INST_REL16,     0x03, 0x00, 0x00, 0x00000, 0},
-    {"stm",  INST_MEM_STORE, 0x10, 0x12, 0x14, 0x00000, 0},
-    {"ldm",  INST_MEM_LOAD,  0x11, 0x13, 0x15, 0x00000, 0},
+    {"mov",  INST_ALU_RR,    0x00, 0x00, 0x00000, 0},
+    {"or",   INST_ALU_RR,    0x01, 0x00, 0x00000, 0},
+    {"and",  INST_ALU_RR,    0x02, 0x00, 0x00000, 0},
+    {"xor",  INST_ALU_RR,    0x03, 0x00, 0x00000, 0},
+    {"add",  INST_ALU_RR,    0x04, 0x00, 0x00000, 0},
+    {"adc",  INST_ALU_RR,    0x05, 0x00, 0x00000, 0},
+    {"sub",  INST_ALU_RR,    0x06, 0x00, 0x00000, 0},
+    {"sbc",  INST_ALU_RR,    0x07, 0x00, 0x00000, 0},
+    {"chz",  INST_ALU_RR,    0x0C, 0x00, 0x00000, 0},
+    {"lt",   INST_ALU_RR,    0x0A, 0x00, 0x00000, 0},
+    {"ltc",  INST_ALU_RR,    0x0B, 0x00, 0x00000, 0},
+    {"rr",   INST_ALU_RR,    0x08, 0x00, 0x00000, 0},
+    {"mul",  INST_ALU_RR,    0x0E, 0x00, 0x00000, 0},
+    {"mulh", INST_ALU_RR,    0x0F, 0x00, 0x00000, 0},
+    {"push", INST_REG,       0x0E, 0x00, 0x00000, 0},
+    {"pop",  INST_REG,       0x0F, 0x00, 0x00000, 0},
+    {"ret",  INST_FIXED,     0x00, 0x00, 0x0C000, 0},
+    {"reti", INST_FIXED,     0x00, 0x00, 0x0D000, 0},
+    {"halt", INST_FIXED,     0x00, 0x00, 0x3FFFF, 0},
+    {"mvi",  INST_MVI,       0x08, 0x00, 0x00000, 0},
+    {"decs", INST_DECS,      0x09, 0x00, 0x00000, 0},
+    {"jz",   INST_JZ,        0x0A, 0x00, 0x00000, 0},
+    {"calr", INST_REL16,     0x02, 0x00, 0x00000, 0},
+    {"jr",   INST_REL16,     0x03, 0x00, 0x00000, 0},
+    {"stm",  INST_MEM_STORE, 0x04, 0x06, 0x00000, 0},
+    {"ldm",  INST_MEM_LOAD,  0x05, 0x07, 0x00000, 0},
 };
 
 static int g_line_num;
@@ -430,19 +436,64 @@ static uint32_t enc_op2_rel16(uint8_t op2, uint32_t off16) {
          | ((uint32_t)n1 <<  8) | ((uint32_t)n2 <<  4) | n0;
 }
 
-static void parse_memref(char *tok, int *addr_mode, int *imm8) {
+// Memory group: instr[17:14] = top4, instr[13:8] = the 6-bit field.
+// Register-pair form  01 s 0 nnnnnn dddd ppp0  -- base {r(p+1), r(p)} + signed n
+static uint32_t enc_mem_rp(uint8_t top4, uint8_t reg, int ofs, uint8_t rp) {
+    return ((uint32_t)top4 << 14) | (((uint32_t)ofs & 0x3F) << 8)
+         | ((uint32_t)reg << 4) | (rp & 0x0F);
+}
+
+// Absolute form       01 s 1 nnnnnn dddd mmmm  -- address {m, n}, 10 bits
+static uint32_t enc_mem_abs(uint8_t top4, uint8_t reg, int addr) {
+    return ((uint32_t)top4 << 14) | (((uint32_t)addr & 0x3F) << 8)
+         | ((uint32_t)reg << 4) | (((uint32_t)addr >> 6) & 0x0F);
+}
+
+#define MEMREF_RP  0
+#define MEMREF_ABS 1
+
+// Accepts "X+n"/"Y-n" (the historical names for the r12:r13 and r14:r15 pairs),
+// "rp<N>+n"/"r<N>+n" for any even pair, or a bare number for absolute mode.
+static void parse_memref(char *tok, int *mode, int *rp, int *ofs) {
+    const char *num = NULL;
+    int base = -1;
+
     if ((tok[0] == 'X' || tok[0] == 'x') && (tok[1] == '+' || tok[1] == '-')) {
-        *addr_mode = 0;
-        *imm8 = parse_int(tok + 1, -128, 127);
+        base = 12;
+        num = tok + 1;
+    } else if ((tok[0] == 'Y' || tok[0] == 'y') && (tok[1] == '+' || tok[1] == '-')) {
+        base = 14;
+        num = tok + 1;
+    } else if (tok[0] == 'r' || tok[0] == 'R') {
+        // "rpN" and "rN" both name the pair based at rN.
+        const char *p = tok + 1;
+        if (*p == 'p' || *p == 'P') p++;
+        char *end = NULL;
+        long v = strtol(p, &end, 10);
+        if (end != p && (*end == '+' || *end == '-')) {
+            if (v < 0 || v > 15) {
+                die_fmt("Register out of range", tok);
+            }
+            base = (int)v;
+            num = end;
+        }
+    }
+
+    if (base >= 0) {
+        if (base & 1) {
+            die_fmt("Register pair base must be even", tok);
+        }
+        *mode = MEMREF_RP;
+        *rp = base;
+        // The displacement field is 6 bits, signed.
+        *ofs = parse_int(num, -32, 31);
         return;
     }
-    if ((tok[0] == 'Y' || tok[0] == 'y') && (tok[1] == '+' || tok[1] == '-')) {
-        *addr_mode = 1;
-        *imm8 = parse_int(tok + 1, -128, 127);
-        return;
-    }
-    *addr_mode = 2;
-    *imm8 = parse_int(tok, -128, 127);
+
+    *mode = MEMREF_ABS;
+    *rp = 0;
+    // Absolute addressing reaches 10 bits; negative literals wrap into it.
+    *ofs = parse_int(tok, -512, 1023) & 0x3FF;
 }
 
 static void to_lower_str(char *s) {
@@ -586,16 +637,17 @@ int main(void) {
             case INST_FIXED:
                 word = spec->fixed_word;
                 break;
-            case INST_FLAG_IMM: {
+            case INST_DECS: {
                 char *imm = next_token(&ctx);
                 if (!imm) {
-                    die("Missing immediate for stf/clf");
+                    die("Missing immediate for decs");
                 }
-                if (imm[0] == '#') {
-                    imm++;
-                }
-                int c = parse_int(imm, 0, 1);
-                word = (uint32_t)(((uint32_t)spec->opcode_a << 12) | (uint32_t)c);
+                int iv = parse_int(imm, 0, 255);
+                // The core computes SP + {8'hFF, field} + 1, so the encoded
+                // field is ~n rather than n: SP + 0xFF00 + (255-n) + 1 == SP-n.
+                // The 8-bit inverter lives here instead of costing LUTs in the
+                // datapath, where it would sit on the shared adder's B input.
+                word = enc_op6_reg_imm8(spec->opcode_a, 0, (uint8_t)~iv);
                 break;
             }
             case INST_MVI: {
@@ -657,13 +709,14 @@ int main(void) {
                     die("Missing register operand");
                 }
 
-                int addr_mode = 0;
+                int mode = 0;
+                int rp = 0;
                 int iv = 0;
-                parse_memref(m, &addr_mode, &iv);
+                parse_memref(m, &mode, &rp, &iv);
                 int rs = parse_reg(r);
-                uint8_t op = (addr_mode == 0) ? spec->opcode_a :
-                             (addr_mode == 1) ? spec->opcode_b : spec->opcode_c;
-                word = enc_op6_reg_imm8(op, (uint8_t)rs, (uint8_t)iv);
+                word = (mode == MEMREF_RP)
+                     ? enc_mem_rp(spec->opcode_a, (uint8_t)rs, iv, (uint8_t)rp)
+                     : enc_mem_abs(spec->opcode_b, (uint8_t)rs, iv);
                 break;
             }
             case INST_MEM_LOAD: {
@@ -676,13 +729,14 @@ int main(void) {
                     die("Missing memory operand");
                 }
 
-                int addr_mode = 0;
+                int mode = 0;
+                int rp = 0;
                 int iv = 0;
-                parse_memref(m, &addr_mode, &iv);
+                parse_memref(m, &mode, &rp, &iv);
                 int rd = parse_reg(r);
-                uint8_t op = (addr_mode == 0) ? spec->opcode_a :
-                             (addr_mode == 1) ? spec->opcode_b : spec->opcode_c;
-                word = enc_op6_reg_imm8(op, (uint8_t)rd, (uint8_t)iv);
+                word = (mode == MEMREF_RP)
+                     ? enc_mem_rp(spec->opcode_a, (uint8_t)rd, iv, (uint8_t)rp)
+                     : enc_mem_abs(spec->opcode_b, (uint8_t)rd, iv);
                 break;
             }
         }

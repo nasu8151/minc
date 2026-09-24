@@ -85,6 +85,35 @@ E2E_CASES = {
     # SP from the frame pointer, which is why this has to be observed *inside*
     # the function rather than through the harness's end-of-run SP check.
     "regsave-hoisted" : ("char [[address=0x00]] sp_lo;int g=3;int add2(int x){return x+2;}char main(){char before=sp_lo;for(char i=0;i<10;i=i+1){if((add2(g)-g)>500){g=g;}}char after=sp_lo;return before-after;}", 0, {}),
+    # `decs n` allocates the frame in one instruction (SP == Y at that point in
+    # the prologue). A 10-byte frame exercises it, and reading every local back
+    # proves the Y-relative offsets still line up under the 6-bit displacement.
+    "decs-frame" : ("int main(){int a=100;int b=200;int c=300;int d=400;int e=500;return a+b+c+d+e;}", 1500, {}),
+    # decs must leave r0/r1 alone (the old mvi/add/adc/stm sequence clobbered
+    # them). A callee's return value arrives in r0:r1, so a call whose result is
+    # consumed straight after a frame allocation would break if decs touched them.
+    "decs-preserves-r0r1" : ("int id(int x){return x;}int main(){int a=0x1234;int b=id(a);int c=id(b);return c;}", 0x1234, {}),
+    # Register pairs other than X (r12:r13) and Y (r14:r15) are addressable now.
+    # r2:r3 is caller-saved scratch at a statement boundary, so this is safe.
+    "rp-generic-pair" : ("char [[address=0x05]] d;char main(){d=0xFF;asm(\"mvi r3,0\\nmvi r2,4\\nmvi r0,0x69\\nstm rp2+0,r0\\n\");return 0;}", 0, {"porta": 0x69}),
+    # decs must move SP by exactly n. This has to be measured *directly*, by
+    # reading the memory-mapped SP (0x0000) either side of the instruction: a
+    # wrong displacement is otherwise invisible, because the epilogue reloads SP
+    # from Y and every local is addressed off Y, so the frame still works and the
+    # harness's end-of-run SP check still passes. Clobbering SP here is safe for
+    # the same reason.
+    "decs-moves-sp" : ("char [[address=0x05]] d;char main(){d=0xFF;asm(\"ldm r0,0\\ndecs 10\\nldm r1,0\\nsub r0,r1\\nstm 4,r0\\n\");return 0;}", 0, {"porta": 10}),
+    # rr is a rotate right through carry: {rd, c} = {c, rs}. Clear PSR first so
+    # the carry going in is known, then rotate 0x03 twice:
+    #   c=0, r1=0x03 -> r0 = {0, 0000001} = 0x01, c = 1
+    #   c=1, r0=0x01 -> r2 = {1, 0000000} = 0x80, c = 1
+    # The 0x80 is the tell: it can only appear if the carry really is shifted in
+    # and rb_val is really shifted right (the old broken rr returned rs as-is).
+    "rr-rotate" : ("char [[address=0x05]] d;char main(){d=0xFF;asm(\"mvi r0,0\\nstm 2,r0\\nmvi r1,3\\nrr r0,r1\\nrr r2,r0\\nstm 4,r2\\n\");return 0;}", 0, {"porta": 0x80}),
+    # Absolute addressing is 10 bits wide now; 0x3F0 exercises both halves of
+    # the split {m, n} field (m = instr[3:0] is the HIGH nibble, n = instr[13:8]
+    # the low 6), so a round trip through it would fail if the halves were swapped.
+    "abs-10bit" : ("char [[address=0x05]] d;char main(){d=0xFF;asm(\"mvi r0,0x5C\\nstm 0x3F0,r0\\nmvi r0,0\\nldm r0,0x3F0\\nstm 4,r0\\n\");return 0;}", 0, {"porta": 0x5C}),
 }
 
 
@@ -230,7 +259,7 @@ if __name__ == "__main__":
     # .org directive: an explicit vector-table style layout (jump to MAIN at
     # address 0, jump to ISR0 at address 1, code resuming at address 5).
     tf.expect("./target/mincasm", ".org 0\njr MAIN\n.org 1\njr ISR0\n.org 5\nMAIN:\n    halt\nISR0:\n    reti\n",
-                "30004\n30004\n00000\n00000\n00000\n3FFFF\n1E000")
+                "30004\n30004\n00000\n00000\n00000\n3FFFF\n0D000")
     # .org directive: missing/out-of-range address should fail
     tf.expect_fail("./target/mincasm", ".org")
     tf.expect_fail("./target/mincasm", ".org 70000")
@@ -252,6 +281,15 @@ if __name__ == "__main__":
     tf.expect_fail("./target/mincc", """char main(){asm("mvi r0,1\\p");}""") # unknown escape sequence
     tf.expect_fail("./target/mincc", """char main(){char x = sei();return x;}""") # sei() has no value
     tf.expect_fail("./target/mincc", """char main(){char x = asm("ret");return x;}""") # asm is a statement, not an expression
+    # rp+n carries a signed 6-bit displacement, so a local frame deeper than 32
+    # bytes can no longer be reached off Y. Both ends of the toolchain reject it
+    # rather than letting the offset wrap silently.
+    _DEEP_FRAME = "char main(){" + "".join(f"char v{i}={i % 7};" for i in range(40)) + "return v39;}"
+    tf.expect_fail("./target/mincc", _DEEP_FRAME)
+    tf.expect_fail("./target/mincasm", "stm Y-40,r2")
+    tf.expect_fail("./target/mincasm", "ldm r2,Y+32")
+    tf.expect_fail("./target/mincasm", "stm rp3+0,r2")   # pair base must be even
+    tf.expect_fail("./target/mincasm", "stm 1024,r2")    # absolute address is 10 bits
 
     # E2E tests
     if (len(sys.argv) == 1):

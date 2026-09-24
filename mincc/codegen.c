@@ -32,6 +32,39 @@ static int callee_save_lo(void) {
     return cur_is_isr ? ast_min : caller_max + 1;
 }
 
+// Widest displacement the rp+n addressing mode can encode (signed 6-bit), so
+// the whole local frame has to fit in [-32, 31] off Y. Checked at every site
+// that emits a Y-relative access rather than silently truncating in mincasm.
+#define RP_OFS_MIN (-32)
+#define RP_OFS_MAX 31
+
+static void check_rp_ofs(long ofs, char *loc) {
+    if (ofs < RP_OFS_MIN || ofs > RP_OFS_MAX) {
+        error_at(loc, "Local variable frame does not fit the signed 6-bit rp+n "
+                      "displacement: offset %ld is outside [%d, %d]",
+                 ofs, RP_OFS_MIN, RP_OFS_MAX);
+    }
+}
+
+// SP = Y - n. The prologue loads Y from SP after every push, so at that point
+// SP == Y and `decs n` is exactly the old six-instruction sequence
+// (mvi/mvi/add/adc/stm/stm) without clobbering r0/r1. decs carries an 8-bit
+// immediate; larger frames fall back, though check_rp_ofs() rejects those first.
+static void emit_frame_alloc(long local_var_count) {
+    if (local_var_count >= 0 && local_var_count <= 255) {
+        if (local_var_count != 0) {
+            emit("decs %ld\n", local_var_count);
+        }
+        return;
+    }
+    emit("mvi r0,%ld\n", ((-local_var_count) & 0xFF));
+    emit("mvi r1,%ld\n", ((-local_var_count) >> 8) & 0xFF);
+    emit("add r0,r14\n");
+    emit("adc r1,r15\n");
+    emit("stm 0,r0\n");
+    emit("stm 1,r1\n");
+}
+
 void generate_top(Node *code, long i) {
     nxt_regstack_top = ast_min;
     emit("__on_entry:\n");
@@ -182,11 +215,13 @@ void generate_prologue(Node **args, long arg_reg_count, long local_var_count, in
                 error_at(a ? a->loc : NULL, "Invalid argument size: %d", arg_size);
             }
             if (arg_size == 1) {
+                check_rp_ofs(-(mem_off + 1), a ? a->loc : NULL);
                 emit("stm Y%ld,r%ld\n", -(mem_off + 1), reg_index);
                 mem_off += 1;
                 reg_index += 1;
             } else {
                 // little-endian: low byte at lower address (more negative)
+                check_rp_ofs(-(mem_off + 2), a ? a->loc : NULL);
                 emit("stm Y%ld,r%ld\n", -(mem_off + 2), reg_index);
                 emit("stm Y%ld,r%ld\n", -(mem_off + 1), reg_index + 1);
                 mem_off += 2;
@@ -201,12 +236,7 @@ void generate_prologue(Node **args, long arg_reg_count, long local_var_count, in
         }
     }
 
-    emit("mvi r0,%ld\n", ((-local_var_count) & 0xFF));  // local_var_count includes arguments
-    emit("mvi r1,%ld\n", ((-local_var_count) >> 8) & 0xFF);
-    emit("add r0,r14\n");
-    emit("adc r1,r15\n");
-    emit("stm 0,r0\n");
-    emit("stm 1,r1\n");
+    emit_frame_alloc(local_var_count);  // local_var_count includes arguments
 }
 
 void generate_epilogue(int size, char *loc) {
@@ -231,9 +261,12 @@ void generate_epilogue(int size, char *loc) {
 }
 
 // ISR prologue/epilogue: no arguments, no return value (validated at parse time),
-// r0/r1 saved unconditionally (the frame-size scratch arithmetic below clobbers
-// them immediately, before any reactive push_regstack protection could apply),
-// and reti instead of ret so PSR is restored from PSR_SHADOW (re-enabling IE).
+// r0/r1 saved unconditionally, and reti instead of ret so PSR is restored from
+// PSR_SHADOW (re-enabling IE). The unconditional r0/r1 save originally existed
+// because the frame-size arithmetic clobbered them before any reactive
+// push_regstack protection could apply; emit_frame_alloc() now uses decs and no
+// longer touches them, but sei()/cli() and the global/deref address loads still
+// do, so the save stays.
 void generate_isr_prologue(long local_var_count, int reg_high_water) {
     emit("push r1\n");
     emit("push r0\n");
@@ -246,12 +279,7 @@ void generate_isr_prologue(long local_var_count, int reg_high_water) {
     emit("ldm r14,0\n"); // SP
     emit("ldm r15,1\n");
 
-    emit("mvi r0,%ld\n", ((-local_var_count) & 0xFF));
-    emit("mvi r1,%ld\n", ((-local_var_count) >> 8) & 0xFF);
-    emit("add r0,r14\n");
-    emit("adc r1,r15\n");
-    emit("stm 0,r0\n");
-    emit("stm 1,r1\n");
+    emit_frame_alloc(local_var_count);
 }
 
 void generate_isr_epilogue(void) {
@@ -295,8 +323,11 @@ int generate(Node *node, int size) {
         int expected = (size == NO_EXPECTED_SIZE) ? actual : size;
 
         if (actual == 1) {
+            check_rp_ofs(node->ofs_addr, node->loc);
             emit("ldm r%d,Y%ld\n", push_regstack(1), node->ofs_addr);
         } else if (actual == 2) {
+            check_rp_ofs(node->ofs_addr, node->loc);
+            check_rp_ofs(node->ofs_addr + 1, node->loc);
             int dst = push_regstack(2);
             emit("ldm r%d,Y%ld\n", dst, node->ofs_addr);
             emit("ldm r%d,Y%ld\n", dst + 1, node->ofs_addr + 1);
@@ -377,8 +408,11 @@ int generate(Node *node, int size) {
         }
         if (node->lhs->type == ND_LOCAL_VAR) {
             if (node->lhs->valtype->size == 1) {
+                check_rp_ofs(node->lhs->ofs_addr, node->lhs->loc);
                 emit("stm Y%ld,r%d\n", node->lhs->ofs_addr, pop_regstack(1));
             } else if (node->lhs->valtype->size == 2) {
+                check_rp_ofs(node->lhs->ofs_addr, node->lhs->loc);
+                check_rp_ofs(node->lhs->ofs_addr + 1, node->lhs->loc);
                 int src = pop_regstack(2);
                 emit("stm Y%ld,r%d\n", node->lhs->ofs_addr, src);
                 emit("stm Y%ld,r%d\n", node->lhs->ofs_addr + 1, src + 1);

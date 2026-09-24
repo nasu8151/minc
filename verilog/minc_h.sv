@@ -18,7 +18,11 @@ module minc (
 );
 
     // PC, SP
-    logic [15:0] pc;
+
+    localparam ROM_ADDR_WIDTH = 12;
+    localparam RAM_ADDR_WIDTH = 12;
+
+    logic [ROM_ADDR_WIDTH - 1:0] pc;
     logic [15:0] sp;
 
     logic [1:0] state;
@@ -27,17 +31,13 @@ module minc (
 
     // General purpose registers r0..r15 (8-bit)
     logic  [7:0]  regs [0:15];
-    logic  [7:0]  reg12;
-    logic  [7:0]  reg13;
-    logic  [7:0]  reg14;
-    logic  [7:0]  reg15;
-
+    // GPRs (upper)
+    logic  [7:0]  regs_hi [0:7];
 
     // Instruction ROM: sized to fit 4 pROMX9 blocks (4096 x 18-bit).
     // pc stays 16-bit for pc_out/branch arithmetic, but only its low 12
     // bits address the ROM so the synthesizer doesn't need to prove pc's
     // reachable range to keep this out of LUT-based fallback.
-    localparam ROM_ADDR_WIDTH = 12;
     logic  [17:0] rom  [0:(1<<ROM_ADDR_WIDTH)-1]; /* synthesis syn_romstyle = "BLOCK_ROM" */
     wire [17:0] cur = rom[pc[ROM_ADDR_WIDTH-1:0]];
 
@@ -70,10 +70,13 @@ module minc (
     wire [3:0] rd = instr[7:4];
     wire [3:0] rs = instr[3:0];
 
-    wire [7:0] imm8 = {instr[11:8], instr[3:0]};
-    wire [15:0] imm16 = {instr[15:12], instr[7:4], instr[11:8], instr[3:0]};
-    wire signed [15:0] simm8  = 16'($signed(imm8));
-    wire signed [15:0] simm16 = 16'($signed(imm16));
+    // imm8 is the low half of every immediate in the ISA -- mvi, decs, jz, and
+    // the low byte of the calr/jr word all read these same bits, which is what
+    // lets branch_ofs below share one 8-bit path.
+    wire  [7:0] imm8  = {instr[11:8], instr[3:0]};
+    // Absolute stm/ldm address is {m, n} with m = instr[3:0] as the HIGH nibble.
+    wire  [9:0] imm10 = {instr[3:0], instr[13:8]};
+    wire signed [15:0] ofs6 = 16'($signed(instr[13:8]));        // rp+n displacement
 
     // wire [7:0] rd_val = regs[rd];
     // wire [7:0] rs_val = regs[rs];
@@ -83,85 +86,135 @@ module minc (
 
     logic [7:0] alu_out;
 
+    // Opcode map (see Hardware.md):
+    //   0000xx  ALU group (subop = instr[13:10])   0001xx  free
+    //   0010xx  immediate group: mvi / decs / jz / free
+    //   0011xx  stack group:     ret / reti / push / pop
+    //   01....  memory group     10....  calr      11....  jr (halt = jr -1)
+    // Every class falls out of the top bits, so each field is decoded once
+    // instead of one 6-bit comparator per mnemonic.
     wire is_alu = (op4 == 4'b0000);
-    // wire is_mem_like = (op2 != 2'b00);
 
-    // wire is_mul    = (op6 == 6'b000100);
-    // wire is_mulh   = (op6 == 6'b000101);
-    // wire is_stf    = (op6 == 6'b001000);
-    // wire is_clf    = (op6 == 6'b001001);
-    wire is_jz     = (op6 == 6'b001100);
-    wire is_mvi    = (op6 == 6'b001110);
+    wire is_imm_grp = (op6[5:2] == 4'b0010);
+    wire is_mvi     = is_imm_grp && (op6[1:0] == 2'b00);
+    wire is_decs    = is_imm_grp && (op6[1:0] == 2'b01);
+    wire is_jz      = is_imm_grp && (op6[1:0] == 2'b10);
 
-    // stm/ldm share op6[5:3]==010; op6[2:1] picks the addressing mode
-    // (X/Y/N) and op6[0] picks store vs. load, so decode each field once
-    // instead of six separate 6-bit comparators.
-    wire is_mem_grp = (op6[5:3] == 3'b010);
-    wire is_stm     = is_mem_grp && (op6[0] == 1'b0);
-    wire is_ldm     = is_mem_grp && (op6[0] == 1'b1);
-    wire is_addr_x  = is_mem_grp && (op6[2:1] == 2'b00);
-    wire is_addr_y  = is_mem_grp && (op6[2:1] == 2'b01);
-    wire is_addr_n  = is_mem_grp && (op6[2:1] == 2'b10);
-    wire is_stack_grp = (op6[5:3] == 3'b011);
-    wire is_push      = is_stack_grp && (op6[2:0] == 3'b100);
-    wire is_pop       = is_stack_grp && (op6[2:0] == 3'b101);
-    wire is_ret_insn  = is_stack_grp && (op6[2:1] == 2'b11);
-    wire is_reti      = is_stack_grp && (op6[2:0] == 3'b110);
+    wire is_stack_grp = (op6[5:2] == 4'b0011);
+    wire is_ret_insn  = is_stack_grp && (op6[1]   == 1'b0);  // ret + reti
+    wire is_reti      = is_stack_grp && (op6[1:0] == 2'b01);
+    wire is_push      = is_stack_grp && (op6[1:0] == 2'b10);
+    wire is_pop       = is_stack_grp && (op6[1:0] == 2'b11);
+
+    // stm/ldm share op2==01; op6[3] picks the addressing mode (register pair
+    // vs. absolute) and op6[2] picks load vs. store.
+    wire is_mem_grp = (op2 == 2'b01);
+    wire is_stm     = is_mem_grp && (op6[2] == 1'b0);
+    wire is_ldm     = is_mem_grp && (op6[2] == 1'b1);
+    wire is_addr_rp = is_mem_grp && (op6[3] == 1'b0);
+    wire is_addr_n  = is_mem_grp && (op6[3] == 1'b1);
+
     wire is_calr   = (op2 == 2'b10);
     wire is_jr     = (op2 == 2'b11);
 
     // ALU
-    // ADD/ADC/SUB/SBC/LT share one 8-bit adder: subop[3]|subop[1] selects
-    // subtract (invert b, cin defaults to 1), subop[0] selects carry-in from
-    // the flag (ADC/SBC). LT reads out the borrow instead of the sum.
-    wire        alu_do_sub = subop[1];
-    wire        alu_use_cf = subop[0];
+    // ADD/ADC/SUB/SBC/LT share the adder below: alu_subop[1] selects subtract
+    // (invert b, cin defaults to 1), alu_subop[0] selects carry-in from the
+    // flag (ADC/SBC). LT reads out the borrow instead of the sum.
+    // mvi is executed as "0 + imm8" on the shared adder rather than as its own
+    // arm on the writeback mux, so its subop is forced to ADD and alu_out then
+    // selects group1. Nothing else has to change: mvi is not is_alu, so it
+    // neither drives add_cin's ALU arm nor writes the carry flag.
+    wire [3:0]  alu_subop  = is_mvi ? 4'b0100 : subop;
+    wire        alu_do_sub = alu_subop[1];
+    wire        alu_use_cf = alu_subop[0];
     wire  [7:0] alu_b      = alu_do_sub ? ~rb_val : rb_val;
     wire        alu_cin    = alu_use_cf ? carry_flag : alu_do_sub;
-    wire        alu_cout;
-    logic [7:0] group1;
-    assign {alu_cout, group1} = ra_val + alu_b + alu_cin;
 
+    // ---------------------------------------------------------------------
+    // Shared 16-bit add/sub datapath (ALU low byte + AGU)
+    // ---------------------------------------------------------------------
+    // In this 4-state machine no instruction needs the ALU and the AGU at the
+    // same time: the ALU group (op4==0000) touches neither memory nor SP, and
+    // every memory/stack/call class leaves the ALU idle. So one carry chain
+    // serves both, selected by instruction class. It is written as two 8-bit
+    // halves so the ALU can take the byte carry-out (add_c8) for the C flag
+    // while the AGU takes the full 16-bit sum.
+    //
+    // The PC adder stays separate: calr needs pc+1 and sp-1 in the same state.
+    //
+    // servicing_irq is the first arm of every mux because instr still holds the
+    // (not executed) instruction that was fetched when the interrupt was taken,
+    // so is_alu/is_addr_rp/... can be spuriously true during the entry pseudo-op.
+    wire [7:0] rp_hi = regs_hi[rs[3:1]];  // odd half of the pair; low half is rb_val
+
+    wire [15:0] add_a = servicing_irq ? sp                :
+                        is_alu        ? {8'h00, ra_val}   :
+                        is_addr_rp    ? {rp_hi, rb_val}   :
+                        is_mvi        ? 16'h0000          : sp;
+
+    // mvi and decs share one immediate path. mincasm already encodes decs with
+    // ~n (the inverter lives there so it costs no LUTs here), so the low byte is
+    // literally the same imm8 for both and only the sign extension differs:
+    // mvi adds {8'h00, imm8} to zero, decs adds {8'hFF, ~n} + 1 to SP.
+    wire [15:0] add_b = servicing_irq        ? 16'hFFFF               :
+                        is_alu               ? {8'h00, alu_b}         :
+                        is_addr_rp           ? ofs6                   :
+                        (is_mvi || is_decs)  ? {{8{is_decs}}, imm8}   :
+                        (is_calr || is_push) ? 16'hFFFF               : 16'h0000;
+
+    wire add_cin = servicing_irq ? 1'b0     :
+                   is_alu        ? alu_cin  :
+                                   (is_decs || is_pop || is_ret_insn);
+
+    wire       add_c8, add_c16;
+    wire [7:0] add_lo, add_hi;
+    assign {add_c8,  add_lo} = {1'b0, add_a[7:0]}  + {1'b0, add_b[7:0]}  + add_cin;
+    assign {add_c16, add_hi} = {1'b0, add_a[15:8]} + {1'b0, add_b[15:8]} + add_c8;
+    wire [15:0] add_out = {add_hi, add_lo};
+
+    wire        alu_cout = add_c8;
+    wire  [7:0] group1   = add_lo;
+
+    // MOV/OR/AND/XOR: one LUT4 per bit (two data inputs, two selects).
     logic [7:0] group0;
-    logic [7:0] group2;
-    logic [7:0] group3;
-
     generate
         for (genvar i=0;i<8;i++) begin
-            assign group0[i] =  (subop[1:0] == 2'b00) ? rb_val[i] :
-                                (subop[1:0] == 2'b01) ? ra_val[i] | rb_val[i] :
-                                (subop[1:0] == 2'b10) ? ra_val[i] & rb_val[i] :
-                                (subop[1:0] == 2'b11) ? ra_val[i] ^ rb_val[i] : 1'bx;
+            assign group0[i] =  (alu_subop[1:0] == 2'b00) ? rb_val[i] :
+                                (alu_subop[1:0] == 2'b01) ? ra_val[i] | rb_val[i] :
+                                (alu_subop[1:0] == 2'b10) ? ra_val[i] & rb_val[i] :
+                                (alu_subop[1:0] == 2'b11) ? ra_val[i] ^ rb_val[i] : 1'bx;
         end
     endgenerate
 
-    assign group2 = (subop[1] == 1'b0) ? {carry_flag, rb_val} :
-                    (subop[1] == 1'b1) ? {7'b0, ~alu_cout}  : 8'hxx;
+    // alu_subop[3:1]: 3'b101 -> lt/ltc, 3'b100 -> rr.
+    //
+    // rr is a rotate right *through* the carry -- {rd, c} = {c, rs} -- so the
+    // new rd is {carry_flag, rb_val[7:1]} and the bit rotated out is rb_val[0].
+    // The original code wrote {carry_flag, rb_val}: nine bits into an eight-bit
+    // target, so the top bit was silently truncated, the shift never happened,
+    // and rr just returned rb_val. Hence the slice here -- without it the
+    // instruction assembles and executes but does nothing useful.
+    wire [7:0] group2 = alu_subop[1] ? {7'b0, ~alu_cout}           // lt / ltc
+                                     : {carry_flag, rb_val[7:1]};  // rr
 
-    assign group3 = (subop[1:0] == 2'b00) ? {7'b0, ~|ra_val} :
-                    (subop[1:0] == 2'b10) ? ra_val * rb_val  :
-                    (subop[1:0] == 2'b11) ? (16'(ra_val * rb_val)) >> 8 : 8'hxx;
+    // The 8'hxx / 1'bx arms below are load-bearing, not laziness: they are the
+    // unused opcode slots, and leaving them explicitly undefined is what lets
+    // the synthesizer share this mux with the writeback path. Replacing them
+    // with concrete values measured ~6 LUTs *worse*.
+    wire [7:0] group3 = (alu_subop[1:0] == 2'b00) ? {7'b0, ~|ra_val} :
+                        (alu_subop[1:0] == 2'b10) ? ra_val * rb_val  :
+                        (alu_subop[1:0] == 2'b11) ? (16'(ra_val * rb_val)) >> 8 : 8'hxx;
 
-    wire rb_val_0 = rb_val[0];
-    wire [1:0] subop_hi2 = subop[3:2];
     always_comb begin
-        case (subop_hi2)
-            2'b00: begin
-                alu_out = group0; carry_flag_next = 1'bx; 
-            end // MOV, OR, XOR, AND
-            2'b01: begin // ADD, ADC, SUB, SBC
-                alu_out = group1;
-                carry_flag_next = alu_cout;
-            end
-            2'b10: begin 
-                alu_out = group2;
-                carry_flag_next = rb_val_0;
-            end // LT and LTC (shares the subtractor above) and CHZ
-            2'b11: begin 
-                alu_out = group3;
-                carry_flag_next = 1'bx;
-            end // CHZ, MUL, MULH
-            default: begin alu_out = 8'hxx; carry_flag_next = 1'bx; end
+        case (alu_subop[3:2])
+            2'b00: begin alu_out = group0; carry_flag_next = 1'bx;      end // MOV/OR/AND/XOR
+            2'b01: begin alu_out = group1; carry_flag_next = alu_cout;  end // ADD/ADC/SUB/SBC
+            // rb_val[0] is exactly the bit rr rotates out. lt/ltc share it,
+            // although Hardware.md specifies !borrow for those -- see 既知の制約.
+            2'b10: begin alu_out = group2; carry_flag_next = rb_val[0]; end // RR/LT/LTC
+            2'b11: begin alu_out = group3; carry_flag_next = 1'bx;      end // CHZ/MUL/MULH
+            default: begin alu_out = 8'hxx; carry_flag_next = 1'bx;     end
         endcase
     end
 
@@ -203,13 +256,23 @@ module minc (
                                 irq_in[2] ? 3'd3 :
                                 irq_in[3] ? 3'd4 : 3'dx;
     wire take_irq = ie && any_irq;
-    wire [15:0] irq_vector = {13'd0, irq_sel};
+    wire [ROM_ADDR_WIDTH-1:0] irq_vector = {13'd0, irq_sel};
 
     // PC and ROM control
-    wire [15:0] delta_pc =  (state == `S_DECEXEC) ? (servicing_irq ? 16'd0 : 16'd1) :
-                            (is_jz) ? (ra_val == 8'd0) ? simm8 : 16'd0 :
-                            (is_jr || is_calr) ? simm16 : 16'hxxxx;
-    wire [15:0] pc_next = pc + delta_pc;
+    //
+    // jz and jr/calr take their low offset byte from the very same instruction
+    // bits ({instr[11:8], instr[3:0]} == imm8), so only the high byte needs a
+    // mux: jz sign-extends it, jr/calr take the second immediate half. That
+    // turns what was a 16-bit three-way mux into an 8-bit two-way one.
+    wire [ROM_ADDR_WIDTH-1:0] branch_ofs = {is_jz ? {8{imm8[7]}} : {instr[15:12], instr[7:4]}, imm8};
+    wire        jz_taken   = is_jz && (ra_val == 8'd0);
+
+    // In DECEXEC the delta is always +1: the two "add zero" cases (an interrupt
+    // entry, and a not-taken jz) are handled by simply not writing pc at all,
+    // rather than by feeding a zero through the adder. What is left is a mux
+    // against a constant, which collapses into a row of gates.
+    wire [ROM_ADDR_WIDTH-1:0] delta_pc = (state == `S_DECEXEC) ? 'd1 : branch_ofs;
+    wire [ROM_ADDR_WIDTH-1:0] pc_next  = pc + delta_pc;
     always_ff @(posedge clk or negedge reset_n) begin
         if (!reset_n) begin
             pc <= 16'd0;
@@ -219,7 +282,7 @@ module minc (
                     instr <= cur;
                 end
                 `S_DECEXEC: begin
-                    pc <= pc_next;
+                    if (!servicing_irq) pc <= pc_next;
                 end
                 `S_MA: begin
                     if (!servicing_irq && (is_ret_insn)) begin
@@ -229,10 +292,10 @@ module minc (
                 `S_WB: begin
                     if (servicing_irq) begin
                         pc <= irq_vector;
-                    end else if (is_jz || is_jr || is_calr) begin
+                    end else if (jz_taken || is_jr || is_calr) begin
                         pc <= pc_next;
                     end else if (is_ret_insn) begin
-                        pc[15:8] <= data_in;
+                        pc[ROM_ADDR_WIDTH - 1:8] <= data_in;
                     end
 `ifdef SIM
                     if (!servicing_irq && instr == 18'h3FFFF) $finish;
@@ -243,13 +306,15 @@ module minc (
     end
 
     // SP and AGU
-    logic [15:0] addr_base;
     logic        cpu_mmio_hit;
     logic [7:0]  cpu_mmio_data;
-    wire [15:0]  delta_sp = servicing_irq ? -16'd1 :
-                        (is_calr || is_push) ? -16'd1 :
-                        (is_pop || is_ret_insn) ? 16'd1 : 16'hxxxx;
-    wire [15:0] sp_next = sp + delta_sp;
+    // Registered alongside cpu_mmio_hit, from the same cycle's address. Using
+    // the combinational address[1:0] here instead put the shared adder's output
+    // directly into the writeback cone (worth ~15 LUTs), and it also disagreed
+    // with cpu_mmio_hit for `pop`, where SP -- and therefore address -- advances
+    // between S_MA and S_WB, so hit was computed from one address and the byte
+    // select from the next.
+    logic [1:0]  cpu_mmio_sel;
     always_ff @(posedge clk or negedge reset_n) begin
         if (!reset_n) begin
             sp <= 16'd0;
@@ -262,13 +327,15 @@ module minc (
                     irq_sel <= irq_sel_next;
                 end
                 `S_DECEXEC: begin
-                    if (servicing_irq || is_calr || is_ret_insn) begin
-                        sp <= sp_next;
+                    // is_decs (op6[5:2]==0010) is outside is_stack_grp (0011),
+                    // so it does not get a second update in S_MA below.
+                    if (servicing_irq || is_calr || is_ret_insn || is_decs) begin
+                        sp <= add_out;
                     end
                 end
                 `S_MA: begin
                     if (servicing_irq || is_stack_grp || is_calr) begin
-                        sp <= sp_next;
+                        sp <= add_out;
                     end
                 end
                 `S_WB: begin
@@ -280,21 +347,24 @@ module minc (
                 default: ;
             endcase
             cpu_mmio_hit <= (address[15:2] == 14'h0000) ? 1'b1 : 1'b0;
+            cpu_mmio_sel <= address[1:0];
         end
     end
-    assign addr_base =  (is_addr_x) ? {reg13, reg12} :
-                        (is_addr_y) ? {reg15, reg14} :
-                        (is_addr_n) ? 16'h0000 : 16'hxxxx;
-    assign address =    servicing_irq ? sp :
-                        (is_mem_grp) ? (addr_base + (is_addr_n ? {8'h00, imm8} : simm8)) :
-                        (is_stack_grp || is_calr) ? sp : 16'hxxxx;
+
+    // Absolute mode bypasses the adder entirely. Everything that is not a memory
+    // access (stack group, calr, and the classes that never drive `address` at
+    // all) falls through to sp -- it is already a mux input, so the default arm
+    // is free, and it keeps cpu_mmio_hit out of X during ALU/decs instructions.
+    assign address =    servicing_irq ? sp             :
+                        is_addr_n     ? {6'd0, imm10}  :
+                        is_mem_grp    ? add_out        : sp;
 
     always_ff @( posedge clk or negedge reset_n ) begin
         if (!reset_n) begin
             data_out <= 8'hxx;
         end else begin
             if (state == `S_DECEXEC) begin
-                data_out <= (servicing_irq || is_calr) ? pc[15:8] : 8'hxx;
+                data_out <= (servicing_irq || is_calr) ? pc[ROM_ADDR_WIDTH - 1:8] : 8'hxx;
             end else if (state == `S_MA) begin
                 data_out <= (servicing_irq) ? pc[7:0] :
                             (is_push) ? ra_val :
@@ -306,36 +376,30 @@ module minc (
         end
     end
 
-    assign cpu_mmio_data =  (address[1:0] == 2'b00) ? sp[7:0]    :
-                            (address[1:0] == 2'b01) ? sp[15:8]   :
-                            (address[1:0] == 2'b10) ? psr        :
-                            (address[1:0] == 2'b11) ? psr_shadow : 8'hxx;
+    assign cpu_mmio_data =  (cpu_mmio_sel == 2'b00) ? sp[7:0]    :
+                            (cpu_mmio_sel == 2'b01) ? sp[15:8]   :
+                            (cpu_mmio_sel == 2'b10) ? psr        :
+                            (cpu_mmio_sel == 2'b11) ? psr_shadow : 8'hxx;
+    wire reg_we = is_alu || is_mvi || is_pop || is_ldm;
 
-    wire [7:0] rw_next =    (is_alu) ? alu_out : 
-                            (is_mvi) ? imm8 : 
-                            (is_pop || is_ldm) ?
-                                (cpu_mmio_hit ? cpu_mmio_data : data_in) 
-                                : ra_val;
+    wire [7:0] rw_next =    (is_pop || is_ldm) ?
+                                (cpu_mmio_hit ? cpu_mmio_data : data_in)
+                                : alu_out;
     // Register file
-    
-    // is_ldm_x||is_stm_x reduces to is_addr_x (is_ldm|is_stm == is_mem_grp,
-    // which is_addr_x already implies); the DECEXEC-only gate for stores
-    // is factored out once as agu_rd_active.
-
+    //
+    // regs_hi mirrors the odd registers (regs_hi[i] == r(2i+1)) so that a
+    // register-pair base can be read in one cycle without a third read port on
+    // regs: the rp field is instr[3:0] == {ppp,1'b0}, so the low half is already
+    // on the rs read port (rb_val) and only the high half needs regs_hi[rs[3:1]].
     always_ff @(posedge clk or negedge reset_n) begin
         if (!reset_n) begin
             // Nothing
         end else begin
             case (state)
                 `S_WB: begin
-                    if (!servicing_irq) begin
+                    if (!servicing_irq && reg_we) begin
                         regs[rd] <= rw_next;
-                        case (rd)
-                            4'd12: reg12 <= rw_next;
-                            4'd13: reg13 <= rw_next;
-                            4'd14: reg14 <= rw_next;
-                            4'd15: reg15 <= rw_next;
-                        endcase
+                        if (rd[0]) regs_hi[rd[3:1]] <= rw_next;
                     end
                 end
             endcase
